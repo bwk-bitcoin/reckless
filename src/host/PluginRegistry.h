@@ -26,7 +26,8 @@ class PluginRegistry final : public QObject {
     Q_OBJECT
 
 public:
-    // How long quitting waits for the modules to shut down (ws-plaude/silent#102).
+    // How long quitting waits for the modules to shut down and for the storage requests
+    // made meanwhile (ws-plaude/silent#102, #103).
     static constexpr int QUIT_SHUTDOWN_BOUND_MS = 5000;
 
     explicit PluginRegistry(QObject *parent = nullptr);
@@ -55,8 +56,8 @@ public:
     void registerBuiltin(IPlugin *plugin);
     // Run once the event loop has returned. Shuts down every enabled module through
     // IModule::shutdown(), then runs an event loop until each answered shutdownFinished,
-    // and every disable or removal under way has shut its modules down, or until
-    // `bound_ms`.
+    // every disable or removal under way has shut its modules down and every storage
+    // request is answered, the ones made on aboutToQuit included, or until `bound_ms`.
     void shutdownAtQuit(int bound_ms = QUIT_SHUTDOWN_BOUND_MS);
     // Requests a checked background snapshot; pluginStateChanged reports completion/loading.
     void rescanDiscoveredPlugins();

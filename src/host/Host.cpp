@@ -660,6 +660,11 @@ auto HostImpl::storage(IModule *caller) -> IStorage * {
     return handle;
 }
 
+auto HostImpl::storageIdle() const -> bool {
+    return std::ranges::all_of(m_storage_handles,
+                               [](const host::StorageHandle *handle) { return handle->drained(); });
+}
+
 void HostImpl::dropCaller(IModule *module) {
     if (auto *handle = m_keys_handles.take(module); handle != nullptr) {
         m_draining_keys.insert(module, handle);

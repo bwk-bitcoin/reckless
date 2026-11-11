@@ -92,6 +92,8 @@
 // inside the call: connect completed() before sending. A cancelled request's later
 // result is dropped. Once the host revokes the IStorage (the plugin is disabled or
 // unloaded), outstanding requests get no answer and new ones answer "revoked".
+// When Silent quits, requests made before the process exits, on aboutToQuit or while the
+// modules shut down, run and are answered, within the 5 seconds the quit waits.
 // Unload and cancellation never drain workers: a commit past final authorization may
 // still finish. Saved Data grant updates instead exclude final authorization through
 // rename; a completed grant update fences older, not-yet-authorized publications.

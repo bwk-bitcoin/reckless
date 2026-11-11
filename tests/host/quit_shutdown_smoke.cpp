@@ -34,10 +34,12 @@ void requireWritten(const QHash<QString, QJsonObject> &answers, const QString &i
 
 } // namespace
 
-QuitModule::QuitModule(QString id, bool stuck, QObject *parent)
+QuitModule::QuitModule(QString id, QuitBehavior behavior, QObject *parent)
     : IModule(parent),
       m_id(std::move(id)),
-      m_stuck(stuck) {
+      m_behavior(behavior) {
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &QuitModule::onAboutToQuit,
+            qontrol::UNIQUE);
 }
 
 auto QuitModule::meta() const -> QMap<QString, QString> {
@@ -57,7 +59,11 @@ void QuitModule::startInstance([[maybe_unused]] const QString &id) {
 
 void QuitModule::shutdown(ReqId req_id) {
     ++m_shutdown_calls;
-    if (m_stuck) {
+    if (m_behavior == QuitBehavior::Stuck) {
+        return;
+    }
+    if (m_behavior == QuitBehavior::SaveOnQuit) {
+        emit shutdownFinished(req_id, QString());
         return;
     }
     m_shutdown_req = req_id;
@@ -79,14 +85,22 @@ auto QuitModule::answers() const -> const QHash<QString, QJsonObject> & {
     return m_answers;
 }
 
+void QuitModule::onAboutToQuit() {
+    if (m_behavior == QuitBehavior::SaveOnQuit) {
+        write(QStringLiteral("quit"), QStringLiteral("quit.txt"));
+    }
+}
+
 void QuitModule::onCompleted(const QByteArray &message) {
     auto answer = QJsonDocument::fromJson(message).object();
     auto id = answer.value(QStringLiteral("id")).toString();
-    if (id != QStringLiteral("shutdown")) {
+    if (id != QStringLiteral("quit") && id != QStringLiteral("shutdown")) {
         return;
     }
     m_answers.insert(id, answer);
-    emit shutdownFinished(m_shutdown_req, ExternalStorageConsumer::error(answer));
+    if (id == QStringLiteral("shutdown")) {
+        emit shutdownFinished(m_shutdown_req, ExternalStorageConsumer::error(answer));
+    }
 }
 
 void QuitModule::write(const QString &id, const QString &name) {
@@ -102,9 +116,13 @@ void QuitModule::write(const QString &id, const QString &name) {
     m_storage->request(QJsonDocument(request).toJson(QJsonDocument::Compact));
 }
 
-QuitPlugin::QuitPlugin()
-    : m_saver(new QuitModule(QStringLiteral("quit.saver"), false, this)),
-      m_stuck(new QuitModule(QStringLiteral("quit.stuck"), true, this)) {
+QuitPlugin::QuitPlugin(bool storage) {
+    if (storage) {
+        m_saver = new QuitModule(QStringLiteral("quit.saver"), QuitBehavior::SaveOnQuit, this);
+        return;
+    }
+    m_saver = new QuitModule(QStringLiteral("quit.saver"), QuitBehavior::SaveOnShutdown, this);
+    m_stuck = new QuitModule(QStringLiteral("quit.stuck"), QuitBehavior::Stuck, this);
 }
 
 auto QuitPlugin::meta() const -> QMap<QString, QString> {
@@ -113,6 +131,9 @@ auto QuitPlugin::meta() const -> QMap<QString, QString> {
 }
 
 auto QuitPlugin::modules() const -> QList<IModule *> {
+    if (m_stuck == nullptr) {
+        return {m_saver};
+    }
     return {m_saver, m_stuck};
 }
 
@@ -127,7 +148,7 @@ auto QuitPlugin::stuck() const -> QuitModule * {
 void quitShutdownSmoke() {
     auto *host = dynamic_cast<HostImpl *>(Host::get());
     require(host != nullptr, "the real host singleton runs the quit");
-    auto owned = std::make_unique<QuitPlugin>();
+    auto owned = std::make_unique<QuitPlugin>(false);
     auto *plugin = owned.get();
     AppController::get()->registerBuiltinPlugin(std::move(owned));
     auto *registry = AppController::get()->pluginRegistry();
@@ -158,6 +179,37 @@ void quitShutdownSmoke() {
     require(ExternalStorageConsumer::data(files.read(
                 storage, run + QStringLiteral("/shutdown.txt"))) == QByteArray("shutdown"),
             "the shutdown file is on disk");
+    require(ExternalStorageConsumer::error(files.remove(storage, run, true)).isEmpty(),
+            "the run's tree is removed");
+}
+
+void quitStorageSmoke() {
+    auto *host = dynamic_cast<HostImpl *>(Host::get());
+    require(host != nullptr, "the real host singleton runs the quit");
+    auto owned = std::make_unique<QuitPlugin>(true);
+    auto *plugin = owned.get();
+    AppController::get()->registerBuiltinPlugin(std::move(owned));
+    auto *registry = AppController::get()->pluginRegistry();
+    require(registry != nullptr, "the plugin registry exists");
+    auto run = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    ExternalStorageConsumer files(host, plugin->saver(), QStringLiteral("quit"));
+    auto storage = files.open();
+    require(ExternalStorageConsumer::error(files.mkdir(storage, run)).isEmpty(),
+            "the run directory is made");
+    plugin->saver()->prepare(files.storage(), storage, run);
+
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+    require(QCoreApplication::exec() == 0, "the application quit path returns");
+    require(plugin->saver()->answers().isEmpty(),
+            "the write made on aboutToQuit is unanswered once the event loop returned");
+    // The module answers its shutdown from inside the call: only the write is left.
+    registry->shutdownAtQuit(QUIT_BOUND_MS);
+    require(plugin->saver()->shutdownCalls() == 1, "the quit shuts the module down");
+    requireWritten(plugin->saver()->answers(), QStringLiteral("quit"),
+                   "the write made on aboutToQuit is answered before the quit returns");
+    require(ExternalStorageConsumer::data(files.read(storage, run + QStringLiteral("/quit.txt"))) ==
+                QByteArray("quit"),
+            "the aboutToQuit file is on disk");
     require(ExternalStorageConsumer::error(files.remove(storage, run, true)).isEmpty(),
             "the run's tree is removed");
 }

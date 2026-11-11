@@ -505,6 +505,11 @@ auto main(int argc, char *argv[]) -> int {
         std::fprintf(stdout, "Quit shutdown smoke: OK\n");
         return gOk ? 0 : 1;
     }
+    if (arguments.contains(QStringLiteral("--quit-storage"))) {
+        smoke::quitStorageSmoke();
+        std::fprintf(stdout, "Quit storage smoke: OK\n");
+        return gOk ? 0 : 1;
+    }
     if (arguments.contains(QStringLiteral("--storage-contract"))) {
         Theme::init();
         check(smoke::storageSmoke(QStringLiteral("host smoke")), "storage contract");

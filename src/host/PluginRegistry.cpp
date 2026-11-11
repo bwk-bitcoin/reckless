@@ -1331,6 +1331,9 @@ void PluginRegistry::shutdownAtQuit(int bound_ms) {
     if (!m_quit_pending.isEmpty()) {
         qWarning() << "Quitting before" << m_quit_pending.size() << "modules shut down";
     }
+    if (host != nullptr && !host->storageIdle()) {
+        qWarning() << "Quitting before every plugin storage request was answered";
+    }
 }
 
 void PluginRegistry::onQuitShutdownFinished(ReqId req_id, [[maybe_unused]] const QString &error) {
@@ -1353,10 +1356,14 @@ auto PluginRegistry::quitSettled() const -> bool {
     if (!m_quit_pending.isEmpty()) {
         return false;
     }
-    return std::ranges::none_of(m_stops, [](const PluginStop &stop) {
-        return stop.phase == StopPhase::WaitingFrames ||
-               (stop.phase == StopPhase::Stopping && !stop.pending.isEmpty());
-    });
+    if (std::ranges::any_of(m_stops, [](const PluginStop &stop) {
+            return stop.phase == StopPhase::WaitingFrames ||
+                   (stop.phase == StopPhase::Stopping && !stop.pending.isEmpty());
+        })) {
+        return false;
+    }
+    auto *host = dynamic_cast<HostImpl *>(Host::get());
+    return host == nullptr || host->storageIdle();
 }
 
 void PluginRegistry::advancePluginStops() {

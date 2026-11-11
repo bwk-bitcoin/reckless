@@ -92,6 +92,8 @@ public:
     void destroyClosedUi(IModule *module);
     [[nodiscard]] auto callerDrained(IModule *module) const -> bool;
     [[nodiscard]] auto callerFramesIdle(IModule *module) const -> bool;
+    // No IStorage the host handed out has a request running or queued.
+    [[nodiscard]] auto storageIdle() const -> bool;
     [[nodiscard]] auto callerDrainError(IModule *module) const -> QString;
     void enterFrame(IModule *module);
     void leaveFrame(IModule *module);
