@@ -1,27 +1,30 @@
-//! Hot provider material. Allocation, ordering and encrypted storage belong to the common cache.
+//! Hot provider material, on bwk's nonce cache sessions: a session is a random
+//! secret, sealed in the cache, and the public nonces it derives for the signer's
+//! key, computed while the signer is unlocked so a later nonce round needs no
+//! mnemonic. Allocation, ordering and encrypted storage belong to the common cache.
 
 use std::{collections::BTreeMap, path::Path};
 
 use bitcoin::{bip32::Fingerprint, Psbt};
 use bwk::{
-    bwk_descriptor::wallet::WalletDescriptor,
+    bwk_descriptor::wallet::{WalletDescriptor, WalletDescriptorExt},
     bwk_sign::{
         error::Error as SignerError,
-        hot_musig::{HotMusigSession, HotMusigSessionBytes},
         hot_signer::HotSigner,
-        musig::{musig_status, own_slots, slot_infos, MusigRound, MusigSessionId},
+        musig::{expression_slots, musig_status, own_slots, slot_infos, MusigRound, SlotInfo},
+        nonce_cache::{SessionSecret, SECRET_LEN},
     },
-    bwk_tx::bwk_psbt::musig::musig_input_pub_nonce,
+    bwk_tx::bwk_psbt::musig::{musig_input_pub_nonce, set_musig_input_pub_nonce},
 };
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     config::datadir,
     keys::{
         musig_sessions::{
-            allocate_first_request_at, binding, descriptor, AllocationState, LockedCache, Nonce,
-            PublishedNonce, SecretPayload, Session, SessionSource, SigningError, MAX_INPUT,
-            MAX_SESSIONS,
+            allocate_first_request_at, binding, descriptor, AllocationState, ExpressionSlot,
+            LockedCache, Nonce, PublishedNonce, SecretPayload, Session, SessionSource,
+            SigningError, MAX_INPUT, MAX_SESSIONS,
         },
         record::RouteKind,
     },
@@ -33,74 +36,110 @@ pub fn create_hot(signer: &HotSigner, policy: &str, quantity: usize) -> Result<(
         return Err("session quantity must be between 1 and 8".into());
     }
     for _ in 0..quantity {
-        let id = random_id()?;
-        create_locked(&mut store, signer, policy, id, None)?;
+        create_locked(&mut store, signer, policy, random_id()?, None)?;
     }
     Ok(())
 }
 
-fn random_id() -> Result<MusigSessionId, String> {
+fn random_id() -> Result<[u8; 32], String> {
     let mut id = [0; 32];
     getrandom::getrandom(&mut id).map_err(|e| e.to_string())?;
-    Ok(MusigSessionId(id))
+    Ok(id)
 }
 
+/// Stores a fresh session with the public nonces its secret derives for every
+/// MuSig expression of the signer, at each of the `MAX_INPUT` input positions, so a
+/// nonce round needs no mnemonic. They are those of the policy's first address: an
+/// aggregate then derive policy has the same participant key at every address.
 pub(crate) fn create_locked(
     store: &mut LockedCache,
     signer: &HotSigner,
     policy: &str,
-    id: MusigSessionId,
+    id: [u8; 32],
     fetched_for: Option<[u8; 32]>,
 ) -> Result<(), String> {
     let parsed = descriptor(policy)?;
-    let session = signer
-        .create_musig_session(&parsed, id, MAX_INPUT as u8)
-        .map_err(|e| e.to_string())?;
-    let nonces = session
-        .public_nonces(&parsed, 0, 0)
+    let template = parsed
+        .single_paths()
         .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|entry| Nonce {
-            input: entry.input_index,
-            expression: entry.expression_index,
-            participant: entry.nonce.participant,
-            bytes: entry.nonce.nonce.to_vec(),
-        })
-        .collect();
-    let bytes = session.encode();
+        .first()
+        .ok_or("no descriptor path")?
+        .derive_at(0)
+        .map_err(|e| e.to_string())?;
+    let secret = SessionSecret::random().map_err(|e| e.to_string())?;
+    let mut nonces = Vec::new();
+    for input in 0..MAX_INPUT {
+        for info in expression_slots(input, &template).map_err(|e| e.to_string())? {
+            if info.signer.0 != signer.fingerprint() {
+                continue;
+            }
+            nonces.push(Nonce {
+                input,
+                expression: info.key_expression_index,
+                participant: info.slot.participant,
+                bytes: public_nonce(signer, &secret, &info)?.to_vec(),
+            });
+        }
+    }
+    if nonces.is_empty() {
+        return Err("policy has no MuSig expression of this key".into());
+    }
     let entry = Session {
         provider: RouteKind::Hot,
-        id: id.0,
+        id,
         order: store.reserve_order()?,
         policy: policy.to_owned(),
         nonces,
         fetched_for,
         secret: Some(SecretPayload::seal(
-            Zeroizing::new(bytes.as_bytes().to_vec()),
-            &secret_aad(signer.fingerprint(), policy, id.0),
+            Zeroizing::new(secret.as_bytes().to_vec()),
+            &secret_aad(signer.fingerprint(), policy, id),
         )?),
         qr: None,
     };
     store.insert(entry)
 }
 
+/// The public nonce `secret` derives for the signer's slot `info`, the one
+/// `HotSigner::sign_nonce_cache` checks.
+fn public_nonce(
+    signer: &HotSigner,
+    secret: &SessionSecret,
+    info: &SlotInfo,
+) -> Result<[u8; 66], String> {
+    let input = u32::try_from(info.slot.input_index).map_err(|_| "input index out of range")?;
+    let expression = u32::try_from(info.key_expression_index)
+        .map_err(|_| "key expression index out of range")?;
+    let mut key = signer.private_key_at(&info.signer.1);
+    let mut secret_key = key.secret_bytes();
+    key.non_secure_erase();
+    let generated = secret.nonce(
+        input,
+        expression,
+        &secret_key,
+        &info.slot.participant.serialize(),
+    );
+    secret_key.zeroize();
+    generated
+        .map(|(_, public)| public)
+        .map_err(|e| e.to_string())
+}
+
 fn decode(
     secret: Option<&SecretPayload>,
-    policy: &WalletDescriptor,
     fp: Fingerprint,
     policy_text: &str,
     id: [u8; 32],
-) -> Result<HotMusigSession, SigningError> {
+) -> Result<SessionSecret, SigningError> {
     let secret = secret.ok_or_else(|| lost("MuSig session secret is missing"))?;
-    let mut bytes = secret
+    let bytes = secret
         .open(&secret_aad(fp, policy_text, id))
         .map_err(|_| lost("MuSig session secret authentication failed"))?;
-    HotMusigSession::decode(
-        HotMusigSessionBytes::from_bytes(std::mem::take(&mut *bytes)),
-        policy,
-        fp,
-    )
-    .map_err(|_| lost("MuSig session secret is invalid"))
+    let bytes: [u8; SECRET_LEN] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| lost("MuSig session secret is invalid"))?;
+    Ok(SessionSecret::from_bytes(bytes))
 }
 
 fn lost(message: &str) -> SigningError {
@@ -108,7 +147,7 @@ fn lost(message: &str) -> SigningError {
 }
 
 fn secret_aad(fp: Fingerprint, policy: &str, id: [u8; 32]) -> Vec<u8> {
-    let mut aad = b"silent-hot-musig-session-v1\0".to_vec();
+    let mut aad = b"silent-hot-nonce-cache-session-v1\0".to_vec();
     aad.extend_from_slice(fp.as_bytes());
     aad.extend_from_slice(&id);
     aad.extend_from_slice(policy.as_bytes());
@@ -124,38 +163,63 @@ impl From<SignerError> for SigningError {
     }
 }
 
-fn published(
+/// The nonces `session` publishes for the slots the transaction asks this key for:
+/// the stored ones, or, with `signer` unlocked, the ones its secret derives, which
+/// also covers a participant key that changes with the address. None when the
+/// stored nonces do not cover the slots and no signer is unlocked.
+fn session_nonces(
+    session: &Session,
     real: &Psbt,
     policy: &WalletDescriptor,
     fp: Fingerprint,
-) -> Result<Vec<PublishedNonce>, String> {
-    slot_infos(real, policy)
+    signer: Option<&HotSigner>,
+) -> Result<Option<Vec<PublishedNonce>>, SigningError> {
+    let infos: Vec<SlotInfo> = slot_infos(real, policy)
         .map_err(|e| e.to_string())?
         .into_iter()
         .filter(|info| info.signer.0 == fp)
-        .map(|info| {
-            let slot = info.slot;
-            let bytes = musig_input_pub_nonce(
-                &real.inputs[slot.input_index],
-                slot.participant,
-                slot.aggregate,
-                slot.leaf_hash,
-            )
-            .map_err(|e| e.to_string())?
-            .ok_or("hot session did not publish an owned nonce")?;
-            Ok(PublishedNonce {
-                input: slot.input_index,
-                participant: slot.participant,
-                aggregate: slot.aggregate,
-                leaf_hash: slot.leaf_hash,
-                bytes: bytes.to_vec(),
-            })
+        .collect();
+    let slots: Vec<ExpressionSlot> = infos
+        .iter()
+        .map(|info| ExpressionSlot {
+            expression: info.key_expression_index,
+            slot: info.slot,
         })
-        .collect()
+        .collect();
+    if let Ok(published) = session.published(&slots) {
+        return Ok(Some(published));
+    }
+    let Some(signer) = signer else {
+        return Ok(None);
+    };
+    let secret = decode(session.secret.as_ref(), fp, &session.policy, session.id)?;
+    let mut published = Vec::with_capacity(infos.len());
+    for info in &infos {
+        published.push(PublishedNonce {
+            input: info.slot.input_index,
+            participant: info.slot.participant,
+            aggregate: info.slot.aggregate,
+            leaf_hash: info.slot.leaf_hash,
+            bytes: public_nonce(signer, &secret, info)?.to_vec(),
+        });
+    }
+    Ok(Some(published))
+}
+
+fn insert_nonces(real: &mut Psbt, published: &[PublishedNonce]) -> Result<(), String> {
+    for entry in published {
+        let input = real
+            .inputs
+            .get_mut(entry.input)
+            .ok_or("MuSig allocation names a missing input")?;
+        set_musig_input_pub_nonce(input, &entry.field()?);
+    }
+    Ok(())
 }
 
 /// Publishes this key's cached nonce alone: an explicit nonce round. Returns false
-/// when a password is needed to generate an on-demand session or to sign.
+/// when a password is needed to generate an on-demand session, to derive the nonces
+/// of an address-derived participant key, or to sign.
 pub fn publish_hot(fp: Fingerprint, policy: &str, real: &mut Psbt) -> Result<bool, SigningError> {
     publish_at(&datadir().join("musig-sessions"), fp, policy, real, None)
 }
@@ -224,16 +288,7 @@ pub(crate) fn publish_at(
         if !allocation.covers_slots(&slots) || !allocation.compatible_nonces(real, false)? {
             return Err(lost("MuSig nonces do not match their allocation"));
         }
-        let session = decode(
-            allocation.secret.as_ref(),
-            &parsed,
-            fp,
-            policy,
-            allocation.id,
-        )?;
-        session
-            .publish_nonces(real, &parsed)
-            .map_err(SigningError::from)?;
+        insert_nonces(real, &allocation.slots)?;
         return Ok(true);
     }
     let mut index = store.available(policy, RouteKind::Hot);
@@ -247,13 +302,27 @@ pub(crate) fn publish_at(
     let index = index.ok_or("generated MuSig session is missing")?;
     let mut next = store.state.clone();
     let session = next.available.remove(index);
-    let material = decode(session.secret.as_ref(), &parsed, fp, policy, session.id)?;
+    let Some(published) = session_nonces(&session, real, &parsed, fp, signer)? else {
+        return Ok(false);
+    };
+    for entry in &published {
+        if musig_input_pub_nonce(
+            &real.inputs[entry.input],
+            entry.participant,
+            entry.aggregate,
+            entry.leaf_hash,
+        )
+        .map_err(|e| e.to_string())?
+        .is_some()
+        {
+            return Err(lost(
+                "the transaction already carries another nonce of this key",
+            ));
+        }
+    }
     let mut published_psbt = real.clone();
-    material
-        .publish_nonces(&mut published_psbt, &parsed)
-        .map_err(SigningError::from)?;
-    let slots = published(&published_psbt, &parsed, fp)?;
-    store.allocate_session(next, session, binding, policy, slots)?;
+    insert_nonces(&mut published_psbt, &published)?;
+    store.allocate_session(next, session, binding, policy, published)?;
     *real = published_psbt;
     Ok(true)
 }
@@ -303,17 +372,11 @@ fn sign_at(
     if !allocation.covers_slots(&slots) || !allocation.compatible_nonces(real, true)? {
         return Err(lost("MuSig nonces do not match their allocation"));
     }
-    let session = decode(
-        allocation.secret.as_ref(),
-        &parsed,
-        fp,
-        policy,
-        allocation.id,
-    )?;
+    let secret = decode(allocation.secret.as_ref(), fp, policy, allocation.id)?;
     // No signature operation can run until the whole secret has been durably burned.
     store.retire_for(binding, AllocationState::Consumed, RouteKind::Hot)?;
     signer
-        .sign_musig_session(real, &parsed, session)
+        .sign_nonce_cache(real, &parsed, &secret)
         .map_err(SigningError::from)?;
     if allocation.source == SessionSource::Cached {
         let refill = random_id().and_then(|id| create_locked(&mut store, signer, policy, id, None));
@@ -334,10 +397,7 @@ mod tests {
     };
     use bwk::{
         bwk_descriptor::{updater::update_input, wallet::WalletDescriptorExt},
-        bwk_sign::{
-            hot_signer::HotSigner,
-            musig::{musig_status, MusigSessionId},
-        },
+        bwk_sign::{hot_signer::HotSigner, musig::musig_status},
         bwk_tx::bwk_psbt::{
             musig::{musig_input_partial_sigs, musig_input_pub_nonces, set_musig_input_pub_nonce},
             PsbtV2,
@@ -368,10 +428,12 @@ mod tests {
         )
     }
 
+    /// Aggregate then derive, as Silent's accounts: the participant keys are the
+    /// same at every address.
     fn policy(a: &HotSigner, b: &HotSigner, account: u32) -> String {
         let path = DerivationPath::from_str(&format!("m/87'/1'/{account}'")).expect("account path");
         format!(
-            "tr(musig([{}/87h/1h/{}h]{}/<0;1>/*,[{}/87h/1h/{}h]{}/<0;1>/*))",
+            "tr(musig([{}/87h/1h/{}h]{},[{}/87h/1h/{}h]{})/<0;1>/*)",
             a.fingerprint(),
             account,
             a.xpub(&path).xkey,
@@ -411,8 +473,7 @@ mod tests {
 
     fn create(root: &Path, signer: &HotSigner, policy: &str, id: u8) {
         let mut store = LockedCache::open(root, signer.fingerprint()).expect("open cache");
-        create_locked(&mut store, signer, policy, MusigSessionId([id; 32]), None)
-            .expect("create session");
+        create_locked(&mut store, signer, policy, [id; 32], None).expect("create session");
     }
 
     fn count(root: &Path, signer: &HotSigner, policy: &str) -> usize {
@@ -427,10 +488,8 @@ mod tests {
 
     fn peer_nonces(b: &HotSigner, policy: &str, psbt: &mut Psbt) {
         let parsed = descriptor(policy).expect("policy");
-        let session = b
-            .create_musig_session(&parsed, MusigSessionId([90; 32]), 8)
-            .expect("peer session");
-        session.publish_nonces(psbt, &parsed).expect("peer nonces");
+        // The peer's first MuSig2 round adds its public nonces only.
+        b.inner_sign(psbt, &parsed).expect("peer nonces");
     }
 
     fn lifecycle(cached: bool) {
@@ -655,8 +714,7 @@ mod tests {
                 store
                     .retire_for(binding, state, RouteKind::Hot)
                     .expect("set allocation state");
-                create_locked(&mut store, &a, &policy, MusigSessionId([8; 32]), None)
-                    .expect("replace same ID");
+                create_locked(&mut store, &a, &policy, [8; 32], None).expect("replace same ID");
                 assert_eq!(
                     store.state.allocated[0].state,
                     AllocationState::Invalid,
@@ -972,6 +1030,54 @@ mod tests {
     }
 
     #[test]
+    fn an_address_derived_participant_needs_the_unlocked_signer() {
+        let tmp = TempDir::new().expect("temp directory");
+        let (a, b) = signers();
+        let path = DerivationPath::from_str("m/87'/1'/0'").expect("account path");
+        let policy = format!(
+            "tr(musig([{}/87h/1h/0h]{}/<0;1>/*,[{}/87h/1h/0h]{}/<0;1>/*))",
+            a.fingerprint(),
+            a.xpub(&path).xkey,
+            b.fingerprint(),
+            b.xpub(&path).xkey
+        );
+        create(tmp.path(), &a, &policy, 1);
+        let mut tx = transaction(&policy, 0, 3);
+        let original = tx.clone();
+        assert!(
+            !publish_at(tmp.path(), a.fingerprint(), &policy, &mut tx, None)
+                .expect("passwordless publication"),
+            "the stored nonces are those of the first address: a password is needed"
+        );
+        assert_eq!(tx, original, "nothing is published without the signer");
+        assert_eq!(
+            count(tmp.path(), &a, &policy),
+            1,
+            "the session stays available"
+        );
+        assert!(
+            publish_at(tmp.path(), a.fingerprint(), &policy, &mut tx, Some(&a))
+                .expect("unlocked publication"),
+            "the unlocked signer derives the nonces from the session secret"
+        );
+        assert_eq!(
+            count(tmp.path(), &a, &policy),
+            0,
+            "the session is allocated"
+        );
+        peer_nonces(&b, &policy, &mut tx);
+        sign_at(tmp.path(), &a, &policy, &mut tx, &BTreeMap::new())
+            .expect("the unlocked signer signs");
+        assert_eq!(
+            musig_input_partial_sigs(&tx.inputs[0])
+                .expect("partial signatures")
+                .len(),
+            1,
+            "the own partial signature is in"
+        );
+    }
+
+    #[test]
     fn outer_decrypted_json_contains_only_inner_ciphertext_for_hot_roots() {
         let tmp = TempDir::new().expect("temp directory");
         let (a, b) = signers();
@@ -982,19 +1088,14 @@ mod tests {
         let secret = session.secret.as_ref().expect("inner ciphertext");
         let aad = secret_aad(a.fingerprint(), &policy, session.id);
         let raw = secret.open(&aad).expect("open inner payload");
-        assert_eq!(raw.len(), 102, "upstream encoded session length");
+        assert_eq!(raw.len(), 32, "a nonce cache session secret");
         let json = state_crypt::read_state(&store.path)
             .expect("decrypt outer BIP138")
             .expect("persisted cache");
-        let encoded = serde_json::to_string(raw.as_slice()).expect("encoded session bytes");
-        let root = serde_json::to_string(&raw[raw.len() - 32..]).expect("root bytes");
+        let encoded = serde_json::to_string(raw.as_slice()).expect("secret bytes");
         assert!(
             !json.contains(&encoded),
-            "outer serialization has no clear encoded session"
-        );
-        assert!(
-            !json.contains(&root),
-            "outer serialization has no clear root"
+            "outer serialization has no clear session secret"
         );
         assert!(
             secret

@@ -51,8 +51,11 @@ pub(crate) fn owned_expressions(
     let miniscript::Descriptor::Tr(tr) = policy else {
         return Err("Ledger nonce caching requires a taproot policy".into());
     };
+    // Numbered as bwk's `SlotInfo::key_expression_index`: only the key expressions
+    // holding a key of this fingerprint count.
     let keys = std::iter::once(tr.internal_key().clone())
-        .chain(tr.iter_scripts().flat_map(|(_, ms)| ms.iter_pk()));
+        .chain(tr.iter_scripts().flat_map(|(_, ms)| ms.iter_pk()))
+        .filter(|key| key.master_fingerprints().contains(&fingerprint));
     let mut owned = Vec::new();
     for (index, key) in keys.enumerate() {
         let MusigKey::Musig(aggregate) = key else {
@@ -88,9 +91,9 @@ pub(crate) fn expression_slots(
     Ok(bwk::bwk_sign::musig::expression_slots(input, definite)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|info| info.signer.0 == fingerprint && owned.contains(&info.expression_index))
+        .filter(|info| info.signer.0 == fingerprint && owned.contains(&info.key_expression_index))
         .map(|info| ExpressionSlot {
-            expression: info.expression_index,
+            expression: info.key_expression_index,
             slot: info.slot,
         })
         .collect())
@@ -183,7 +186,7 @@ pub(crate) fn requested_slots(
             return Err("unsupported or ambiguous Ledger MuSig expression coverage".into());
         };
         result.push(ExpressionSlot {
-            expression: info.expression_index,
+            expression: info.key_expression_index,
             slot,
         });
     }

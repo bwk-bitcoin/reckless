@@ -2985,7 +2985,6 @@ mod ffi {
             answer: Box<QrResponse>,
             fingerprint: &str,
             policy: &str,
-            psbt_v2_hex: &str,
         ) -> QrMusigCacheResult;
         // CPU only: builds the wire request and makes it the outstanding one.
         fn qr_request_prepare_musig(

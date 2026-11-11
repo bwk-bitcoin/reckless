@@ -8,12 +8,14 @@ mod qr_provider;
 use crate::keys::ledger_nonces::{
     expression_slots, owned_expressions, synthetic, FETCH_FEE_SATS, FUNDING_SATS,
 };
+pub(crate) use crate::keys::musig_sessions::qr_provider::{Host, PEER_CAPABILITIES};
 pub use crate::keys::{
     ledger_nonces::Fetch,
     musig_sessions::{
         hot_provider::{create_hot, first_request_hot, publish_hot, sign_hot_session},
         qr_provider::{
-            accept_prepared, accept_signed, allocate, pin_transcript, prepare_material, qr_ready,
+            accept_answer, prepare_material, qr_ready, sign_material, QrMusigAnswer,
+            QrPreparationMaterial, QrSigningMaterial,
         },
     },
 };
@@ -122,6 +124,7 @@ fn publish_snapshot(fingerprint: Fingerprint, state: &Cache) {
                 state: entry.state,
                 source: entry.source,
                 qr_transcript: entry.qr_transcript.clone(),
+                qr: entry.qr.clone(),
             })
             .collect(),
         retired: state.retired.clone(),
@@ -156,6 +159,7 @@ pub fn ensure_snapshot(fingerprint: Fingerprint) -> Result<(), String> {
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Nonce {
     pub(crate) input: usize,
+    /// bwk's `SlotInfo::key_expression_index` of the slot.
     pub(crate) expression: usize,
     pub(crate) participant: PublicKey,
     pub(crate) bytes: Vec<u8>,
@@ -172,39 +176,19 @@ pub(crate) struct Session {
     pub(crate) fetched_for: Option<[u8; 32]>,
     #[serde(default)]
     pub(crate) secret: Option<SecretPayload>,
-    /// The finite public coverage a QR peer prepared, with its advertised nonces.
-    /// `None` for every other provider, and never any secret material.
+    /// The QR peer's nonce cache session. `None` for every other provider.
     #[serde(default)]
-    pub(crate) qr: Option<QrPreparation>,
+    pub(crate) qr: Option<QrSessionRecord>,
 }
 
-/// A QR preparation's requested coverage: every policy path at the first
-/// `QR_ADDRESS_COVERAGE` addresses, and the public nonces the peer answered with.
-#[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct QrPreparation {
-    pub(crate) max_inputs: u8,
-    pub(crate) derivations: Vec<QrDerivation>,
-    #[serde(default)]
-    pub(crate) nonces: Vec<QrStoredNonce>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct QrDerivation {
-    pub(crate) keychain: u32,
-    pub(crate) index: u32,
-}
-
-/// One advertised public nonce of a prepared QR session, attributed to the
-/// derivation, input position and expression it covers.
+/// A QR peer's nonce cache session: the id the peer holds it under, and bwk's QR
+/// MuSig host record of the public nonces the peer issued for it, as
+/// `QrMusigHostRecord::encode` bytes. Never any secret material: the peer keeps its
+/// session secret.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct QrStoredNonce {
-    pub(crate) derivation: QrDerivation,
-    pub(crate) input: u32,
-    pub(crate) expression: u32,
-    pub(crate) participant: PublicKey,
-    pub(crate) aggregate: PublicKey,
-    pub(crate) leaf_hash: Option<TapLeafHash>,
-    pub(crate) bytes: Vec<u8>,
+pub(crate) struct QrSessionRecord {
+    pub(crate) session_id: [u8; 4],
+    pub(crate) record: Vec<u8>,
 }
 
 fn ledger_provider() -> RouteKind {
@@ -253,6 +237,9 @@ pub(crate) struct Allocation {
     /// allocated. `None` for every other provider.
     #[serde(default)]
     qr_transcript: Option<Vec<Vec<u8>>>,
+    /// The QR peer's session the allocation took. `None` for every other provider.
+    #[serde(default)]
+    qr: Option<QrSessionRecord>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -661,6 +648,7 @@ impl LockedCache {
                 SessionSource::Cached
             },
             qr_transcript,
+            qr: session.qr.clone(),
         };
         next.allocated.push(allocation.clone());
         self.save(next)?;
@@ -1284,30 +1272,15 @@ pub(crate) fn allocate_first_request_at(
 }
 
 /// A QR signer's first signature request: every pending signer's session taken
-/// (`allocate_first_request`), then that signer's session id and the transaction as
-/// the request must carry it, with every allocated nonce inserted.
-pub fn qr_first_request(
-    policy_text: &str,
-    bytes: &[u8],
-    routes: &BTreeMap<Fingerprint, RouteKind>,
-    qr_fingerprint: Fingerprint,
-) -> Result<([u8; 32], Vec<u8>), SigningError> {
-    qr_first_request_at(
-        &datadir().join("musig-sessions"),
-        policy_text,
-        bytes,
-        routes,
-        qr_fingerprint,
-    )
-}
-
+/// (`allocate_first_request`), then that signer's allocated session and the
+/// transaction as the request must carry it, with every allocated nonce inserted.
 pub(crate) fn qr_first_request_at(
     root: &Path,
     policy_text: &str,
     bytes: &[u8],
     routes: &BTreeMap<Fingerprint, RouteKind>,
     qr_fingerprint: Fingerprint,
-) -> Result<([u8; 32], Vec<u8>), SigningError> {
+) -> Result<(QrSessionRecord, Vec<u8>), SigningError> {
     let mut real = psbt::parse_v2(bytes)
         .map_err(|e| e.to_string())?
         .into_bitcoin_psbt()
@@ -1323,7 +1296,8 @@ pub(crate) fn qr_first_request_at(
     let store = LockedCache::open(root, qr_fingerprint)?;
     store
         .active(binding, policy_text, RouteKind::Qr)?
-        .map(|allocation| (allocation.id, request))
+        .and_then(|allocation| allocation.qr)
+        .map(|qr| (qr, request))
         .ok_or_else(|| {
             SigningError::SessionLost("no prepared QR cache session covers this transaction".into())
         })
@@ -3376,15 +3350,24 @@ mod tests {
     }
 
     #[test]
-    fn indexes_include_plain_foreign_and_each_aggregate_occurrence() {
+    fn indexes_count_only_the_key_expressions_of_the_signer() {
         let (a, fingerprint) = key(1);
         let (b, _) = key(2);
         let (c, _) = key(3);
         let text = format!("tr({b}/<0;1>/*,{{pk(musig({b},{c})/<0;1>/*),{{pk({c}/<0;1>/*),pk(musig({a},{b})/<512;513>/*)}}}})");
         assert_eq!(
             owned_expressions(&descriptor(&text).expect("policy"), fingerprint).expect("owned"),
-            vec![3],
-            "foreign internal, foreign aggregate, and plain leaf each occupy an index"
+            vec![0],
+            "a foreign internal key, aggregate or plain leaf occupies no key expression index"
+        );
+        let own_plain = format!(
+            "tr({a}/<0;1>/*,{{pk(musig({b},{c})/<0;1>/*),pk(musig({a},{b})/<512;513>/*)}})"
+        );
+        assert_eq!(
+            owned_expressions(&descriptor(&own_plain).expect("policy"), fingerprint)
+                .expect("owned"),
+            vec![1],
+            "an own plain key occupies a key expression index"
         );
         let duplicate_owner = format!("tr(musig({a},{a})/<0;1>/*)");
         assert!(

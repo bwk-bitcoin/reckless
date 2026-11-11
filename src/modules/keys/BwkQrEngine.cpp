@@ -112,7 +112,6 @@ void BwkQrEngine::signMusig(const QString &fingerprint, const QString &psbt_v2_h
     m_cancelled = false;
     m_musig_fingerprint = fingerprint;
     m_musig_policy = descriptor;
-    m_musig_psbt = psbt_v2_hex;
     // Every required signer's session is allocated on disk before the request leaves.
     auto *thread = QThread::create(
         [this, fingerprint = fingerprint.toStdString(), descriptor = descriptor.toStdString(),
@@ -184,15 +183,15 @@ void BwkQrEngine::response(const qr::QrResponse &response) {
 }
 
 void BwkQrEngine::acceptMusig(rust::Box<::QrResponse> decoded) {
-    auto *thread = QThread::create(
-        [this, decoded = decoded.into_raw(), fingerprint = m_musig_fingerprint.toStdString(),
-         policy = m_musig_policy.toStdString(), psbt = m_musig_psbt.toStdString()]() mutable {
-            auto accepted = ::qr_musig_accept(rust::Box<::QrResponse>::from_raw(decoded),
-                                              fingerprint, policy, psbt);
-            // NOLINTNEXTLINE(performance-no-int-to-ptr)
-            emit musigAccepted(accepted.is_ok, KeysModule::toQt(accepted.error),
-                               accepted.musig_session, KeysModule::toQt(accepted.psbt_v2_hex));
-        });
+    auto *thread = QThread::create([this, decoded = decoded.into_raw(),
+                                    fingerprint = m_musig_fingerprint.toStdString(),
+                                    policy = m_musig_policy.toStdString()]() mutable {
+        auto accepted =
+            ::qr_musig_accept(rust::Box<::QrResponse>::from_raw(decoded), fingerprint, policy);
+        // NOLINTNEXTLINE(performance-no-int-to-ptr)
+        emit musigAccepted(accepted.is_ok, KeysModule::toQt(accepted.error), accepted.musig_session,
+                           KeysModule::toQt(accepted.psbt_v2_hex));
+    });
     connect(thread, &QThread::finished, thread, &QObject::deleteLater, qontrol::UNIQUE);
     thread->start();
 }

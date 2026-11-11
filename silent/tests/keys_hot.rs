@@ -623,6 +623,16 @@ fn pub_nonce(first: u8, second: u8) -> [u8; PUB_NONCE_LEN] {
     nonce
 }
 
+/// The MuSig session cache of the musig hot key, one file per fingerprint whatever the
+/// network: its tests take turns, as two of them in parallel find it busy.
+static MUSIG_CACHE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn musig_cache() -> std::sync::MutexGuard<'static, ()> {
+    MUSIG_CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Commits the musig hot key on `network`, registers the musig descriptor on it and
 /// runs round 1: the material and the PSBT round 1 returned.
 fn hot_round1(network: FfiNetwork, btc_network: Network) -> (Box<silent::HotMaterial>, PsbtV2) {
@@ -663,6 +673,7 @@ fn hot_round1(network: FfiNetwork, btc_network: Network) -> (Box<silent::HotMate
 
 #[test]
 fn hot_round1_adds_only_its_nonce() {
+    let _cache = musig_cache();
     let (_, signed) = hot_round1(FfiNetwork::Regtest, Network::Regtest);
     let input = &signed.inputs[0].psbt;
     let participants: Vec<PublicKey> = musig_input_pub_nonces(input)
@@ -688,6 +699,7 @@ fn hot_round1_adds_only_its_nonce() {
 
 #[test]
 fn hot_round2_without_its_session_is_musig_session() {
+    let _cache = musig_cache();
     let (material, mut psbt) = hot_round1(FfiNetwork::Signet, Network::Signet);
     let input = &mut psbt.inputs[0].psbt;
     let mut nonce = musig_input_pub_nonces(input).expect("valid 0x1b entries")[0];
@@ -721,8 +733,10 @@ fn persisted_hot_cache_publishes_without_password_and_wrong_password_does_not_bu
     let a = HotSigner::new_from_mnemonics(Network::Regtest, mnemonic).expect("signer A");
     let b = HotSigner::new_from_mnemonics(Network::Regtest, TEST_MNEMONIC).expect("signer B");
     let path = DerivationPath::from_str("m/87'/1'/4'").expect("account path");
+    // Aggregate then derive, as Silent's accounts: the cached nonces cover every
+    // address without the mnemonic.
     let descriptor = format!(
-        "tr(musig([{}/87h/1h/4h]{}/<0;1>/*,[{}/87h/1h/4h]{}/<0;1>/*))",
+        "tr(musig([{}/87h/1h/4h]{},[{}/87h/1h/4h]{})/<0;1>/*)",
         a.fingerprint(),
         a.xpub(&path).xkey,
         b.fingerprint(),
@@ -786,10 +800,8 @@ fn persisted_hot_cache_publishes_without_password_and_wrong_password_does_not_bu
         .expect("v0");
     let parsed = Descriptor::from_str(&descriptor).expect("policy");
     let policy = parsed.as_miniscript().expect("miniscript");
-    let peer = b
-        .create_musig_session(policy, bwk::bwk_sign::musig::MusigSessionId([8; 32]), 8)
-        .expect("peer session");
-    peer.publish_nonces(&mut tx, policy).expect("peer nonces");
+    // The peer's first MuSig2 round adds its public nonces only.
+    b.inner_sign(&mut tx, policy).expect("peer nonces");
     let round2 = hex::encode(
         PsbtV2::from_bitcoin_psbt(tx)
             .expect("v2")

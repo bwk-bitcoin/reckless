@@ -40,8 +40,8 @@ pub const KEYS_DIR_NAME: &str = "keys";
 /// bwk-qr protocol's `CAPABILITIES` field (ENCODING.md).
 pub const CAPABILITY_SILENT_PAYMENTS: u32 = 1 << 2;
 pub const CAPABILITY_MUSIG: u32 = 1 << 3;
-/// The device prepares and signs from a transaction-independent MuSig session cache
-/// (bwk-qr capability bit 4).
+/// The device issues MuSig2 nonces ahead of any transaction and signs with them in one
+/// round, from its nonce cache sessions (bwk-qr capability bit 4).
 pub const CAPABILITY_MUSIG_CACHE: u32 = 1 << 4;
 pub const CAPABILITY_ORDINARY: u32 = 1;
 pub const CAPABILITY_TAPROOT: u32 = 1 << 1;

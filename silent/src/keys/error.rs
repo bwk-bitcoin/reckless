@@ -199,10 +199,19 @@ pub enum Error {
     NoAddressUri,
     #[error("verify_address response arrived with no expected address recorded")]
     MissingExpectedAddress,
-    #[error("cached MuSig preparation failed its bounds: {0}")]
+    #[error("nonce preparation failed its bounds: {0}")]
     MusigPreparationInvalid(String),
-    #[error("cached MuSig response does not match the outstanding session or attempt")]
+    #[error("nonce preparation answer does not match the outstanding session")]
     MusigSessionMismatch,
+    #[error("{0}")]
+    QrMusigHost(String),
+    #[error(
+        "signer refused {message_type:?}, another descriptor is registered under this wallet's alias: {message}"
+    )]
+    AlreadyRegistered {
+        message_type: bwk_qr_protocol::MessageType,
+        message: String,
+    },
     #[error("file {path} already exists")]
     FileExists { path: PathBuf },
     #[error("psbt file {path} is {len} bytes, over the accepted size limit")]

@@ -55,10 +55,9 @@ private:
     bool m_waiting = false;
     // A stopped engine drops the results its workers still deliver.
     bool m_cancelled = false;
-    // The cached exchange on hand: who it is for, and the transaction it signs.
+    // The cached exchange on hand: who it is for, and the policy it signs for.
     QString m_musig_fingerprint;
     QString m_musig_policy;
-    QString m_musig_psbt;
 };
 
 } // namespace keys

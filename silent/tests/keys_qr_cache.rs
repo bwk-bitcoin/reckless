@@ -1,29 +1,25 @@
-//! The cached MuSig QR exchange through the module: the material step persists the
-//! record, the request is issued, an emulated peer answers with real session nonces,
-//! and the decoded answer lands in the cache as a prepared session. These are the
-//! exact module functions the GUI engine's worker and slots call, in the same order.
+//! The nonce cache MuSig QR exchange through the module: the material step persists
+//! the record, the request is issued, bwk's QR MuSig peer answers it, and the decoded
+//! answer lands in the cache as a prepared session. These are the exact module
+//! functions the GUI engine's worker and slots call, in the same order.
 
 use std::str::FromStr;
 use std::sync::OnceLock;
 
 use bitcoin::{
-    absolute::LockTime,
-    bip32::{DerivationPath, Fingerprint},
-    hashes::Hash,
-    transaction::Version,
-    Amount, OutPoint, Transaction, TxIn, TxOut, Txid,
+    absolute::LockTime, bip32::DerivationPath, hashes::Hash, transaction::Version, Amount,
+    OutPoint, Transaction, TxIn, TxOut, Txid,
 };
-use bwk::account::Account as BwkAccount;
-use bwk_qr_protocol::{decode, encode_response, request, response, Message, Response};
-use bwk_sp::bwk_sign::{
-    bwk_descriptor::{
-        descriptor::Descriptor,
-        wallet::{WalletDescriptor, WalletDescriptorExt},
+use bwk::{
+    account::Account as BwkAccount,
+    bwk_descriptor::wallet::WalletDescriptor,
+    bwk_sign::{
+        hot_signer::HotSigner,
+        qr_musig::{encode_record, encode_registered, QrMusigPeer, QrMusigPeerRecord},
     },
-    hot_musig::HotMusigSession,
-    hot_signer::HotSigner,
-    musig::{expression_slots, MusigSessionId},
+    persist::{backend::noop::NoopBackend, storage::ram::RamStore},
 };
+use bwk_qr_protocol::{decode, encode_response, request, response, Message};
 use silent::{
     Config, KeyRouteKind, MusigAccount, Network as FfiNetwork, Output, TransactionTemplate,
 };
@@ -69,17 +65,6 @@ fn signers_on(a: &str, b: &str) -> (HotSigner, HotSigner) {
     )
 }
 
-fn policy_text(a: &HotSigner, b: &HotSigner) -> String {
-    let path = DerivationPath::from_str("m/87'/1'/0'").expect("account path");
-    format!(
-        "tr(musig([{}/87h/1h/0h]{}/<0;1>/*,[{}/87h/1h/0h]{}/<0;1>/*))",
-        a.fingerprint(),
-        a.xpub(&path).xkey,
-        b.fingerprint(),
-        b.xpub(&path).xkey
-    )
-}
-
 /// The descriptor an account is opened with: the exact policy string the cache
 /// sessions and the first signature request must share.
 fn account_policy(a: &HotSigner, b: &HotSigner) -> String {
@@ -93,63 +78,40 @@ fn account_policy(a: &HotSigner, b: &HotSigner) -> String {
     )
 }
 
-fn wallet(policy: &str) -> WalletDescriptor {
-    Descriptor::from_str(policy)
-        .expect("valid musig policy")
-        .into_miniscript()
-        .expect("a miniscript policy")
+type Peer = QrMusigPeer<
+    RamStore<NoopBackend, [u8; 4], QrMusigPeerRecord>,
+    RamStore<NoopBackend, String, WalletDescriptor>,
+>;
+
+/// A QR device: bwk's QR MuSig peer on `signer`, its sessions in memory.
+fn peer(signer: &HotSigner) -> Peer {
+    QrMusigPeer::from_store(
+        signer.clone(),
+        RamStore::empty(
+            NoopBackend::new(),
+            "sessions",
+            |session_id| hex::encode(session_id),
+            |record| Ok(encode_record(record)),
+        ),
+        RamStore::empty(
+            NoopBackend::new(),
+            "registry",
+            |alias| alias.clone(),
+            |descriptor| Ok(encode_registered(descriptor)),
+        ),
+    )
 }
 
-/// The prepared answer a faithful peer sends for the asked coverage, with the device
-/// session's real nonces on every owned slot.
-fn prepared_answer(
-    session: &HotMusigSession,
-    policy: &str,
-    session_id: [u8; 32],
-    max_inputs: u8,
-    derivations: &[request::MusigDerivation],
-    fingerprint: Fingerprint,
-) -> response::MusigPrepared {
-    let parsed = wallet(policy);
-    let mut nonces = Vec::new();
-    for derivation in derivations {
-        let definite = parsed.single_paths().expect("paths")[derivation.keychain as usize]
-            .derive_at(derivation.index)
-            .expect("derive");
-        let advertised = session
-            .public_nonces(&parsed, derivation.keychain as usize, derivation.index)
-            .expect("device nonces");
-        for input in 0..u32::from(max_inputs) {
-            for info in expression_slots(input as usize, &definite).expect("expression slots") {
-                if info.signer.0 != fingerprint {
-                    continue;
-                }
-                let entry = advertised
-                    .iter()
-                    .find(|entry| {
-                        entry.input_index as u32 == input
-                            && entry.expression_index as u32 == info.expression_index as u32
-                    })
-                    .expect("device nonce for the slot");
-                nonces.push(response::MusigNonce {
-                    derivation: *derivation,
-                    input_index: input,
-                    expression_index: info.expression_index as u32,
-                    participant: bwk_qr_protocol::types::PublicKey(
-                        entry.nonce.participant.serialize(),
-                    ),
-                    aggregate: bwk_qr_protocol::types::PublicKey(info.slot.aggregate.serialize()),
-                    leaf_hash: info.slot.leaf_hash.map(|hash| hash.to_byte_array()),
-                    nonce: entry.nonce.nonce,
-                });
-            }
-        }
+fn wire_request(payload: &[u8]) -> bwk_qr_protocol::Request {
+    match decode(payload).expect("decode the wire request") {
+        Message::Request(request) => request,
+        Message::Response(_) => panic!("expected a request, decoded a response"),
     }
-    response::MusigPrepared {
-        session_id,
-        max_inputs,
-        nonces,
-    }
+}
+
+/// The peer's encoded answer to the wire request it was shown.
+fn answer(peer: &mut Peer, payload: &[u8]) -> Vec<u8> {
+    encode_response(&peer.handle(wire_request(payload))).expect("encode the peer's answer")
 }
 
 // ===== The exchange =====
@@ -158,8 +120,8 @@ fn prepared_answer(
 fn cached_prepare_exchange_issues_the_request_and_delivers_the_answer() {
     let dir = datadir();
     assert!(dir.exists(), "the datadir fixture is set");
-    let (a, _b) = signers();
-    let policy = policy_text(&a, &_b);
+    let (a, b) = signers();
+    let policy = account_policy(&a, &b);
     let fingerprint = a.fingerprint().to_string();
     let mut module = silent::new_keys_module(FfiNetwork::Regtest);
 
@@ -172,45 +134,22 @@ fn cached_prepare_exchange_issues_the_request_and_delivers_the_answer() {
         "the prepare request is issued: {}",
         message.error
     );
+    let request::Body::PrepareNonces(preparation) = wire_request(&message.payload).body else {
+        panic!("expected a PrepareNonces request");
+    };
+    assert_eq!(
+        (preparation.max_inputs, preparation.start, preparation.end),
+        (8, 0, 0),
+        "every input position of the signer's one key expression"
+    );
     assert!(
-        !message.payload.is_empty(),
-        "the wire bytes are handed over"
+        preparation.session_ref.is_none(),
+        "a fresh session names no reference"
     );
 
-    // The emulated peer: it answers the request it was shown, its own session nonces
-    // on the asked coverage.
-    let request = match decode(&message.payload).expect("decode the wire request") {
-        Message::Request(request) => request,
-        Message::Response(_) => panic!("expected a request, decoded a response"),
-    };
-    let request::Body::PrepareMusig(preparation) = &request.body else {
-        panic!("expected a PrepareMusig request");
-    };
-    let wallet = wallet(&policy);
-    let device = a
-        .create_musig_session(
-            &wallet,
-            MusigSessionId(preparation.session_id),
-            preparation.max_inputs,
-        )
-        .expect("device session");
-    let answer = prepared_answer(
-        &device,
-        &policy,
-        preparation.session_id,
-        preparation.max_inputs,
-        &preparation.derivations,
-        a.fingerprint(),
-    );
-    let encoded = encode_response(&Response {
-        id: request.id,
-        body: response::Body::MusigPrepared(answer),
-    })
-    .expect("encode the peer's answer");
-
-    // The engine decodes against the outstanding request and hands the result to the
-    // cache: the session lands prepared.
-    let decoded = module.qr_decode_response(&encoded);
+    // The device answers the request it was shown; the engine decodes against the
+    // outstanding request and hands the result to the cache.
+    let decoded = module.qr_decode_response(&answer(&mut peer(&a), &message.payload));
     assert!(
         decoded.is_ok(),
         "the peer's answer decodes: {}",
@@ -221,7 +160,7 @@ fn cached_prepare_exchange_issues_the_request_and_delivers_the_answer() {
         silent::QrResponseKind::MusigPrepared,
         "a prepared answer is recognized as its own kind"
     );
-    let accepted = silent::qr_musig_accept(decoded, &fingerprint, &policy, "");
+    let accepted = silent::qr_musig_accept(decoded, &fingerprint, &policy);
     assert!(accepted.is_ok, "the answer is accepted: {}", accepted.error);
     assert_eq!(
         silent::musig_session_count(&fingerprint, &policy, KeyRouteKind::Qr),
@@ -234,8 +173,8 @@ fn cached_prepare_exchange_issues_the_request_and_delivers_the_answer() {
 fn an_answer_for_another_session_is_refused_before_the_cache() {
     let dir = datadir();
     assert!(dir.exists(), "the datadir fixture is set");
-    let (a, _b) = signers_on(MNEMONIC_C, MNEMONIC_D);
-    let policy = policy_text(&a, &_b);
+    let (a, b) = signers_on(MNEMONIC_C, MNEMONIC_D);
+    let policy = account_policy(&a, &b);
     let fingerprint = a.fingerprint().to_string();
     let mut module = silent::new_keys_module(FfiNetwork::Regtest);
 
@@ -243,56 +182,29 @@ fn an_answer_for_another_session_is_refused_before_the_cache() {
     let message = module.qr_request_prepare_musig(material);
     assert!(message.is_ok, "the prepare request is issued");
 
-    let request = match decode(&message.payload).expect("decode the wire request") {
-        Message::Request(request) => request,
-        Message::Response(_) => panic!("expected a request, decoded a response"),
+    let honest = answer(&mut peer(&a), &message.payload);
+    let Message::Response(mut stranger) = decode(&honest).expect("decode the answer") else {
+        panic!("expected a response");
     };
-    let request::Body::PrepareMusig(preparation) = &request.body else {
-        panic!("expected a PrepareMusig request");
+    let response::Body::NoncesPrepared(prepared) = &mut stranger.body else {
+        panic!("expected prepared nonces");
     };
-    let wallet = wallet(&policy);
-    let device = a
-        .create_musig_session(
-            &wallet,
-            MusigSessionId(preparation.session_id),
-            preparation.max_inputs,
-        )
-        .expect("device session");
-    let answer = prepared_answer(
-        &device,
-        &policy,
-        preparation.session_id,
-        preparation.max_inputs,
-        &preparation.derivations,
-        a.fingerprint(),
-    );
-    let mut stranger = answer.clone();
-    stranger.session_id = [0xab; 32];
-    let encoded = encode_response(&Response {
-        id: request.id,
-        body: response::Body::MusigPrepared(stranger),
-    })
-    .expect("encode the stranger's answer");
-
-    let decoded = module.qr_decode_response(&encoded);
+    prepared.session_id = [0xab; 4];
+    let decoded =
+        module.qr_decode_response(&encode_response(&stranger).expect("encode the stranger"));
     assert!(
         !decoded.is_ok(),
         "an answer for another session is refused by the codec"
     );
 
     // The refusal consumed nothing: the right answer still prepares the session.
-    let encoded = encode_response(&Response {
-        id: request.id,
-        body: response::Body::MusigPrepared(answer),
-    })
-    .expect("encode the honest answer");
-    let decoded = module.qr_decode_response(&encoded);
+    let decoded = module.qr_decode_response(&honest);
     assert!(
         decoded.is_ok(),
         "the exchange stays open after a refusal: {}",
         decoded.get_error()
     );
-    let accepted = silent::qr_musig_accept(decoded, &fingerprint, &policy, "");
+    let accepted = silent::qr_musig_accept(decoded, &fingerprint, &policy);
     assert!(
         accepted.is_ok,
         "the honest answer is accepted: {}",
@@ -385,9 +297,14 @@ impl FundedAttempt {
     }
 }
 
-/// Runs the cached prepare exchange for one signer, in the order the GUI engine's
+/// Runs the nonce preparation exchange for one device, in the order the GUI engine's
 /// worker and slots call the module functions.
-fn prepare_cached_session(module: &mut silent::KeysModule, signer: &HotSigner, policy: &str) {
+fn prepare_cached_session(
+    module: &mut silent::KeysModule,
+    device: &mut Peer,
+    signer: &HotSigner,
+    policy: &str,
+) {
     let fingerprint = signer.fingerprint().to_string();
     let material = silent::qr_musig_prepare_material(&fingerprint, policy);
     let message = module.qr_request_prepare_musig(material);
@@ -396,41 +313,13 @@ fn prepare_cached_session(module: &mut silent::KeysModule, signer: &HotSigner, p
         "the prepare request is issued: {}",
         message.error
     );
-    let request = match decode(&message.payload).expect("decode the wire request") {
-        Message::Request(request) => request,
-        Message::Response(_) => panic!("expected a request, decoded a response"),
-    };
-    let request::Body::PrepareMusig(preparation) = &request.body else {
-        panic!("expected a PrepareMusig request");
-    };
-    let parsed = wallet(policy);
-    let device = signer
-        .create_musig_session(
-            &parsed,
-            MusigSessionId(preparation.session_id),
-            preparation.max_inputs,
-        )
-        .expect("device session");
-    let answer = prepared_answer(
-        &device,
-        policy,
-        preparation.session_id,
-        preparation.max_inputs,
-        &preparation.derivations,
-        signer.fingerprint(),
-    );
-    let encoded = encode_response(&Response {
-        id: request.id,
-        body: response::Body::MusigPrepared(answer),
-    })
-    .expect("encode the peer's answer");
-    let decoded = module.qr_decode_response(&encoded);
+    let decoded = module.qr_decode_response(&answer(device, &message.payload));
     assert!(
         decoded.is_ok(),
         "the peer's answer decodes: {}",
         decoded.get_error()
     );
-    let accepted = silent::qr_musig_accept(decoded, &fingerprint, policy, "");
+    let accepted = silent::qr_musig_accept(decoded, &fingerprint, policy);
     assert!(accepted.is_ok, "the answer is accepted: {}", accepted.error);
 }
 
@@ -441,8 +330,10 @@ fn accept_signed_progress_reports_the_allocation_right_after_it_succeeds() {
     let (a, b) = signers_on(MNEMONIC_E, MNEMONIC_F);
     let policy = account_policy(&a, &b);
     let mut module = silent::new_keys_module(FfiNetwork::Regtest);
-    prepare_cached_session(&mut module, &a, &policy);
-    prepare_cached_session(&mut module, &b, &policy);
+    let mut device_a = peer(&a);
+    let mut device_b = peer(&b);
+    prepare_cached_session(&mut module, &mut device_a, &a, &policy);
+    prepare_cached_session(&mut module, &mut device_b, &b, &policy);
 
     let fixture = FundedAttempt::new(&policy);
     let active = fixture.account.active_attempt();
@@ -470,21 +361,37 @@ fn accept_signed_progress_reports_the_allocation_right_after_it_succeeds() {
         "the first signature request allocates: {}",
         message.error
     );
-    let request = match decode(&message.payload).expect("decode the wire request") {
-        Message::Request(request) => request,
-        Message::Response(_) => panic!("expected a request, decoded a response"),
-    };
-    let request::Body::SignMusig(asked) = &request.body else {
-        panic!("expected a SignMusig request");
+    let request::Body::Sign(asked) = wire_request(&message.payload).body else {
+        panic!("expected a Signing request");
     };
     assert!(
         !asked.psbt.is_empty(),
         "the request carries the allocated transaction"
     );
 
+    // The device signs with the session the PSBT names; the host verifies the
+    // answer and the cache consumes the allocation.
+    let decoded = module.qr_decode_response(&answer(&mut device_a, &message.payload));
+    assert!(
+        decoded.is_ok(),
+        "the device's answer decodes: {}",
+        decoded.get_error()
+    );
+    assert_eq!(
+        decoded.kind(),
+        silent::QrResponseKind::MusigSignedPsbt,
+        "a signing answer of a cached session is recognized as its own kind"
+    );
+    let accepted = silent::qr_musig_accept(decoded, &a.fingerprint().to_string(), &policy);
+    assert!(
+        accepted.is_ok && !accepted.psbt_v2_hex.is_empty(),
+        "the signing answer is accepted: {}",
+        accepted.error
+    );
+
     let progress = fixture
         .account
-        .accept_signed_progress(&hex::encode(&asked.psbt));
+        .accept_signed_progress(&accepted.psbt_v2_hex);
     assert!(
         progress.is_ok,
         "the allocation progress is accepted: {}",

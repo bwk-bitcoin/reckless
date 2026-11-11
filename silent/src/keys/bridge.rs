@@ -22,7 +22,6 @@ use bwk::{
     bwk_keys::musig::MusigKey,
     bwk_sign::{miniscript, musig::own_slots},
 };
-use bwk_qr_protocol::{request, response};
 use bwk_sp::bwk_sign::bwk_descriptor::descriptor::Descriptor;
 use bwk_sp::bwk_tx::bwk_psbt::Error as PsbtV2Error;
 use zeroize::Zeroizing;
@@ -815,7 +814,7 @@ impl KeysModule {
         })
     }
 
-    /// Builds the cached preparation request from persisted material. No disk work:
+    /// Builds the nonce preparation request from persisted material. No disk work:
     /// the material was persisted by the worker that ran `qr_musig_prepare_material`.
     /// The box is the CXX ownership form across the boundary, not an allocation.
     #[allow(clippy::boxed_local)]
@@ -824,7 +823,7 @@ impl KeysModule {
         preparation: Box<QrMusigPrepare>,
     ) -> ffi::QrMessageResult {
         match preparation.inner {
-            Ok(preparation) => to_message(self.session.prepare_musig(preparation)),
+            Ok(material) => to_message(self.session.prepare_nonces(material)),
             Err(error) => failed_message(&error),
         }
     }
@@ -835,11 +834,7 @@ impl KeysModule {
     #[allow(clippy::boxed_local)]
     pub fn qr_request_sign_musig(&mut self, signing: Box<QrMusigSign>) -> ffi::QrMessageResult {
         match signing.inner {
-            Ok(material) => to_message(self.session.sign_musig(
-                material.session_id,
-                material.attempt_id,
-                &material.psbt,
-            )),
+            Ok(material) => to_message(self.session.sign_nonce_cache(material)),
             Err(error) => failed_message(&error),
         }
     }
@@ -879,31 +874,23 @@ fn plan_routes(routes: &[ffi::MusigSignerRoute]) -> BTreeMap<Fingerprint, RouteK
     parsed
 }
 
-/// A persisted cache preparation, or why none could be persisted. Born in the
+/// A persisted nonce preparation, or why none could be persisted. Born in the
 /// worker that ran the disk work, consumed by the GUI thread's
 /// `KeysModule::qr_request_prepare_musig`.
 pub struct QrMusigPrepare {
-    inner: Result<request::PrepareMusig, String>,
-}
-
-/// One session id, its attempt, and the transaction as the first signature request
-/// must carry it: every allocated participant nonce inserted.
-struct QrMusigSignMaterial {
-    session_id: [u8; 32],
-    attempt_id: [u8; 32],
-    psbt: Vec<u8>,
+    inner: Result<musig_sessions::QrPreparationMaterial, String>,
 }
 
 /// A durable first-signature-request allocation, or why it failed. Born in the
 /// worker that ran the disk work, consumed by the GUI thread's
 /// `KeysModule::qr_request_sign_musig`.
 pub struct QrMusigSign {
-    inner: Result<QrMusigSignMaterial, String>,
+    inner: Result<musig_sessions::QrSigningMaterial, String>,
 }
 
-/// Worker entry: persists the preparation record for a fresh QR cache session, or
-/// reuses the matching in-flight one, and hands back the material the wire request
-/// is built from. Disk work: never the GUI thread.
+/// Worker entry: persists the record of a fresh QR nonce cache session, or reuses
+/// the oldest available one, and hands back the material the wire request is built
+/// from. Disk work: never the GUI thread.
 pub fn qr_musig_prepare_material(fingerprint: &str, descriptor: &str) -> Box<QrMusigPrepare> {
     let failed = |error: String| Box::new(QrMusigPrepare { inner: Err(error) });
     let Ok(fingerprint) = Fingerprint::from_str(fingerprint) else {
@@ -931,44 +918,21 @@ pub fn qr_musig_sign_material(
     let Ok(bytes) = hex::decode(psbt_v2_hex) else {
         return failed("invalid psbt hex".to_string());
     };
-    let (session_id, psbt) = match musig_sessions::qr_first_request(
-        policy,
-        &bytes,
-        &plan_routes(&routes),
-        qr_fingerprint,
-    ) {
-        Ok(allocated) => allocated,
-        Err(error) => return failed(error.to_string()),
-    };
-    let attempt_id = match psbt::parse_v2(&psbt)
-        .map_err(|e| e.to_string())
-        .and_then(|parsed| musig_sessions::attempt_id(&parsed.proprietary))
-    {
-        Ok(Some(attempt_id)) => attempt_id,
-        Ok(None) => {
-            return failed("MuSig progress has no attempt identity".to_string());
-        }
-        Err(error) => return failed(error),
-    };
     Box::new(QrMusigSign {
-        inner: Ok(QrMusigSignMaterial {
-            session_id,
-            attempt_id,
-            psbt,
-        }),
+        inner: musig_sessions::sign_material(qr_fingerprint, policy, &bytes, &plan_routes(&routes))
+            .map_err(|error| error.to_string()),
     })
 }
 
-/// Worker entry: folds a decoded cached MuSig answer into the cache. The box is the
-/// CXX ownership form across the boundary, not an allocation. A prepared
-/// answer is checked against the policy and stored; a signing answer is checked
-/// against the allocation, verified and consumed. Disk work: never the GUI thread.
+/// Worker entry: hands a decoded nonce cache answer to the host that asked it and
+/// folds it into the cache. The box is the CXX ownership form across the boundary,
+/// not an allocation. A preparation answer is stored; a signing answer is checked
+/// against the allocation and consumes it. Disk work: never the GUI thread.
 #[allow(clippy::boxed_local)]
 pub fn qr_musig_accept(
     answer: Box<QrResponse>,
     fingerprint: &str,
     policy: &str,
-    psbt_v2_hex: &str,
 ) -> ffi::QrMusigCacheResult {
     let failed = |error: String, musig_session: bool| ffi::QrMusigCacheResult {
         is_ok: false,
@@ -979,75 +943,39 @@ pub fn qr_musig_accept(
     let Ok(fingerprint) = Fingerprint::from_str(fingerprint) else {
         return failed(format!("invalid key fingerprint: {fingerprint}"), false);
     };
-    let decoded = match answer.inner {
-        Ok(decoded) => decoded,
+    let answer = match answer.inner {
+        Ok(qr::QrResponse::MusigPrepared(answer)) | Ok(qr::QrResponse::MusigSignedPsbt(answer)) => {
+            answer
+        }
+        Ok(_) => return failed("expected a cached MuSig answer".to_string(), false),
         Err(error) => return failed(error.to_string(), false),
     };
-    match decoded {
-        qr::QrResponse::MusigPrepared {
-            session_id,
-            max_inputs,
-            nonces,
-        } => {
-            let prepared = response::MusigPrepared {
-                session_id,
-                max_inputs,
-                nonces,
-            };
-            match musig_sessions::accept_prepared(fingerprint, policy, prepared) {
-                Ok(()) => ffi::QrMusigCacheResult {
-                    is_ok: true,
-                    error: String::new(),
-                    musig_session: false,
-                    psbt_v2_hex: String::new(),
-                },
-                Err(error) => failed(error, false),
-            }
+    let signed = match musig_sessions::accept_answer(fingerprint, policy, answer) {
+        Ok(signed) => signed,
+        Err(error) => {
+            return failed(
+                error.to_string(),
+                matches!(error, musig_sessions::SigningError::SessionLost(_)),
+            )
         }
-        qr::QrResponse::MusigSignedPsbt(returned) => {
-            // Only a signing answer carries the transaction it was asked with.
-            let original = match hex::decode(psbt_v2_hex)
-                .map_err(|e| format!("invalid psbt hex: {e}"))
-                .and_then(|bytes| {
-                    psbt::parse_v2(&bytes)
-                        .map_err(|e| e.to_string())?
-                        .into_bitcoin_psbt()
-                        .map_err(|e| e.to_string())
-                }) {
-                Ok(original) => original,
-                Err(error) => return failed(error, false),
-            };
-            let returned = match psbt::parse_v2(&returned)
-                .map_err(|e| e.to_string())
-                .and_then(|parsed| parsed.into_bitcoin_psbt().map_err(|e| e.to_string()))
-            {
-                Ok(returned) => returned,
-                Err(error) => return failed(error, false),
-            };
-            match musig_sessions::accept_signed(fingerprint, policy, &original, &returned) {
-                Ok(()) => {
-                    let serialized = bwk::bwk_tx::bwk_psbt::PsbtV2::from_bitcoin_psbt(returned)
-                        .map_err(|e| e.to_string())
-                        .and_then(|parsed| parsed.serialize().map_err(|e| e.to_string()));
-                    match serialized {
-                        Ok(bytes) => ffi::QrMusigCacheResult {
-                            is_ok: true,
-                            error: String::new(),
-                            musig_session: false,
-                            psbt_v2_hex: hex::encode(bytes),
-                        },
-                        Err(error) => {
-                            failed(format!("cannot serialize the signed psbt: {error}"), false)
-                        }
-                    }
-                }
-                Err(error) => failed(
-                    error.to_string(),
-                    matches!(error, musig_sessions::SigningError::SessionLost(_)),
-                ),
+    };
+    let psbt_v2_hex = match signed.map(bwk::bwk_tx::bwk_psbt::PsbtV2::from_bitcoin_psbt) {
+        None => String::new(),
+        Some(Ok(signed)) => match signed.serialize() {
+            Ok(bytes) => hex::encode(bytes),
+            Err(error) => {
+                return failed(format!("cannot serialize the signed psbt: {error}"), false)
             }
+        },
+        Some(Err(error)) => {
+            return failed(format!("cannot serialize the signed psbt: {error}"), false)
         }
-        _ => failed("expected a cached MuSig answer".to_string(), false),
+    };
+    ffi::QrMusigCacheResult {
+        is_ok: true,
+        error: String::new(),
+        musig_session: false,
+        psbt_v2_hex,
     }
 }
 

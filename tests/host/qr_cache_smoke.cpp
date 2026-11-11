@@ -93,14 +93,15 @@ void waitUntil(const std::function<bool()> &done) {
     }
 }
 
-// A real musig policy and the matching key fingerprint, the same fixture the Rust
-// exchange tests use. The smoke exercises the request itself; the refused answer
-// stands in for a peer that never prepared.
+// A real musig policy, aggregate then derive as the nonce cache needs, and the
+// matching key fingerprint, the same fixture the Rust exchange tests use. The smoke
+// exercises the request itself; the refused answer stands in for a peer that never
+// prepared.
 const char *const POLICY =
     "tr(musig([73c5da0a/87h/1h/0h]tpubDCChhoz5Qdrkn7Z7KXawq6Ad6r3A4MUkCoVTqeWxfTkA6bHNJ3CHUEtALQ"
-    "dkNeixNz4446PcAmw4WKcj3mV2vb29H7sg9EPzbyCU1y2merw/<0;1>/*,[b8688df1/87h/1h/0h]"
+    "dkNeixNz4446PcAmw4WKcj3mV2vb29H7sg9EPzbyCU1y2merw,[b8688df1/87h/1h/0h]"
     "tpubDC44ZFebbFm5ZXnG5Xt8k9PpdSZXUQ4HyuU8e8u5zfutYuu8EW4MLKS54EFTfGYgeqt7P2jEEd1iCF5kSPi7Xrj"
-    "6EZcsStCcAjPy97DSiLb/<0;1>/*))";
+    "6EZcsStCcAjPy97DSiLb)/<0;1>/*)";
 const char *const FINGERPRINT = "73c5da0a";
 
 } // namespace
