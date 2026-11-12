@@ -7,17 +7,21 @@ mod common;
 
 use std::str::FromStr;
 
+use bipqr::{
+    backend::{Active, Backend},
+    ll::{
+        decode, encode_response,
+        request::{self, KeyKind, KeyRequest},
+        response,
+        types::{ExtendedKey, Fingerprint as ProtocolFingerprint},
+        Message, MessageType, Request, RequestId, Response,
+    },
+};
 use bitcoin::{
     absolute::LockTime,
     bip32::{ChildNumber, DerivationPath},
     hashes::Hash,
     transaction,
-};
-use bwk_qr_protocol::{
-    request::{self, KeyKind, KeyRequest},
-    response,
-    types::{ExtendedKey, Fingerprint as ProtocolFingerprint},
-    Message, MessageType, RequestId, Response,
 };
 use bwk_sp::{
     bwk_sign::{
@@ -296,7 +300,7 @@ fn test_five_requests_round_trip() {
         (&sign, MessageType::Signing),
         (&sp_account, MessageType::GetKeys),
     ] {
-        match bwk_qr_protocol::decode(request.message()).expect("decode request message") {
+        match decode(request.message()).expect("decode request message") {
             Message::Request(decoded) => {
                 assert_eq!(
                     decoded.id,
@@ -358,7 +362,7 @@ fn test_request_id_mismatch_is_refused() {
         id: wrong_id,
         body: keys_body(Vec::new(), [0u8; 4]),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = expect_refused(&mut session, &encoded);
     assert!(
@@ -383,7 +387,7 @@ fn test_bad_xpub_count_is_refused() {
         id: session.outstanding_id().expect("outstanding request"),
         body: keys_body(vec![ExtendedKey([0u8; 78])], [0u8; 4]),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = expect_refused(&mut session, &encoded);
     assert!(
@@ -405,7 +409,7 @@ fn test_garbage_signed_psbt_is_refused() {
         id: session.outstanding_id().expect("outstanding request"),
         body: response::Body::Signed(response::Signed::Psbt(vec![1, 2, 3])),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = expect_refused(&mut session, &encoded);
     assert!(
@@ -427,7 +431,7 @@ fn test_bare_signatures_are_refused() {
         id: session.outstanding_id().expect("outstanding request"),
         body: response::Body::Signed(response::Signed::Signatures(Vec::new())),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = expect_refused(&mut session, &encoded);
     assert!(
@@ -472,7 +476,7 @@ fn test_v0_signed_answer_merges_into_the_original_v2() {
         id: session.outstanding_id().expect("outstanding request"),
         body: response::Body::Signed(response::Signed::Psbt(signed_v0_bytes.clone())),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let decoded = session
         .decode_response(&encoded)
@@ -532,7 +536,7 @@ fn test_v2_signed_answer_keeps_sp_fields_intact() {
         id: session.outstanding_id().expect("outstanding request"),
         body: response::Body::Signed(response::Signed::Psbt(signed_v2_bytes)),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let decoded = session
         .decode_response(&encoded)
@@ -594,7 +598,7 @@ fn test_signed_answer_for_a_different_transaction_is_refused_and_keeps_the_outst
         id: outstanding_id,
         body: response::Body::Signed(response::Signed::Psbt(other_v0_bytes)),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = match session.decode_response(&encoded) {
         Ok(_) => panic!("a signed psbt for another transaction must be refused"),
@@ -636,7 +640,7 @@ fn test_signed_answer_identical_to_the_request_is_refused_as_nothing_signed() {
         id: outstanding_id,
         body: response::Body::Signed(response::Signed::Psbt(unsigned_v0_bytes)),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = match session.decode_response(&encoded) {
         Ok(_) => panic!("an unsigned answer must be refused"),
@@ -666,7 +670,7 @@ fn test_xpubs_response_carries_the_device() {
     let response = Response {
         id: session.outstanding_id().expect("outstanding request"),
         body: response::Body::Keys(response::Keys {
-            keys: vec![(&xpub).into()],
+            keys: vec![Active::to_ll_xpub(&xpub)],
             fingerprint: ProtocolFingerprint([0xde, 0xad, 0xbe, 0xef]),
             vendor: "vendor".to_string(),
             model: "model".to_string(),
@@ -679,7 +683,7 @@ fn test_xpubs_response_carries_the_device() {
             capabilities: response::Capabilities(0x0000_000b),
         }),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let Ok(QrResponse::Xpubs {
         fingerprint,
@@ -729,11 +733,14 @@ fn test_four_path_xpubs_response_keeps_the_request_order() {
     let response = Response {
         id: session.outstanding_id().expect("outstanding request"),
         body: keys_body(
-            expected.iter().map(|(_, xpub)| xpub.into()).collect(),
+            expected
+                .iter()
+                .map(|(_, xpub)| Active::to_ll_xpub(xpub))
+                .collect(),
             [0xde, 0xad, 0xbe, 0xef],
         ),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let Ok(QrResponse::Xpubs { xpubs, .. }) = session.decode_response(&encoded) else {
         panic!("expected an accepted xpubs response");
@@ -762,9 +769,7 @@ fn sp_descriptor_with_origin() -> (String, String) {
     )
 }
 
-fn sp_verify_request(
-    session: &mut QrSession,
-) -> (RequestId, bwk_qr_protocol::request::VerifyAddress) {
+fn sp_verify_request(session: &mut QrSession) -> (RequestId, request::VerifyAddress) {
     let (descriptor, _) = sp_descriptor_with_origin();
     let request = session
         .verify_address(
@@ -773,10 +778,10 @@ fn sp_verify_request(
             SP_ADDRESS.to_string(),
         )
         .expect("sp verify_address request");
-    match bwk_qr_protocol::decode(request.message()).expect("decodes") {
-        Message::Request(bwk_qr_protocol::Request {
+    match decode(request.message()).expect("decodes") {
+        Message::Request(Request {
             id,
-            body: bwk_qr_protocol::request::Body::VerifyAddress(body),
+            body: request::Body::VerifyAddress(body),
         }) => (id, body),
         other => panic!("not a verify address request: {other:?}"),
     }
@@ -788,15 +793,15 @@ fn test_sp_verify_request_carries_the_account_keys_not_the_descriptor() {
     let (_, body) = sp_verify_request(&mut QrSession::new());
     assert_eq!(
         body.descriptor,
-        Some(bwk_qr_protocol::request::DescriptorBody::SpKeys(
-            bwk_qr_protocol::request::SpKeys {
-                fingerprint: (&bitcoin::bip32::Fingerprint::from_str(&fp).unwrap()).into(),
-                spend_path: (&DerivationPath::from_str("m/352'/1'/0'/0'/0").unwrap()).into(),
-                scan: bwk_qr_protocol::request::Scan::Path(
-                    (&DerivationPath::from_str("m/352'/1'/0'/1'/0").unwrap()).into(),
-                ),
-            }
-        ))
+        Some(request::DescriptorBody::SpKeys(request::SpKeys {
+            fingerprint: Active::to_ll_fingerprint(
+                &bitcoin::bip32::Fingerprint::from_str(&fp).unwrap()
+            ),
+            spend_path: Active::to_ll_path(&DerivationPath::from_str("m/352'/1'/0'/0'/0").unwrap()),
+            scan: request::Scan::Path(Active::to_ll_path(
+                &DerivationPath::from_str("m/352'/1'/0'/1'/0").unwrap()
+            )),
+        }))
     );
     // No label: the account's own address.
     assert!(body.derivation_path.0.is_empty());
@@ -833,10 +838,10 @@ fn test_sp_verify_answer_is_compared_with_the_address() {
     for (answered, matched) in [(SP_ADDRESS, true), ("tsp1qqother", false)] {
         let mut session = QrSession::new();
         let (id, _) = sp_verify_request(&mut session);
-        let answer = bwk_qr_protocol::encode_response(&Response {
+        let answer = encode_response(&Response {
             id,
             body: response::Body::AddressUri(response::AddressUri {
-                uri: Some(format!("bitcoin:{answered}")),
+                uri: format!("bitcoin:{answered}"),
             }),
         })
         .expect("encodes");
@@ -879,10 +884,10 @@ fn sp_account_keys(network: bitcoin::Network, coin: u32) -> Vec<ExtendedKey> {
     let signer = HotSigner::new_from_mnemonics(network, TEST_MNEMONIC).expect("valid signer");
     let [spend, scan, taproot, segwit] = sp_account_paths(coin);
     vec![
-        (&signer.xpub(&spend).xkey).into(),
-        (&signer.xpriv(&scan).xkey).into(),
-        (&signer.xpub(&taproot).xkey).into(),
-        (&signer.xpub(&segwit).xkey).into(),
+        Active::to_ll_xpub(&signer.xpub(&spend).xkey),
+        Active::to_ll_xpriv(&signer.xpriv(&scan).xkey),
+        Active::to_ll_xpub(&signer.xpub(&taproot).xkey),
+        Active::to_ll_xpub(&signer.xpub(&segwit).xkey),
     ]
 }
 
@@ -899,7 +904,7 @@ fn answer_sp_account(
         id: session.outstanding_id().expect("outstanding request"),
         body: keys_body(keys, TEST_FINGERPRINT),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
     session.decode_response(&encoded)
 }
 
@@ -909,8 +914,8 @@ fn test_sp_account_request_asks_the_four_keys() {
         let request = QrSession::new()
             .get_sp_account(network)
             .expect("get_sp_account request");
-        let keys = match bwk_qr_protocol::decode(request.message()).expect("decodes") {
-            Message::Request(bwk_qr_protocol::Request {
+        let keys = match decode(request.message()).expect("decodes") {
+            Message::Request(Request {
                 body: request::Body::GetKeys(body),
                 ..
             }) => body.keys,
@@ -924,7 +929,7 @@ fn test_sp_account_request_asks_the_four_keys() {
         ]
         .into_iter()
         .map(|(key_path, kind)| KeyRequest {
-            derivation_path: (&path(&key_path)).into(),
+            derivation_path: Active::to_ll_path(&path(&key_path)),
             kind,
         })
         .collect();
@@ -981,7 +986,7 @@ fn test_sp_account_key_of_the_wrong_kind_is_refused() {
 
     // The scan key as an xpub.
     let mut keys = sp_account_keys(network, 1);
-    keys[1] = (&signer.xpub(&scan).xkey).into();
+    keys[1] = Active::to_ll_xpub(&signer.xpub(&scan).xkey);
     let error = answer_sp_account(network, keys).err();
     assert!(
         matches!(
@@ -993,7 +998,7 @@ fn test_sp_account_key_of_the_wrong_kind_is_refused() {
 
     // The spend key as an xpriv.
     let mut keys = sp_account_keys(network, 1);
-    keys[0] = (&signer.xpriv(&spend).xkey).into();
+    keys[0] = Active::to_ll_xpriv(&signer.xpriv(&spend).xkey);
     let error = answer_sp_account(network, keys).err();
     assert!(
         matches!(
@@ -1036,7 +1041,7 @@ fn test_sp_account_private_key_export_refusal_surfaces() {
             message: "scan branch only".to_string(),
         }),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = session.decode_response(&encoded).err();
     assert!(
@@ -1059,7 +1064,7 @@ fn test_sp_account_private_key_export_refusal_surfaces() {
 // QR provider's unit tests.
 
 fn respond(session: &QrSession, body: response::Body) -> Vec<u8> {
-    bwk_qr_protocol::encode_response(&Response {
+    encode_response(&Response {
         id: session.outstanding_id().expect("outstanding request"),
         body,
     })
@@ -1126,11 +1131,10 @@ fn test_a_nonce_preparation_answer_to_a_signing_request_is_refused() {
     let encoded = respond(
         &session,
         response::Body::NoncesPrepared(response::NoncesPrepared {
-            session_id: [1; 4],
-            session_ref: [2; 4],
-            max_inputs: 1,
-            start: 0,
-            end: 0,
+            session: Some(response::Session {
+                session_id: [1; 4],
+                session_ref: [2; 4],
+            }),
             nonces: vec![[2; 66]],
         }),
     );

@@ -7,6 +7,7 @@
 
 use std::{collections::BTreeMap, path::Path};
 
+use bipqr::ll::{request, response::Capabilities, RequestId};
 use bitcoin::{
     bip32::{DerivationPath, Fingerprint},
     psbt::raw,
@@ -19,6 +20,7 @@ use bwk::{
         musig::{expression_slots, slot_infos, MusigSlot, SlotInfo},
         nonce_cache::SESSION_ID_LEN,
         protocol::{RequestId as OuterRequestId, Response as OuterResponse},
+        qr_musig::MAX_NONCE_EXPRESSIONS,
         qr_musig_host::{
             encode_host_record, Issuance, NoncePosition, QrMusigHost, QrMusigHostRecord,
             QrMusigHostResponse,
@@ -36,7 +38,6 @@ use bwk::{
         storage::{ram::RamStore, Store},
     },
 };
-use bwk_qr_protocol::{request, response::Capabilities, RequestId, MAX_NONCE_EXPRESSIONS};
 
 use crate::{
     config::datadir,
@@ -203,14 +204,15 @@ pub(crate) fn issuance(
     let indexes = own.iter().map(|info| info.key_expression_index);
     let start = indexes.clone().min().unwrap_or_default();
     let end = indexes.max().unwrap_or_default();
-    if end - start >= MAX_NONCE_EXPRESSIONS {
+    // bipqr leaves the bound to the signer: this is the one bwk's QR MuSig peer keeps.
+    if end - start >= MAX_NONCE_EXPRESSIONS as usize {
         return Err(format!(
             "the QR nonce cache covers at most {MAX_NONCE_EXPRESSIONS} key expressions per signer"
         ));
     }
     Ok(Issuance {
         path,
-        max_inputs: MAX_INPUT as u8,
+        max_inputs: MAX_INPUT as u32,
         start: start as u32,
         end: end as u32,
     })
@@ -385,6 +387,10 @@ pub(crate) fn accept_answer_at(
         Ok(QrMusigHostResponse::Signed(returned)) => {
             let sent = sent.ok_or("a signing answer without its request")?;
             accept_signed_at(root, fingerprint, policy_text, &sent, returned).map(Some)
+        }
+        // A request naming a nonce cache session never gets a round 1 answer.
+        Ok(QrMusigHostResponse::PubNonces(_)) => {
+            Err("a two-round answer to a nonce cache request".into())
         }
         Err(error) => {
             // The host drops a session the peer refused: its nonces can no longer sign.
@@ -766,6 +772,7 @@ fn check_transcript(
 mod tests {
     use std::{collections::BTreeMap, str::FromStr};
 
+    use bipqr::ll::{decode, encode_response, response, types, Message, Response};
     use bitcoin::{
         absolute::LockTime,
         bip32::{DerivationPath, Fingerprint},
@@ -790,7 +797,6 @@ mod tests {
         },
         persist::{backend::noop::NoopBackend, storage::ram::RamStore},
     };
-    use bwk_qr_protocol::{encode_response, response, Message};
     use temp_dir::TempDir;
 
     use crate::keys::{
@@ -932,8 +938,7 @@ mod tests {
     }
 
     fn answer_bytes(peer: &mut Peer, request: &QrRequest) -> Vec<u8> {
-        let Message::Request(request) =
-            bwk_qr_protocol::decode(request.message()).expect("decode the request")
+        let Message::Request(request) = decode(request.message()).expect("decode the request")
         else {
             panic!("expected a request");
         };
@@ -1027,7 +1032,7 @@ mod tests {
                 material.issuance.start,
                 material.issuance.end
             ),
-            (MAX_INPUT as u8, 0, 0),
+            (MAX_INPUT as u32, 0, 0),
             "every input position of the one key expression"
         );
         let store = fixture.cache();
@@ -1117,14 +1122,17 @@ mod tests {
         let mut session = QrSession::new();
         let request = session.prepare_nonces(material).expect("prepare request");
         let honest = answer_bytes(&mut peer, &request);
-        let Message::Response(mut stranger) = bwk_qr_protocol::decode(&honest).expect("decode")
-        else {
+        let Message::Response(mut stranger) = decode(&honest).expect("decode") else {
             panic!("expected a response");
         };
         let response::Body::NoncesPrepared(prepared) = &mut stranger.body else {
             panic!("expected prepared nonces");
         };
-        prepared.session_id = [9; 4];
+        prepared
+            .session
+            .as_mut()
+            .expect("the answer announces the new session")
+            .session_id = [9; 4];
         assert!(
             matches!(
                 session.decode_response(&encode_response(&stranger).expect("encode")),
@@ -1412,7 +1420,7 @@ mod tests {
             .sign_nonce_cache(allocated_material(&fixture, &tx))
             .expect("signing request");
         let Message::Response(mut answer) =
-            bwk_qr_protocol::decode(&answer_bytes(&mut peer, &request)).expect("decode")
+            decode(&answer_bytes(&mut peer, &request)).expect("decode")
         else {
             panic!("expected a response");
         };
@@ -1454,8 +1462,7 @@ mod tests {
         let request = session
             .sign_nonce_cache(allocated_material(&fixture, &tx))
             .expect("signing request");
-        let Message::Response(answer) =
-            bwk_qr_protocol::decode(&answer_bytes(&mut peer, &request)).expect("decode")
+        let Message::Response(answer) = decode(&answer_bytes(&mut peer, &request)).expect("decode")
         else {
             panic!("expected a response");
         };
@@ -1468,13 +1475,13 @@ mod tests {
                 .remove(0);
         let entry = |signature| response::SignatureEntry::MusigPartialSig {
             input_index: 0,
-            participant: bwk_qr_protocol::types::PublicKey(partial.participant.serialize()),
-            aggregate: bwk_qr_protocol::types::PublicKey(partial.aggregate.serialize()),
+            participant: types::PublicKey(partial.participant.serialize()),
+            aggregate: types::PublicKey(partial.aggregate.serialize()),
             leaf_hash: None,
             signature,
         };
         let reply = |signature| {
-            encode_response(&bwk_qr_protocol::Response {
+            encode_response(&Response {
                 id: answer.id,
                 body: response::Body::Signed(response::Signed::Signatures(vec![entry(signature)])),
             })
@@ -1487,7 +1494,7 @@ mod tests {
         let forged_request = forged_session
             .sign_nonce_cache(allocated_material(&fixture, &tx))
             .expect("signing request");
-        let mut forged_reply = bwk_qr_protocol::decode(&reply(forged)).expect("decode");
+        let mut forged_reply = decode(&reply(forged)).expect("decode");
         if let Message::Response(response) = &mut forged_reply {
             response.id = forged_request.id();
         }

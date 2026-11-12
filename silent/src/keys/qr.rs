@@ -1,4 +1,4 @@
-//! The bwk-qr protocol codec: builds signing-flow requests as protocol messages, and
+//! The bipqr protocol codec: builds signing-flow requests as protocol messages, and
 //! decodes and validates the matching responses. Framing the bytes is the transport's
 //! business.
 //!
@@ -8,13 +8,17 @@
 
 use std::str::FromStr;
 
+use bipqr::{
+    backend::{Active, Backend},
+    ll::{
+        decode, encode_request,
+        request::{self, KeyKind, Scan, SpKeys},
+        response, types, Message, MessageType, Request, RequestId, Response, SignResponseKind,
+    },
+};
 use bitcoin::{
     bip32::{ChildNumber, DerivationPath, Fingerprint, Xpriv, Xpub},
     Network, Psbt,
-};
-use bwk_qr_protocol::{
-    request::{self, KeyKind, Scan, SpKeys},
-    response, types, Message, MessageType, Request, RequestId, Response, SignResponseKind,
 };
 use bwk_sp::{
     bwk_sign::bwk_descriptor::{
@@ -170,7 +174,7 @@ impl QrSession {
             .keys()
             .iter()
             .map(|(path, kind)| request::KeyRequest {
-                derivation_path: types::DerivationPath::from(path),
+                derivation_path: Active::to_ll_path(path),
                 kind: *kind,
             })
             .collect();
@@ -201,7 +205,7 @@ impl QrSession {
         };
         let body = request::Body::VerifyAddress(request::VerifyAddress {
             descriptor_alias: hwi::wallet_name(descriptor),
-            derivation_path: types::DerivationPath::from(&path),
+            derivation_path: Active::to_ll_path(&path),
             address: Some(address.clone()),
             descriptor: Some(body),
             proof: None,
@@ -243,6 +247,7 @@ impl QrSession {
             descriptors,
             psbt: payload,
             want_kind: Some(SignResponseKind::Psbt),
+            accept_trimmed: false,
         });
         self.issue(body, None, None, Some(psbt_v2_bytes.to_vec()))
     }
@@ -324,7 +329,7 @@ impl QrSession {
     ) -> Result<QrRequest, Error> {
         let id = self.next_id();
         let message_type = body.message_type();
-        let message = bwk_qr_protocol::encode_request(&Request { id, body })?;
+        let message = encode_request(&Request { id, body })?;
         self.outstanding = Some(Outstanding {
             id,
             message_type,
@@ -339,7 +344,7 @@ impl QrSession {
     /// Decodes a pasted or scanned payload and validates it against the outstanding
     /// request.
     pub fn decode_response(&mut self, bytes: &[u8]) -> Result<QrResponse, Error> {
-        match bwk_qr_protocol::decode(bytes)? {
+        match decode(bytes)? {
             Message::Request(_) => Err(Error::PayloadIsRequest),
             Message::Response(response) => self.validate_response(response, bytes),
         }
@@ -406,7 +411,7 @@ impl QrSession {
             response::Body::Signed(signed) => {
                 validate_signed(signed, outstanding.original_psbt_v2.as_deref())?
             }
-            response::Body::Registration(registration) => validate_registration(registration)?,
+            response::Body::Registration(registration) => registration_response(registration),
             response::Body::AddressUri(address_uri) => {
                 validate_address_uri(address_uri, outstanding.expected_address.clone())?
             }
@@ -442,16 +447,16 @@ fn refusal(error: &response::ErrorBody) -> Error {
     }
 }
 
-/// A nonce preparation answer must stay inside the codec's bounds and echo the
-/// session it was asked for.
+/// A nonce preparation answer announcing a new session must name the one it was
+/// asked for. One answered from a held session names none.
 fn validate_nonces_prepared(
     prepared: &response::NoncesPrepared,
     session_id: [u8; 4],
 ) -> Result<(), Error> {
-    prepared
-        .validate()
-        .map_err(|error| Error::MusigPreparationInvalid(error.to_string()))?;
-    if prepared.session_id != session_id {
+    if prepared
+        .session
+        .is_some_and(|session| session.session_id != session_id)
+    {
         return Err(Error::MusigSessionMismatch);
     }
     Ok(())
@@ -459,7 +464,7 @@ fn validate_nonces_prepared(
 
 /// The PSBT a Signing request carries.
 fn sent_psbt(message: &[u8]) -> Result<Psbt, Error> {
-    match bwk_qr_protocol::decode(message)? {
+    match decode(message)? {
         Message::Request(Request {
             body: request::Body::Sign(sign),
             ..
@@ -516,7 +521,7 @@ fn validate_keys(keys: response::Keys, requested: &KeysRequest) -> Result<QrResp
             returned: keys.keys.len(),
         });
     }
-    let fingerprint = Fingerprint::from(&keys.fingerprint);
+    let fingerprint = Active::from_ll_fingerprint(&keys.fingerprint);
     match requested {
         KeysRequest::Xpubs(paths) => {
             let mut xpubs = Vec::with_capacity(paths.len());
@@ -574,7 +579,7 @@ fn sp_account_response(
 
 /// The xpub the signer returned for a public key request at `path`.
 fn public_key(key: &types::ExtendedKey, path: &DerivationPath) -> Result<Xpub, Error> {
-    Xpub::try_from(key).map_err(|e| match Xpriv::try_from(key) {
+    Active::from_ll_xpub(key).map_err(|e| match Active::from_ll_xpriv(key) {
         Ok(_) => Error::KeyKindMismatch {
             path: path.clone(),
             requested: KeyKind::Public,
@@ -585,7 +590,7 @@ fn public_key(key: &types::ExtendedKey, path: &DerivationPath) -> Result<Xpub, E
 
 /// The xpriv the signer returned for a private key request at `path`.
 fn private_key(key: &types::ExtendedKey, path: &DerivationPath) -> Result<Xpriv, Error> {
-    Xpriv::try_from(key).map_err(|e| match Xpub::try_from(key) {
+    Active::from_ll_xpriv(key).map_err(|e| match Active::from_ll_xpub(key) {
         Ok(_) => Error::KeyKindMismatch {
             path: path.clone(),
             requested: KeyKind::Private,
@@ -612,14 +617,11 @@ fn validate_signed(
     }
 }
 
-fn validate_registration(registration: response::Registration) -> Result<QrResponse, Error> {
-    let registered = registration
-        .registered
-        .ok_or(Error::IncompleteRegistration)?;
-    Ok(QrResponse::Registration {
+fn registration_response(registration: response::Registration) -> QrResponse {
+    QrResponse::Registration {
         alias: registration.descriptor_alias,
-        registered,
-    })
+        registered: registration.registered,
+    }
 }
 
 /// The device echoes back the address it independently derived as `bitcoin:<address>`,
@@ -645,9 +647,9 @@ fn sp_keys(descriptor: &SpDescriptor) -> Result<SpKeys, Error> {
         _ => Network::Testnet,
     };
     Ok(SpKeys {
-        fingerprint: (&fingerprint).into(),
-        spend_path: (&spend_path(network, account)).into(),
-        scan: Scan::Path((&scan_path(network, account)).into()),
+        fingerprint: Active::to_ll_fingerprint(&fingerprint),
+        spend_path: Active::to_ll_path(&spend_path(network, account)),
+        scan: Scan::Path(Active::to_ll_path(&scan_path(network, account))),
     })
 }
 
@@ -655,8 +657,8 @@ fn validate_address_uri(
     address_uri: response::AddressUri,
     expected_address: Option<String>,
 ) -> Result<QrResponse, Error> {
-    let uri = address_uri.uri.ok_or(Error::NoAddressUri)?;
     let expected = expected_address.ok_or(Error::MissingExpectedAddress)?;
+    let uri = address_uri.uri;
     let address = uri.strip_prefix("bitcoin:").unwrap_or(&uri);
     Ok(QrResponse::AddressVerified(address == expected))
 }

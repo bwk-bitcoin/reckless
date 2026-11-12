@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 
 use base64::{prelude::BASE64_STANDARD, Engine};
+use bipqr::ll::{decode, encode_response, request, response, Message, MessageType, Response};
 use bitcoin::{
     absolute::LockTime,
     bip32::{DerivationPath, Fingerprint},
@@ -14,7 +15,6 @@ use bitcoin::{
     secp256k1::{PublicKey, Secp256k1, SecretKey},
     transaction, Amount, OutPoint, Psbt, ScriptBuf, Sequence,
 };
-use bwk_qr_protocol::{request, response, Message, MessageType, Response};
 use bwk_sp::bwk_tx::bwk_psbt::{
     musig::{
         musig_input_partial_sigs, musig_input_participants_all, musig_input_pub_nonces,
@@ -619,7 +619,7 @@ fn internal_participants_only_where_none_are_listed() {
 
 /// The PSBT a decoded sign request carries.
 fn request_psbt(message: &[u8]) -> Psbt {
-    let decoded = bwk_qr_protocol::decode(message).expect("decode request message");
+    let decoded = decode(message).expect("decode request message");
     let Message::Request(request) = decoded else {
         panic!("expected a request, decoded a response");
     };
@@ -658,7 +658,7 @@ fn qr_round1_request_carries_no_nonce() {
         id: session.outstanding_id().expect("outstanding request"),
         body: response::Body::Signed(response::Signed::Psbt(v0_bytes(&answer))),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
     let merged = match session.decode_response(&encoded) {
         Ok(QrResponse::SignedPsbt(bytes)) => bytes,
         Ok(_) => panic!("expected a SignedPsbt response"),
@@ -686,7 +686,7 @@ fn qr_0x0d_is_a_musig_session_error() {
             message: "no session".to_string(),
         }),
     };
-    let encoded = bwk_qr_protocol::encode_response(&response).expect("encode response");
+    let encoded = encode_response(&response).expect("encode response");
 
     let error = match session.decode_response(&encoded) {
         Err(error) => error,

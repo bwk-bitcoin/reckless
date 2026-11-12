@@ -6,6 +6,7 @@
 use std::str::FromStr;
 use std::sync::OnceLock;
 
+use bipqr::ll::{decode, encode_response, request, response, Message, Request};
 use bitcoin::{
     absolute::LockTime, bip32::DerivationPath, hashes::Hash, transaction::Version, Amount,
     OutPoint, Transaction, TxIn, TxOut, Txid,
@@ -19,7 +20,6 @@ use bwk::{
     },
     persist::{backend::noop::NoopBackend, storage::ram::RamStore},
 };
-use bwk_qr_protocol::{decode, encode_response, request, response, Message};
 use silent::{
     Config, KeyRouteKind, MusigAccount, Network as FfiNetwork, Output, TransactionTemplate,
 };
@@ -102,7 +102,7 @@ fn peer(signer: &HotSigner) -> Peer {
     )
 }
 
-fn wire_request(payload: &[u8]) -> bwk_qr_protocol::Request {
+fn wire_request(payload: &[u8]) -> Request {
     match decode(payload).expect("decode the wire request") {
         Message::Request(request) => request,
         Message::Response(_) => panic!("expected a request, decoded a response"),
@@ -139,7 +139,7 @@ fn cached_prepare_exchange_issues_the_request_and_delivers_the_answer() {
     };
     assert_eq!(
         (preparation.max_inputs, preparation.start, preparation.end),
-        (8, 0, 0),
+        (8, 0, Some(0)),
         "every input position of the signer's one key expression"
     );
     assert!(
@@ -189,7 +189,11 @@ fn an_answer_for_another_session_is_refused_before_the_cache() {
     let response::Body::NoncesPrepared(prepared) = &mut stranger.body else {
         panic!("expected prepared nonces");
     };
-    prepared.session_id = [0xab; 4];
+    prepared
+        .session
+        .as_mut()
+        .expect("the answer announces the new session")
+        .session_id = [0xab; 4];
     let decoded =
         module.qr_decode_response(&encode_response(&stranger).expect("encode the stranger"));
     assert!(

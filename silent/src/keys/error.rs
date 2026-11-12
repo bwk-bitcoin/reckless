@@ -169,13 +169,13 @@ pub enum Error {
     RequestIdMismatch { expected: String, got: String },
     #[error("expected a response to {expected:?}, got {got:?}")]
     ResponseKindMismatch {
-        expected: bwk_qr_protocol::MessageType,
-        got: bwk_qr_protocol::MessageType,
+        expected: bipqr::ll::MessageType,
+        got: bipqr::ll::MessageType,
     },
     #[error("signer refused {message_type:?} with {code:?}: {message}")]
     SignerRefused {
-        message_type: bwk_qr_protocol::MessageType,
-        code: bwk_qr_protocol::response::Error,
+        message_type: bipqr::ll::MessageType,
+        code: bipqr::ll::response::Error,
         message: String,
     },
     #[error("get_keys requested {requested} key(s) but the response carries {returned}")]
@@ -183,7 +183,7 @@ pub enum Error {
     #[error("the signer returned the wrong kind of key at '{path}', {requested:?} was requested")]
     KeyKindMismatch {
         path: DerivationPath,
-        requested: bwk_qr_protocol::request::KeyKind,
+        requested: bipqr::ll::request::KeyKind,
     },
     #[error("signed PSBT failed to parse as PSBT v2 or v0")]
     InvalidSignedPsbt,
@@ -193,14 +193,8 @@ pub enum Error {
     SpDescriptorNoOrigin,
     #[error("sp() descriptor origin '{0}' is not a BIP-352 account path")]
     SpAccountPath(DerivationPath),
-    #[error("registration response did not report whether registration succeeded")]
-    IncompleteRegistration,
-    #[error("address verification response carries no address uri")]
-    NoAddressUri,
     #[error("verify_address response arrived with no expected address recorded")]
     MissingExpectedAddress,
-    #[error("nonce preparation failed its bounds: {0}")]
-    MusigPreparationInvalid(String),
     #[error("nonce preparation answer does not match the outstanding session")]
     MusigSessionMismatch,
     #[error("{0}")]
@@ -209,7 +203,7 @@ pub enum Error {
         "signer refused {message_type:?}, another descriptor is registered under this wallet's alias: {message}"
     )]
     AlreadyRegistered {
-        message_type: bwk_qr_protocol::MessageType,
+        message_type: bipqr::ll::MessageType,
         message: String,
     },
     #[error("file {path} already exists")]
@@ -219,11 +213,11 @@ pub enum Error {
     #[error("could not read a psbt from {path}: tried {tried}")]
     UnreadablePsbtFile { path: PathBuf, tried: &'static str },
     #[error(transparent)]
-    Encode(#[from] bwk_qr_protocol::encode::Error),
+    Encode(#[from] bipqr::ll::encode::Error),
     #[error(transparent)]
-    Decode(#[from] bwk_qr_protocol::decode::Error),
+    Decode(#[from] bipqr::ll::decode::Error),
     #[error(transparent)]
-    XpubConvert(#[from] bwk_qr_protocol::types::Error),
+    XpubConvert(#[from] bipqr::backend::rust_bitcoin::Error),
     #[error("MuSig2 session missing or mismatch")]
     MusigSession,
 }
