@@ -206,6 +206,15 @@ pub enum Error {
         message_type: bipqr::ll::MessageType,
         message: String,
     },
+    #[error("this device does not support {message_type:?}: {message}")]
+    SignerUnsupported {
+        message_type: bipqr::ll::MessageType,
+        message: String,
+    },
+    #[error("this device is set to another network: {message}")]
+    SignerNetworkMismatch { message: String },
+    #[error("the device could not read the request: {message}")]
+    SignerUnreadableRequest { message: String },
     #[error("file {path} already exists")]
     FileExists { path: PathBuf },
     #[error("psbt file {path} is {len} bytes, over the accepted size limit")]

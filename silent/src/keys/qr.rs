@@ -148,10 +148,14 @@ impl QrSession {
         self.outstanding.as_ref().map(|outstanding| outstanding.id)
     }
 
-    /// `RequestId([0, 0])` stays reserved for "no outstanding request", so the first
-    /// id issued is 1.
+    /// `RequestId([0, 0])` is never issued: it stays reserved for "no outstanding
+    /// request" and for a signer's reply to a request it could not read. The first id
+    /// is 1, and the counter skips 0 when it wraps.
     fn next_id(&mut self) -> RequestId {
         self.counter = self.counter.wrapping_add(1);
+        if self.counter == 0 {
+            self.counter = 1;
+        }
         RequestId(self.counter.to_be_bytes())
     }
 
@@ -385,6 +389,17 @@ impl QrSession {
         let Some(outstanding) = self.outstanding.as_ref() else {
             return Err(Error::NoOutstandingRequest);
         };
+        // A signer that cannot read a request answers under the reserved id, which no
+        // request carries: the request stays outstanding for a new scan.
+        if let response::Body::Error(e) = &response.body {
+            if e.message_type == MessageType::UnreadableRequest
+                && response.id == RequestId::UNREADABLE_REQUEST
+            {
+                return Err(Error::SignerUnreadableRequest {
+                    message: e.message.clone(),
+                });
+            }
+        }
         if response.id != outstanding.id {
             return Err(Error::RequestIdMismatch {
                 expected: hex_id(outstanding.id),
@@ -464,6 +479,13 @@ fn refusal(error: &response::ErrorBody) -> Error {
         response::Error::MusigSession => Error::MusigSession,
         response::Error::AlreadyRegistered => Error::AlreadyRegistered {
             message_type: error.message_type,
+            message: error.message.clone(),
+        },
+        response::Error::UnsupportedOperation => Error::SignerUnsupported {
+            message_type: error.message_type,
+            message: error.message.clone(),
+        },
+        response::Error::NetworkMismatch => Error::SignerNetworkMismatch {
             message: error.message.clone(),
         },
         code => Error::SignerRefused {
@@ -734,5 +756,24 @@ impl QrRequest {
 
     pub fn into_message(self) -> Vec<u8> {
         self.message
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_request_id_skips_zero_when_it_wraps() {
+        let mut session = QrSession {
+            counter: u16::MAX - 1,
+            ..QrSession::default()
+        };
+        assert_eq!(session.next_id(), RequestId(u16::MAX.to_be_bytes()));
+        assert_eq!(
+            session.next_id(),
+            RequestId([0, 1]),
+            "0x0000 is never issued"
+        );
     }
 }

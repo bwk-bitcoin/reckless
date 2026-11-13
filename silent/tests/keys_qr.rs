@@ -1106,6 +1106,74 @@ fn test_an_alias_registered_with_another_descriptor_is_its_own_refusal() {
     );
 }
 
+// ws-plaude/silent#106: 0x0F, 0x10 and the unreadable request reply are their own errors.
+#[test]
+fn test_an_unsupported_operation_is_its_own_refusal() {
+    let mut session = QrSession::new();
+    session
+        .sign(&["wpkh(desc)".to_string()], &sign_psbt_bytes())
+        .expect("sign request");
+    let encoded = respond(
+        &session,
+        refusal(response::Error::UnsupportedOperation, "no signing"),
+    );
+    let error = session.decode_response(&encoded).err();
+    assert!(
+        matches!(
+            &error,
+            Some(Error::SignerUnsupported {
+                message_type: MessageType::Signing,
+                message,
+            }) if message == "no signing"
+        ),
+        "expected the unsupported operation refusal, got {error:?}"
+    );
+    assert!(error.unwrap().to_string().contains("does not support"));
+    assert!(session.outstanding_id().is_some());
+}
+
+#[test]
+fn test_a_network_mismatch_is_its_own_refusal() {
+    let mut session = QrSession::new();
+    session
+        .sign(&["wpkh(desc)".to_string()], &sign_psbt_bytes())
+        .expect("sign request");
+    let encoded = respond(
+        &session,
+        refusal(response::Error::NetworkMismatch, "mainnet only"),
+    );
+    let error = session.decode_response(&encoded).err();
+    assert!(
+        matches!(&error, Some(Error::SignerNetworkMismatch { message }) if message == "mainnet only"),
+        "expected the network mismatch refusal, got {error:?}"
+    );
+    assert!(error.unwrap().to_string().contains("another network"));
+    assert!(session.outstanding_id().is_some());
+}
+
+#[test]
+fn test_the_unreadable_request_reply_is_not_a_request_id_mismatch() {
+    let mut session = QrSession::new();
+    session
+        .sign(&["wpkh(desc)".to_string()], &sign_psbt_bytes())
+        .expect("sign request");
+    let encoded = encode_response(&Response::unreadable_request("bad header".to_string()))
+        .expect("encode response");
+    let error = session.decode_response(&encoded).err();
+    assert!(
+        matches!(&error, Some(Error::SignerUnreadableRequest { message }) if message == "bad header"),
+        "expected the unreadable request error, got {error:?}"
+    );
+    assert!(error
+        .unwrap()
+        .to_string()
+        .contains("the device could not read the request"));
+    assert!(
+        session.outstanding_id().is_some(),
+        "the request stays outstanding for a new scan"
+    );
+}
+
 #[test]
 fn test_a_lost_session_on_an_ordinary_signing_request_is_a_musig_session_error() {
     let mut session = QrSession::new();
