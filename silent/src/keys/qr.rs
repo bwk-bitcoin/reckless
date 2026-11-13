@@ -274,6 +274,7 @@ impl QrSession {
 
     /// The first signature request of an allocated session, built by bwk's host: the
     /// PSBT carries the complete participant nonce transcript and names the session.
+    /// It asks for the signatures-only reply, which bwk's host verifies and merges.
     pub fn sign_nonce_cache(&mut self, material: QrSigningMaterial) -> Result<QrRequest, Error> {
         let QrSigningMaterial {
             mut host,
@@ -289,7 +290,7 @@ impl QrSession {
                 session_id,
                 vec![descriptor],
                 &psbt,
-                Some(SignResponseKind::Psbt),
+                Some(SignResponseKind::Signatures),
             )
             .map_err(|e| Error::QrMusigHost(e.to_string()))?;
         let musig = MusigOutstanding {

@@ -772,7 +772,10 @@ fn check_transcript(
 mod tests {
     use std::{collections::BTreeMap, str::FromStr};
 
-    use bipqr::ll::{decode, encode_response, response, types, Message, Response};
+    use bipqr::ll::{
+        decode, encode_response, request, response, types, Message, Request, Response,
+        SignResponseKind,
+    };
     use bitcoin::{
         absolute::LockTime,
         bip32::{DerivationPath, Fingerprint},
@@ -1449,6 +1452,30 @@ mod tests {
             fixture.cache().state.allocated[0].state,
             AllocationState::Active,
             "a refused answer leaves the allocation active"
+        );
+    }
+
+    #[test]
+    fn the_signing_request_asks_for_signatures_only() {
+        let fixture = fixture();
+        let mut peer = peer(&fixture.a);
+        prepare(&fixture, &mut peer);
+        let tx = allocated(&fixture, transaction(&fixture.policy, 0, 1));
+        let mut session = QrSession::new();
+        let request = session
+            .sign_nonce_cache(allocated_material(&fixture, &tx))
+            .expect("signing request");
+        let Message::Request(Request {
+            body: request::Body::Sign(sign),
+            ..
+        }) = decode(request.message()).expect("decode the request")
+        else {
+            panic!("expected a Signing request");
+        };
+        assert_eq!(sign.want_kind, Some(SignResponseKind::Signatures));
+        assert!(
+            !sign.accept_trimmed,
+            "a signatures-only reply carries no PSBT to trim"
         );
     }
 
