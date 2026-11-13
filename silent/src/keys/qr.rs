@@ -21,9 +21,12 @@ use bitcoin::{
     Network, Psbt,
 };
 use bwk_sp::{
-    bwk_sign::bwk_descriptor::{
-        descriptor::{tr_path, wpkh_path},
-        sp_descriptor::SpDescriptor,
+    bwk_sign::{
+        bwk_descriptor::{
+            descriptor::{tr_path, wpkh_path},
+            sp_descriptor::SpDescriptor,
+        },
+        qr_musig_host::merge_signatures,
     },
     receiver::{scan_path, spend_path},
 };
@@ -112,6 +115,9 @@ struct Outstanding {
     /// the device's answer into it instead of trusting the returned bytes as-is. `None`
     /// for every other request kind.
     original_psbt_v2: Option<Vec<u8>>,
+    /// The PSBT a `Sign` request asking for the signatures-only reply sent, which the
+    /// reply's entries merge into. `None` when the request asked for a full PSBT.
+    signatures_into: Option<Psbt>,
     /// The nonce cache exchange of a Nonce Preparation request or of a Signing
     /// request naming a cached session. `None` for every other request.
     musig: Option<MusigOutstanding>,
@@ -229,27 +235,43 @@ impl QrSession {
         // Round 1 goes out without nonces: a device decides its round from its own
         // nonce, and the merge keeps the nonces already gathered.
         let mut wire = psbt::parse_v2(psbt_v2_bytes)?;
+        let musig = psbt::has_musig_inputs(&wire)?;
         let stripped = psbt::strip_musig_round1(&mut wire)?;
         // A silent-payment PSBT needs its input tweaks and ECDH shares, which a v0
         // conversion drops, so it goes over the wire as v2, unchanged unless stripped.
         // A plain hardware signer over QR still expects v0.
-        let payload = match (psbt::has_sp_artifacts(&wire)?, stripped) {
-            (false, _) => wire
-                .into_bitcoin_psbt()
-                .map_err(|e| Error::PsbtSerialize(e.to_string()))?
-                .serialize(),
-            (true, true) => wire
-                .serialize()
-                .map_err(|e| Error::PsbtSerialize(e.to_string()))?,
-            (true, false) => psbt_v2_bytes.to_vec(),
+        let (payload, signatures_into) = match (psbt::has_sp_artifacts(&wire)?, stripped) {
+            (false, _) => {
+                let v0 = wire
+                    .into_bitcoin_psbt()
+                    .map_err(|e| Error::PsbtSerialize(e.to_string()))?;
+                // A MuSig PSBT asks for the signatures-only reply, merged into what was
+                // sent. Its silent payment entries would need the v2 path below.
+                let payload = v0.serialize();
+                (payload, musig.then_some(v0))
+            }
+            (true, true) => (
+                wire.serialize()
+                    .map_err(|e| Error::PsbtSerialize(e.to_string()))?,
+                None,
+            ),
+            (true, false) => (psbt_v2_bytes.to_vec(), None),
+        };
+        let want_kind = match signatures_into {
+            Some(_) => SignResponseKind::Signatures,
+            None => SignResponseKind::Psbt,
         };
         let body = request::Body::Sign(request::Sign {
             descriptors,
             psbt: payload,
-            want_kind: Some(SignResponseKind::Psbt),
+            want_kind: Some(want_kind),
             accept_trimmed: false,
         });
-        self.issue(body, None, None, Some(psbt_v2_bytes.to_vec()))
+        let request = self.issue(body, None, None, Some(psbt_v2_bytes.to_vec()))?;
+        if let Some(outstanding) = self.outstanding.as_mut() {
+            outstanding.signatures_into = signatures_into;
+        }
+        Ok(request)
     }
 
     /// A nonce preparation, built by bwk's host from a session record already
@@ -315,6 +337,7 @@ impl QrSession {
             keys: None,
             expected_address: None,
             original_psbt_v2: None,
+            signatures_into: None,
             musig: Some(musig),
         });
         QrRequest { id, message }
@@ -337,6 +360,7 @@ impl QrSession {
             keys,
             expected_address,
             original_psbt_v2,
+            signatures_into: None,
             musig: None,
         });
         Ok(QrRequest { id, message })
@@ -409,9 +433,11 @@ impl QrSession {
                     .expect("a GetKeys request always records its keys");
                 validate_keys(keys, requested)?
             }
-            response::Body::Signed(signed) => {
-                validate_signed(signed, outstanding.original_psbt_v2.as_deref())?
-            }
+            response::Body::Signed(signed) => validate_signed(
+                signed,
+                outstanding.original_psbt_v2.as_deref(),
+                outstanding.signatures_into.as_ref(),
+            )?,
             response::Body::Registration(registration) => registration_response(registration),
             response::Body::AddressUri(address_uri) => {
                 validate_address_uri(address_uri, outstanding.expected_address.clone())?
@@ -603,19 +629,27 @@ fn private_key(key: &types::ExtendedKey, path: &DerivationPath) -> Result<Xpriv,
 /// Merges the device's answer into `original_psbt_v2` with the same helper USB
 /// signing uses, so both paths always hand back v2 bytes with the original's silent
 /// payment fields intact. `original_psbt_v2` is `None` for a signed response to a
-/// request that carried no PSBT, which is refused rather than trusted as-is.
+/// request that carried no PSBT, which is refused rather than trusted as-is. A
+/// signatures-only reply is accepted only for a request that asked for one: its
+/// entries go into the PSBT sent, `signatures_into`, then merge like a full answer.
 fn validate_signed(
     signed: response::Signed,
     original_psbt_v2: Option<&[u8]>,
+    signatures_into: Option<&Psbt>,
 ) -> Result<QrResponse, Error> {
-    match signed {
-        response::Signed::Psbt(bytes) => {
-            let original = original_psbt_v2.ok_or(Error::InvalidSignedPsbt)?;
-            let merged = psbt::merge_signatures_bytes(original, &bytes)?;
-            Ok(QrResponse::SignedPsbt(merged))
+    let original = original_psbt_v2.ok_or(Error::InvalidSignedPsbt)?;
+    let bytes = match (signed, signatures_into) {
+        (response::Signed::Psbt(bytes), _) => bytes,
+        (response::Signed::Signatures(entries), Some(sent)) => {
+            merge_signatures(sent.clone(), &entries)
+                .map_err(|e| Error::QrMusigHost(e.to_string()))?
+                .serialize()
         }
-        response::Signed::Signatures(_) => Err(Error::SignaturesUnsupported),
-    }
+        (response::Signed::Signatures(_), None) => return Err(Error::SignaturesUnsupported),
+    };
+    Ok(QrResponse::SignedPsbt(psbt::merge_signatures_bytes(
+        original, &bytes,
+    )?))
 }
 
 fn registration_response(registration: response::Registration) -> QrResponse {

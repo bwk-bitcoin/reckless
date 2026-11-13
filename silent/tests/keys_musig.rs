@@ -7,7 +7,10 @@
 use std::collections::BTreeSet;
 
 use base64::{prelude::BASE64_STANDARD, Engine};
-use bipqr::ll::{decode, encode_response, request, response, Message, MessageType, Response};
+use bipqr::ll::{
+    decode, encode_response, request, response, types, Message, MessageType, Response,
+    SignResponseKind,
+};
 use bitcoin::{
     absolute::LockTime,
     bip32::{DerivationPath, Fingerprint},
@@ -669,6 +672,107 @@ fn qr_round1_request_carries_no_nonce() {
         nonces_of(&merged.inputs[0].psbt),
         BTreeSet::from([(key_a(), 1), (key_b(), 2)]),
         "expected the device's nonce merged next to the one already gathered"
+    );
+}
+
+/// The `want_kind` of a decoded sign request.
+fn request_want_kind(message: &[u8]) -> Option<SignResponseKind> {
+    let Message::Request(request) = decode(message).expect("decode request message") else {
+        panic!("expected a request, decoded a response");
+    };
+    let request::Body::Sign(sign) = request.body else {
+        panic!("expected a sign request");
+    };
+    sign.want_kind
+}
+
+/// A public nonce that parses: two points on the curve.
+fn valid_nonce() -> [u8; NONCE_LEN] {
+    let mut nonce = [0; NONCE_LEN];
+    nonce[..33].copy_from_slice(&key_a().serialize());
+    nonce[33..].copy_from_slice(&key_b().serialize());
+    nonce
+}
+
+/// Decodes a signatures-only answer to the outstanding request into its merged v2.
+fn signatures_answer(session: &mut QrSession, entries: Vec<response::SignatureEntry>) -> PsbtV2 {
+    let response = Response {
+        id: session.outstanding_id().expect("outstanding request"),
+        body: response::Body::Signed(response::Signed::Signatures(entries)),
+    };
+    let encoded = encode_response(&response).expect("encode response");
+    let merged = match session.decode_response(&encoded) {
+        Ok(QrResponse::SignedPsbt(bytes)) => bytes,
+        Ok(_) => panic!("expected a SignedPsbt response"),
+        Err(e) => panic!("expected the signatures-only answer accepted, got {e:?}"),
+    };
+    PsbtV2::deserialize(&merged).expect("merged psbt parses as v2")
+}
+
+#[test]
+fn qr_round1_merges_a_signatures_only_nonce() {
+    let mut original = musig_psbt();
+    add_nonce(&mut original, key_b(), 2);
+    let mut session = QrSession::new();
+    let request = session
+        .sign(&["musig descriptor".to_string()], &v2_bytes(&original))
+        .expect("sign request");
+    assert_eq!(
+        request_want_kind(request.message()),
+        Some(SignResponseKind::Signatures),
+        "a MuSig PSBT asks for the signatures-only reply"
+    );
+
+    let merged = signatures_answer(
+        &mut session,
+        vec![response::SignatureEntry::MusigPubNonce {
+            input_index: 0,
+            participant: types::PublicKey(key_a().serialize()),
+            aggregate: types::PublicKey(aggregate().serialize()),
+            leaf_hash: None,
+            nonce: valid_nonce(),
+        }],
+    );
+    assert_eq!(
+        nonces_of(&merged.inputs[0].psbt),
+        BTreeSet::from([(key_a(), valid_nonce()[0]), (key_b(), 2)]),
+        "the device's nonce merges next to the one already gathered"
+    );
+}
+
+#[test]
+fn qr_round2_merges_a_signatures_only_partial_signature() {
+    let mut original = musig_psbt();
+    add_nonce(&mut original, key_a(), 1);
+    add_nonce(&mut original, key_b(), 2);
+    let mut session = QrSession::new();
+    let request = session
+        .sign(&["musig descriptor".to_string()], &v2_bytes(&original))
+        .expect("sign request");
+    assert_eq!(
+        request_want_kind(request.message()),
+        Some(SignResponseKind::Signatures)
+    );
+
+    let merged = signatures_answer(
+        &mut session,
+        vec![response::SignatureEntry::MusigPartialSig {
+            input_index: 0,
+            participant: types::PublicKey(key_a().serialize()),
+            aggregate: types::PublicKey(aggregate().serialize()),
+            leaf_hash: None,
+            signature: [7; PARTIAL_SIG_LEN],
+        }],
+    );
+    assert_eq!(
+        partial_sig_count(&merged.inputs[0].psbt),
+        1,
+        "the device's partial signature is merged"
+    );
+    assert_eq!(
+        nonces_of(&merged.inputs[0].psbt),
+        BTreeSet::from([(key_a(), 1), (key_b(), 2)]),
+        "the nonces already gathered are kept"
     );
 }
 

@@ -526,6 +526,16 @@ fn reached(got: &ParticipantCounts, participant: &PublicKey, expected: usize) ->
     got.get(participant).copied().unwrap_or(0) >= expected
 }
 
+/// Some input names MuSig2 participants (0x1a).
+pub fn has_musig_inputs(psbt: &PsbtV2) -> Result<bool, Error> {
+    for input in &psbt.inputs {
+        if !expected_participants(&input.psbt)?.is_empty() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Every expected 0x1b present (expected participants read from 0x1a).
 pub fn musig_nonces_complete(psbt: &PsbtV2) -> Result<bool, Error> {
     for input in &psbt.inputs {
