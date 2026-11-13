@@ -152,6 +152,11 @@ pub fn has_sp_artifacts(psbt: &PsbtV2) -> Result<bool, Error> {
     Ok(scan.sp_inputs || scan.sp_outputs)
 }
 
+/// Some silent payment output still has no script: the signer derives it.
+pub fn sp_outputs_pending(psbt: &PsbtV2) -> Result<bool, Error> {
+    Ok(scan(psbt)?.sp_outputs_pending)
+}
+
 /// Every fingerprint the PSBT itself names: bip32_derivation, tap_key_origins and
 /// the silent payment spend derivation. Unlike `inspect`, this never resolves an sp()
 /// signer, so it cannot add the fingerprint behind an SP tweak or SP output that
@@ -1583,6 +1588,132 @@ mod tests {
         }
         psbt.tx_modifiable = None;
         psbt
+    }
+
+    /// ws-plaude/silent#104: a MuSig PSBT paying a silent payment output asks the QR
+    /// device for the signatures-only reply, and a reply of an ECDH share, a DLEQ
+    /// proof and a partial signature merges into the original v2 with all of them.
+    #[test]
+    fn a_musig_sp_signatures_only_reply_merges_its_share_proof_and_partial_signature() {
+        use bipqr::ll::{
+            decode, encode_response, request, response, types, Message, Request, Response,
+            SignResponseKind,
+        };
+        use bwk_sp::bwk_tx::bwk_psbt::{
+            musig::{
+                musig_input_partial_sigs, set_musig_input_participants, set_musig_input_pub_nonce,
+                MusigPubNonce,
+            },
+            sp::{
+                sp_global_dleq_v2, sp_global_dleqs_v2, sp_global_ecdh_share_v2,
+                sp_global_ecdh_shares_v2,
+            },
+        };
+
+        use crate::keys::qr::{QrResponse, QrSession};
+
+        let secp = Secp256k1::new();
+        let point =
+            |byte| PublicKey::from_secret_key(&secp, &SecretKey::from_slice(&[byte; 32]).unwrap());
+        let (a, b, aggregate) = (point(0x0a), point(0x0b), point(0x0c));
+        let mut original = kern_original();
+        set_musig_input_participants(&mut original.inputs[0].psbt, aggregate, &[a, b]);
+        for (participant, byte) in [(a, 1), (b, 2)] {
+            set_musig_input_pub_nonce(
+                &mut original.inputs[0].psbt,
+                &MusigPubNonce {
+                    participant,
+                    aggregate,
+                    leaf_hash: None,
+                    nonce: [byte; 66],
+                },
+            );
+        }
+        let original_bytes = original.serialize().unwrap();
+
+        let mut session = QrSession::new();
+        let sent = session
+            .sign(&["musig descriptor".to_string()], &original_bytes)
+            .unwrap();
+        let Message::Request(Request {
+            id,
+            body: request::Body::Sign(sign),
+        }) = decode(sent.message()).unwrap()
+        else {
+            panic!("expected a Signing request");
+        };
+        assert_eq!(sign.want_kind, Some(SignResponseKind::Signatures));
+
+        let signed = kern_signed();
+        let shares = sp_global_ecdh_shares_v2(&signed).unwrap();
+        let proofs = sp_global_dleqs_v2(&signed).unwrap();
+        assert_eq!(shares.len(), 2, "the Kern answer pays two scan keys");
+        let wire = |key: PublicKey| types::PublicKey(key.serialize());
+        let mut entries: Vec<_> = shares
+            .iter()
+            .map(|share| response::SignatureEntry::SpEcdhShare {
+                scope: response::SpScope::Global,
+                scan_key: wire(share.scan_key),
+                share: wire(share.share),
+            })
+            .collect();
+        entries.extend(
+            proofs
+                .iter()
+                .map(|proof| response::SignatureEntry::SpDleqProof {
+                    scope: response::SpScope::Global,
+                    scan_key: wire(proof.scan_key),
+                    proof: proof.proof,
+                }),
+        );
+        entries.push(response::SignatureEntry::MusigPartialSig {
+            input_index: 0,
+            participant: wire(a),
+            aggregate: wire(aggregate),
+            leaf_hash: None,
+            signature: [7; 32],
+        });
+        let reply = encode_response(&Response {
+            id,
+            body: response::Body::Signed(response::Signed::Signatures(entries)),
+        })
+        .unwrap();
+        let QrResponse::SignedPsbt(merged) = session.decode_response(&reply).unwrap() else {
+            panic!("expected a signed PSBT");
+        };
+        let merged = parse_v2(&merged).unwrap();
+
+        for share in &shares {
+            assert_eq!(
+                sp_global_ecdh_share_v2(&merged, share.scan_key).unwrap(),
+                Some(share.share)
+            );
+        }
+        for proof in &proofs {
+            assert_eq!(
+                sp_global_dleq_v2(&merged, proof.scan_key).unwrap(),
+                Some(proof.proof)
+            );
+        }
+        assert_eq!(
+            musig_input_partial_sigs(&merged.inputs[0].psbt)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            unknown_of(&merged.inputs[0].psbt.unknown, &[PSBT_IN_MUSIG2_PUB_NONCE]),
+            unknown_of(
+                &original.inputs[0].psbt.unknown,
+                &[PSBT_IN_MUSIG2_PUB_NONCE]
+            ),
+            "the round 1 nonces are kept"
+        );
+        for (output, signed_output) in merged.outputs.iter().zip(&signed.outputs) {
+            assert_eq!(output.script_pubkey, signed_output.script_pubkey);
+        }
+        assert!(!scan(&merged).unwrap().sp_outputs_pending);
+        assert!(bip375::verify_signed(&merged).is_ok());
     }
 
     #[test]
