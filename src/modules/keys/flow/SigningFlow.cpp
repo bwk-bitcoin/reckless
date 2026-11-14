@@ -207,6 +207,7 @@ void SigningFlow::begin() {
         return;
     case Context::Fetch:
     case Context::FetchXpub:
+    case Context::Register:
         m_current = fetchRow();
         startRoute();
         return;
@@ -404,8 +405,18 @@ auto SigningFlow::fetchRow() const -> FlowRow {
             continue;
         }
         row.alias = KeysModule::toQt(info.alias);
-        row.route = m_request.context == Context::FetchXpub ? KeysModule::xpubRoute(info)
-                                                            : KeysModule::descriptorRoute(info);
+        switch (m_request.context) {
+        case Context::FetchXpub:
+            row.route = KeysModule::xpubRoute(info);
+            break;
+        case Context::Register:
+            // Only a QR key registers through the flow (ws-plaude/silent#114).
+            row.route = KeyRouteKind::Qr;
+            break;
+        default:
+            row.route = KeysModule::descriptorRoute(info);
+            break;
+        }
     }
     return row;
 }
@@ -495,6 +506,8 @@ void SigningFlow::startRoute() {
             qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::xpubFetched, this, &SigningFlow::onXpubFetched,
             qontrol::UNIQUE);
+    connect(m_flow, &SigningRouteFlow::descriptorRegistered, this,
+            &SigningFlow::onDescriptorRegistered, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::failed, this, &SigningFlow::onFailed, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::cancelled, this, &QDialog::reject, qontrol::UNIQUE);
     setPage(m_flow);
@@ -559,6 +572,7 @@ void SigningFlow::onDevicesChanged() {
         break;
     case Context::Fetch:
     case Context::FetchXpub:
+    case Context::Register:
         return;
     }
     showPicker();
@@ -641,6 +655,16 @@ void SigningFlow::onDescriptorFetched(const QString &descriptor, const QList<qr:
 void SigningFlow::onXpubFetched(const QString &xpub) {
     m_answered = true;
     emit xpubFetched(m_request.req_id, xpub, m_request.fingerprint, m_request.path);
+    accept();
+}
+
+void SigningFlow::onDescriptorRegistered(const QString &proof_hex) {
+    if (m_answered) {
+        return;
+    }
+    m_answered = true;
+    emit descriptorRegistered(m_request.req_id, m_request.fingerprint, m_request.descriptor,
+                              proof_hex);
     accept();
 }
 

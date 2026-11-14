@@ -23,6 +23,7 @@ public:
                    const QString &descriptor, const QHash<QString, KeyRouteKind> &routes) override;
     void verifyAddress(const QString &descriptor, const QString &path,
                        const QString &address) override;
+    void registerDescriptor(const QString &descriptor) override;
     void stop() override;
 
 signals:

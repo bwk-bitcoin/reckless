@@ -336,6 +336,20 @@ flow-qr-speed => "Speed" => "NONE"
 flow-qr-speed-hint
 => "Frames per second. Lower it if the device misses parts."
 => "NONE";;
+flow-register-qr-hint
+=> "Scan this code with the device to register the wallet on it."
+=> "Escanee este código con el dispositivo para registrar la cartera en él.";;
+flow-register-qr-title
+=> "Show Registration Request"
+=> "Mostrar solicitud de registro";;
+flow-register-scan-hint
+=> "Approve the wallet on the device, then show its answer to the camera."
+=> "Apruebe la cartera en el dispositivo y luego muestre su respuesta a la cámara.";;
+flow-register-scan-title => "Scan Registration" => "Escanear registro"
+flow-register-title => "Register Wallet" => "Registrar cartera"
+flow-register-usb-wait
+=> "Approve the wallet registration on %1."
+=> "Apruebe el registro de la cartera en %1.";;
 flow-scan-bare-sigs-body
 => "Reckless needs the whole signed transaction (PSBT). On the device, choose to export the signed PSBT, then scan again."
 => "NONE";;
@@ -636,6 +650,12 @@ keys-register-alias => "Alias" => "NONE"
 keys-register-alias-placeholder => "Optional. Leave empty to name it “%1”." => "NONE"
 keys-register-disconnected => "The device was disconnected." => "NONE"
 keys-register-failed-title => "Could not register %1" => "NONE"
+keys-register-proof-not-stored
+=> "The device registered the wallet, but its proof of registration could not be saved."
+=> "El dispositivo registró la cartera, pero no se pudo guardar su prueba de registro.";;
+keys-register-refused
+=> "The device did not register the wallet."
+=> "El dispositivo no registró la cartera.";;
 keys-register-title => "Register as Key" => "NONE"
 keys-remove-accounts-body => "%1 will no longer be able to sign." => "NONE"
 keys-remove-accounts-many => "%1 accounts use this key" => "NONE"

@@ -135,6 +135,14 @@ void BwkQrEngine::verifyAddress(const QString &descriptor, const QString &path,
                                                       rust::Str(address.toStdString())));
 }
 
+void BwkQrEngine::registerDescriptor(const QString &descriptor) {
+    if (m_module->rust() == nullptr) {
+        emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
+        return;
+    }
+    issue(m_module->rust()->qr_request_register_descriptor(rust::Str(descriptor.toStdString())));
+}
+
 void BwkQrEngine::stop() {
     m_waiting = false;
     m_cancelled = true;
@@ -262,9 +270,11 @@ void BwkQrEngine::forwardResponse(const ::QrResponse &decoded) {
         emit addressVerified(decoded.verified());
         return;
     case QrResponseKind::Registration:
+        emit descriptorRegistered(decoded.registered(),
+                                  KeysModule::toQt(decoded.registration_proof()));
+        return;
     default:
-        // Nothing asks this codec for a registration.
-        qWarning() << "keys: unexpected QR registration answer";
+        qWarning() << "keys: unexpected QR answer kind";
         return;
     }
 }

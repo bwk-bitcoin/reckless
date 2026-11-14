@@ -1217,3 +1217,43 @@ fn test_a_nonce_preparation_answer_to_a_signing_request_is_refused() {
         "a nonce preparation answers no signing request"
     );
 }
+
+// ws-plaude/silent#114: a registration answer carries whether the device stored the
+// registration and, when it did not, the proof a later request carries.
+#[test]
+fn the_registration_answer_keeps_whether_it_was_stored_and_its_proof() {
+    let descriptor = "wpkh([73c5da0a/84h/1h/0h]tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/<0;1>/*)";
+    for (stored, proof) in [
+        (Some(false), Some(vec![7u8; 32])),
+        (Some(true), None),
+        (None, None),
+    ] {
+        let mut session = QrSession::new();
+        session
+            .register_descriptor(descriptor)
+            .expect("register_descriptor request");
+        let encoded = respond(
+            &session,
+            response::Body::Registration(response::Registration {
+                descriptor_alias: "alias".into(),
+                registered: true,
+                stored,
+                proof: proof.clone(),
+            }),
+        );
+        let answer = session
+            .decode_response(&encoded)
+            .expect("registration answer");
+        let QrResponse::Registration {
+            alias,
+            registered,
+            stored: got_stored,
+            proof: got_proof,
+        } = answer
+        else {
+            panic!("expected a registration answer, got {answer:?}");
+        };
+        assert_eq!((alias.as_str(), registered), ("alias", true));
+        assert_eq!((got_stored, got_proof), (stored, proof));
+    }
+}

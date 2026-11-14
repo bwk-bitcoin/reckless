@@ -194,6 +194,7 @@ void legacyPluginAbiSmoke(const QString &plugin_id);
 void spSigningSmoke(const QString &name);
 void musigResetSmoke();
 void qrCacheExchangeSmoke();
+void qrRegistrationSmoke();
 void boundarySmoke();
 void endpointSmoke();
 void navigationSmoke();
@@ -492,6 +493,12 @@ auto main(int argc, char *argv[]) -> int {
         Theme::init();
         smoke::musigResetSmoke();
         std::fprintf(stdout, "MuSig reset smoke: OK\n");
+        return gOk ? 0 : 1;
+    }
+    if (arguments.contains(QStringLiteral("--qr-registration"))) {
+        Theme::init();
+        smoke::qrRegistrationSmoke();
+        std::fprintf(stdout, "QR registration smoke: OK\n");
         return gOk ? 0 : 1;
     }
     if (arguments.contains(QStringLiteral("--qr-cache-exchange"))) {

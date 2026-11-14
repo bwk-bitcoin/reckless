@@ -65,6 +65,9 @@ void QrRouteFlow::start() {
     case Context::FetchXpub:
         m_qr_engine->getXpubs({request().path});
         return;
+    case Context::Register:
+        m_qr_engine->registerDescriptor(request().descriptor);
+        return;
     }
 }
 
@@ -166,6 +169,8 @@ void QrRouteFlow::connectCamera() {
             qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::addressVerified, this, &QrRouteFlow::onQrVerified,
             qontrol::UNIQUE);
+    connect(m_qr_engine, &qr::QrEngine::descriptorRegistered, this, &QrRouteFlow::onQrRegistered,
+            qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::spAccount, this, &QrRouteFlow::onQrSpAccount,
             qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::xpubs, this, &QrRouteFlow::onQrXpubs, qontrol::UNIQUE);
@@ -266,6 +271,15 @@ void QrRouteFlow::onQrVerified(bool matched) {
     m_camera->stop();
     showVerifyResult(matched ? SigningFlow::VerifyResult::Matched
                              : SigningFlow::VerifyResult::Mismatch);
+}
+
+void QrRouteFlow::onQrRegistered(bool registered, const QString &proof_hex) {
+    m_camera->stop();
+    if (!registered) {
+        emit failed(TR("keys-register-refused"));
+        return;
+    }
+    emit descriptorRegistered(proof_hex);
 }
 
 void QrRouteFlow::onQrSpAccount(const QString &descriptor, const QList<qr::QrXpub> &xpubs) {

@@ -67,6 +67,19 @@ auto flowCopy(Context context) -> FlowCopy {
                 .sdTitle = TR("flow-nonces-title"),
                 .hotPrompt = TR("flow-nonces-hot-prompt"),
                 .hotBusy = TR("flow-nonces-hot-busy")};
+    case Context::Register:
+        // Only the QR route registers through this flow (ws-plaude/silent#114).
+        return {.title = TR("flow-register-title"),
+                .pickerLead = QString(),
+                .usbTitle = TR("flow-usb-confirm-title"),
+                .usbWait = TR("flow-register-usb-wait"),
+                .qrTitle = TR("flow-register-qr-title"),
+                .qrHint = TR("flow-register-qr-hint"),
+                .scanTitle = TR("flow-register-scan-title"),
+                .scanHint = TR("flow-register-scan-hint"),
+                .sdTitle = TR("flow-register-title"),
+                .hotPrompt = QString(),
+                .hotBusy = QString()};
     }
     return {};
 }
@@ -83,6 +96,8 @@ auto hotProceedButton(Context context) -> catalog::Button * {
         return catalog::btnGetXpubHot();
     case Context::Nonces:
         return catalog::btnPrepareNoncesHot();
+    case Context::Register:
+        return catalog::btnProceed();
     }
     return catalog::btnProceed();
 }

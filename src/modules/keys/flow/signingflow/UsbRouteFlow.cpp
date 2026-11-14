@@ -88,6 +88,10 @@ void UsbRouteFlow::start() {
         // A descriptor only comes back over QR codes or from a hot key.
         emit failed(TR("keys-sp-descriptor-unavailable"));
         return;
+    case Context::Register:
+        // A USB registration goes through KeysModule::sendDeviceRegistration.
+        emit failed(TR("keys-route-unavailable"));
+        return;
     case Context::FetchXpub:
         connect(m_device, &ISigner::xpub, this, &UsbRouteFlow::onDeviceXpub, qontrol::UNIQUE);
         connect(m_device, &ISigner::error, this, &UsbRouteFlow::onDeviceError, qontrol::UNIQUE);

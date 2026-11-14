@@ -3104,7 +3104,11 @@ mod ffi {
         fn xpubs(self: &QrResponse) -> Vec<KeyXpub>;
         /// The device's verify_address answer when kind() is AddressVerified, else false.
         fn verified(self: &QrResponse) -> bool;
+        /// Whether the device registered the wallet, when kind() is Registration.
         fn registered(self: &QrResponse) -> bool;
+        /// When kind() is Registration and the device did not store the registration:
+        /// the proof of registration to keep, hex; else empty.
+        fn registration_proof(self: &QrResponse) -> String;
     }
 
     // ===== Camera Methods =====

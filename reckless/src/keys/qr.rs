@@ -535,9 +535,14 @@ pub enum QrResponse {
         version: String,
         capabilities: u32,
     },
+    /// The device's answer to a descriptor registration. `stored` says whether it kept
+    /// the registration itself; when it did not, `proof` is the proof of registration a
+    /// later request must carry (ws-plaude/silent#114).
     Registration {
         alias: String,
         registered: bool,
+        stored: Option<bool>,
+        proof: Option<Vec<u8>>,
     },
     /// Whether the device's independently derived address matched the one the
     /// caller asked it to confirm.
@@ -692,6 +697,8 @@ fn registration_response(registration: response::Registration) -> QrResponse {
     QrResponse::Registration {
         alias: registration.descriptor_alias,
         registered: registration.registered,
+        stored: registration.stored,
+        proof: registration.proof,
     }
 }
 

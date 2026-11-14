@@ -745,6 +745,14 @@ flow-verify-hot-busy => "Checking the address…"
 flow-fetch-hot-busy => "Getting the descriptor…"
 
 flow-fetch-xpub-hot-busy => "Getting the xpub…"
+flow-register-title => "Register Wallet"
+flow-register-usb-wait => "Approve the wallet registration on %1."
+flow-register-qr-title => "Show Registration Request"
+flow-register-qr-hint => "Scan this code with the device to register the wallet on it."
+flow-register-scan-title => "Scan Registration"
+flow-register-scan-hint => "Approve the wallet on the device, then show its answer to the camera."
+keys-register-refused => "The device did not register the wallet."
+keys-register-proof-not-stored => "The device registered the wallet, but its proof of registration could not be saved."
 
 flow-hot-busy-with => "With “%1”."
 

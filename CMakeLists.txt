@@ -806,6 +806,7 @@ if(RECKLESS_BUILD_HOST_SMOKE)
         tests/host/account_shell_smoke.cpp
         tests/host/keys_contract_smoke.cpp
         tests/host/qr_cache_smoke.cpp
+        tests/host/qr_registration_smoke.cpp
         tests/host/quit_shutdown_smoke.cpp
         tests/host/quit_shutdown_smoke.h
         tests/host/storage_smoke.cpp

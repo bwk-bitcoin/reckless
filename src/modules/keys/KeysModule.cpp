@@ -729,6 +729,8 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
             qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::xpubFetched, this, &KeysModule::onFlowXpubFetched,
             qontrol::UNIQUE);
+    connect(flow, &flow::SigningFlow::descriptorRegistered, this,
+            &KeysModule::onFlowDescriptorRegistered, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::failed, m_bus.get(), &KeysBus::deliverError, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::cancelled, m_bus.get(), &KeysBus::deliverCancelled,
             qontrol::UNIQUE);
@@ -1019,6 +1021,15 @@ void KeysModule::registerDescriptor(ReqId req_id, const QString &fingerprint,
     emit keysChanged();
     auto device = registrationDevice(fingerprint);
     if (!device.has_value()) {
+        // A QR device registers through its QR window, and answers only once it has
+        // (ws-plaude/silent#114). A key with neither route has nothing to register.
+        if (hasRoute(fingerprint, KeyRouteKind::Qr)) {
+            runFlow(new flow::SigningFlow(this, {.context = flow::Context::Register,
+                                                 .req_id = req_id,
+                                                 .descriptor = descriptor,
+                                                 .fingerprint = fingerprint}));
+            return;
+        }
         m_bus->deliverDescriptorRegistered(req_id, fingerprint);
         return;
     }
@@ -1054,6 +1065,23 @@ void KeysModule::checkDescriptorRegistered(ReqId req_id, const QString &fingerpr
                             .instance_id = device->instanceId,
                             .signer = device->signer,
                             .check_only = true});
+}
+
+auto KeysModule::hasRoute(const QString &fingerprint, KeyRouteKind route) const -> bool {
+    auto infos = keys();
+    return std::ranges::any_of(infos, [&fingerprint, route](const KeyInfo &info) {
+        return QString::compare(toQt(info.fingerprint), fingerprint, Qt::CaseInsensitive) == 0 &&
+               std::ranges::find(info.routes, route) != info.routes.end();
+    });
+}
+
+void KeysModule::onFlowDescriptorRegistered(ReqId req_id, const QString &fingerprint,
+                                            const QString &descriptor, const QString &proof_hex) {
+    if (!proof_hex.isEmpty() && !storeRegistrationHmac(fingerprint, descriptor, proof_hex)) {
+        m_bus->deliverError(req_id, TR("keys-register-proof-not-stored"));
+        return;
+    }
+    m_bus->deliverDescriptorRegistered(req_id, fingerprint);
 }
 
 auto KeysModule::registrationDevice(const QString &fingerprint) const

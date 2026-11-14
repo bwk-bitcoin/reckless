@@ -287,9 +287,10 @@ public:
     auto storeRegistrationHmac(const QString &fingerprint, const QString &descriptor,
                                const QString &hmac) -> bool;
     // Records `descriptor` as registered with `fingerprint`'s key, then registers it on
-    // the key's connected USB device (checked first, registered when not), and
-    // answers `req_id` through the bus's descriptorRegistered or error signal once the
-    // device has. With no connected device it answers at once.
+    // the key's connected USB device (checked first, registered when not), or on a QR
+    // key through its QR window (ws-plaude/silent#114), and answers `req_id` through
+    // the bus's descriptorRegistered or error signal once the device has. A key with
+    // neither route answers at once.
     void registerDescriptor(ReqId req_id, const QString &fingerprint, const QString &descriptor);
     // Asks `fingerprint`'s connected USB device whether it holds `descriptor`.
     void checkDescriptorRegistered(ReqId req_id, const QString &fingerprint,
@@ -393,6 +394,10 @@ private slots:
     void onHotXpubFinished(ReqId req_id, bool is_ok, QString xpub, QString error,
                            bool wrong_password);
     // A flow fetched an xpub: cached on its key, then handed to the caller.
+    // A QR device registered the wallet: a proof it did not store is kept, then the
+    // caller is answered (ws-plaude/silent#114).
+    void onFlowDescriptorRegistered(ReqId req_id, const QString &fingerprint,
+                                    const QString &descriptor, const QString &proof_hex);
     void onFlowXpubFetched(ReqId req_id, const QString &xpub, const QString &fingerprint,
                            const QString &path);
     // A flow fetched an sp() descriptor: the xpubs handed with it cached on its key,
@@ -460,6 +465,8 @@ protected:
         -> ISigner *;
     // A cached signer's key: the fingerprint on the active network.
     [[nodiscard]] auto signerKey(const QString &fingerprint) const -> QString;
+    // Whether the key `fingerprint` has the route `route`.
+    [[nodiscard]] auto hasRoute(const QString &fingerprint, KeyRouteKind route) const -> bool;
     // The ready device of `fingerprint`'s key when the key has a USB route.
     [[nodiscard]] auto registrationDevice(const QString &fingerprint) const
         -> std::optional<plugin::SignerEntry>;

@@ -45,6 +45,7 @@ public slots:
     void onQrSigned(const QString &psbt_v2_hex);
     void onMusigPrepared();
     void onQrVerified(bool matched);
+    void onQrRegistered(bool registered, const QString &proof_hex);
     void onQrSpAccount(const QString &descriptor, const QList<qr::QrXpub> &xpubs);
     void onQrXpubs(const QString &fingerprint, const QList<qr::QrXpub> &xpubs,
                    const qr::QrDevice &device);

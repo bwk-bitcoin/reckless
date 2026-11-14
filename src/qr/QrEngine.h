@@ -38,6 +38,8 @@ public:
                            const QHash<QString, KeyRouteKind> &routes) = 0;
     virtual void verifyAddress(const QString &descriptor, const QString &path,
                                const QString &address) = 0;
+    // Asks the device to register the wallet `descriptor` (ws-plaude/silent#114).
+    virtual void registerDescriptor(const QString &descriptor) = 0;
     // Ends the exchange: a late answer is dropped.
     virtual void stop() = 0;
 
@@ -51,6 +53,9 @@ signals:
     // The prepared answer checked out and is in the cache.
     void noncesPrepared();
     void addressVerified(bool matched);
+    // The device's registration answer: `proof_hex` is the proof of registration to
+    // keep when the device did not store the registration itself, else empty.
+    void descriptorRegistered(bool registered, const QString &proof_hex);
     void error(qr::QrError kind, const QString &message);
 
 public slots:

@@ -81,7 +81,7 @@ public:
         ReqId req_id = 0;
         // Sign.
         QString psbt_v2_hex;
-        // Sign and verify: the wallet the keys sign for.
+        // Sign and verify: the wallet the keys sign for. Register: the wallet registered.
         QString descriptor;
         // Sign: names the SD card files.
         QString wallet_name;
@@ -89,7 +89,7 @@ public:
         QString path;
         // Verify.
         QString address;
-        // Fetch and FetchXpub: the one key asked, so there is no picker. Sign: when set,
+        // Fetch, FetchXpub and Register: the one key asked, so there is no picker. Sign: when set,
         // only this key signs, with no picker, and the flow answers once it has. Verify:
         // when set, only this key shows the address, with no picker.
         QString fingerprint;
@@ -119,6 +119,10 @@ signals:
     void descriptorFetched(ReqId req_id, QString descriptor, QString fingerprint,
                            QList<qr::QrXpub> xpubs);
     void xpubFetched(ReqId req_id, QString xpub, QString fingerprint, QString path);
+    // The device registered the request's wallet: `proof_hex` is the proof of
+    // registration to keep, empty when the device stored it (ws-plaude/silent#114).
+    void descriptorRegistered(ReqId req_id, QString fingerprint, QString descriptor,
+                              QString proof_hex);
     // A failure the flow cannot recover from; the window closes.
     void failed(ReqId req_id, QString message, plugin::SignError kind = plugin::SignError::Other);
     // Closed before an answer, or after showing why there is none.
@@ -137,6 +141,7 @@ public slots:
     void onVerifyResultChanged(std::optional<SigningFlow::VerifyResult> result);
     void onDescriptorFetched(const QString &descriptor, const QList<qr::QrXpub> &xpubs);
     void onXpubFetched(const QString &xpub);
+    void onDescriptorRegistered(const QString &proof_hex);
     void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other);
 
 protected:
@@ -214,6 +219,8 @@ signals:
     // `xpubs` are the sub-account xpubs handed along, none on a route that has none.
     void descriptorFetched(const QString &descriptor, const QList<qr::QrXpub> &xpubs);
     void xpubFetched(const QString &xpub);
+    // The device registered the wallet; `proof_hex` as in SigningFlow.
+    void descriptorRegistered(const QString &proof_hex);
     // A failure the route cannot recover from: SigningFlow closes. `kind` says why,
     // for the caller to retry or restart.
     void failed(const QString &message, plugin::SignError kind = plugin::SignError::Other);

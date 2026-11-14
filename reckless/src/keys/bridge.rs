@@ -1545,6 +1545,20 @@ impl QrResponse {
             _ => false,
         }
     }
+
+    /// The proof of registration to keep, hex, when the device registered the wallet
+    /// without storing it; empty otherwise.
+    pub fn registration_proof(&self) -> String {
+        match self.inner.as_ref() {
+            Ok(qr::QrResponse::Registration {
+                registered: true,
+                stored,
+                proof: Some(proof),
+                ..
+            }) if *stored != Some(true) && !proof.is_empty() => hex::encode(proof),
+            _ => String::new(),
+        }
+    }
 }
 
 fn to_message(request: Result<qr::QrRequest, Error>) -> ffi::QrMessageResult {

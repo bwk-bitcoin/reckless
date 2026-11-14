@@ -216,7 +216,8 @@ void HotRouteFlow::onPasswordEntered(const QString &password) {
         module()->fetchHotXpub(m_hot_req, row().fingerprint, password, request().path);
         break;
     case Context::Verify:
-        // A hot key has no screen: verify rows never pick it.
+    case Context::Register:
+        // A hot key has no screen and registers nothing: these flows never pick it.
         break;
     }
 }
