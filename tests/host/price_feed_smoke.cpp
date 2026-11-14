@@ -380,11 +380,14 @@ void singleFeeProviderSettings(HostImpl *host, PriceModule *module, bool has_def
     auto *source = settings.findChild<QComboBox *>(QStringLiteral("settings-fee-source"));
     auto *mode = settings.findChild<QComboBox *>(QStringLiteral("settings-fee-mode"));
     require(source != nullptr && mode != nullptr, "settings exposes one fee source and mode");
-    require(source->count() == 2 && source->currentData().toString() == missingId &&
-                source->findData(QString()) >= 0,
-            "no providers keeps both None and the configured missing source");
-    require(mode->currentData().toInt() == static_cast<int>(FeeMode::Smart),
-            "missing source does not change the configured mode");
+    // A saved provider that is not loaded is not listed (ws-plaude/silent#109).
+    require(source->count() == 1 && source->currentData().toString().isEmpty() &&
+                source->findData(missingId) < 0 &&
+                host->selectedFees().preferences.source == missingId,
+            "no providers lists only None and keeps the missing source saved");
+    require(mode->currentData().toInt() == static_cast<int>(FeeMode::Manual) &&
+                host->selectedFees().preferences.mode == FeeMode::Smart,
+            "a missing source shows Manual without changing the configured mode");
     requireFeeRecommendations(host, settings, "-", "-", "-", "-");
     require(settings.findChild<QComboBox *>(QStringLiteral("fee-tier")) == nullptr,
             "settings has no global tier picker");
@@ -399,8 +402,8 @@ void singleFeeProviderSettings(HostImpl *host, PriceModule *module, bool has_def
     instance.provider = &feed;
     host->registerInstance(instance.id(), &instance, module);
     auto sourceId = host->feeSources().first().id;
-    require(source->count() == 3 && source->findData(sourceId) >= 0 &&
-                source->currentData().toString() == missingId &&
+    require(source->count() == 2 && source->findData(sourceId) >= 0 &&
+                source->currentData().toString().isEmpty() &&
                 host->selectedFees().preferences.source == missingId,
             "any capability combination appears without replacing the missing selection");
     requireFeeRecommendations(host, settings, "-", "-", "-", "-");
@@ -416,7 +419,7 @@ void singleFeeProviderSettings(HostImpl *host, PriceModule *module, bool has_def
     require(mode->currentData().toInt() == static_cast<int>(FeeMode::Manual) && !mode->isEnabled(),
             "with no provider the mode shows Manual and cannot change (#87)");
     require(source->count() == 2 && source->currentData().toString().isEmpty(),
-            "explicit None removes only the missing configured item");
+            "explicit None keeps the loaded provider listed");
     requireFeeRecommendations(host, settings, "-", "-", "-", "-");
 
     index = source->findData(sourceId);
@@ -474,9 +477,9 @@ void singleFeeProviderSettings(HostImpl *host, PriceModule *module, bool has_def
     }
 
     host->removeInstance(instance.id(), module);
-    require(source->count() == 2 && source->currentData().toString() == sourceId &&
+    require(source->count() == 1 && source->currentData().toString().isEmpty() &&
                 host->selectedFees().preferences.source == sourceId,
-            "provider disappearance retains its configured ID beside None");
+            "provider disappearance lists only None and keeps its configured ID saved");
     requireFeeRecommendations(host, settings, "-", "-", "-", "-");
     host->selectFees({});
 }
@@ -597,10 +600,11 @@ void feeRecommendations(HostImpl *host, PriceModule *module) {
     second.publishFeeCapabilities();
     requireFeeRecommendations(host, settings, "-", "-", "-", "-");
     auto *settingsSource = settings.findChild<QComboBox *>(QStringLiteral("settings-fee-source"));
-    require(settingsSource->currentData().toString() == secondId &&
-                settingsSource->currentText() == TR("settings-price-unavailable").arg(secondId) &&
+    require(settingsSource->currentData().toString().isEmpty() &&
+                settingsSource->currentText() == TR("settings-price-none") &&
+                settingsSource->findData(secondId) < 0 &&
                 host->selectedFees().preferences == manual.preferences,
-            "capability withdrawal keeps the unavailable provider and Manual mode");
+            "capability withdrawal lists no provider, shows None and keeps the saved one");
     second.has_default = true;
     second.publishFeeCapabilities();
     requireFeeRecommendations(host, settings, "0.625 sat/vB", "-", "-", "-");
@@ -875,6 +879,23 @@ void feeRecommendations(HostImpl *host, PriceModule *module) {
     require(host->feeSources().empty() && !host->selectedFees().default_rate.has_value() &&
                 defaultSend.transaction()->feeRate == 1,
             "unexpected feed destruction withdraws quote and falls back safely");
+    // A saved provider that is not loaded is not listed (ws-plaude/silent#109): Settings
+    // shows None and Manual, and the saved choice stays until its plugin is stopped.
+    auto *missingSource = settings.findChild<QComboBox *>(QStringLiteral("settings-fee-source"));
+    auto *missingMode = settings.findChild<QComboBox *>(QStringLiteral("settings-fee-mode"));
+    require(missingSource->count() == 1 &&
+                missingSource->currentText() == TR("settings-price-none") &&
+                missingMode->currentData().toInt() == static_cast<int>(FeeMode::Manual) &&
+                !missingMode->isEnabled() && host->selectedFees().preferences.source == firstId,
+            "a missing saved provider shows as None and Manual, and stays saved");
+    host->forgetFeeProvider(QStringLiteral("other.plugin"));
+    require(host->selectedFees().preferences.source == firstId,
+            "another plugin's stop keeps the saved provider");
+    FeePreferences cleared{.mode = FeeMode::Manual, .source = QString()};
+    host->forgetFeeProvider(QStringLiteral("price.plugin"));
+    waitForFeePreferences(writes, cleared);
+    require(host->selectedFees().preferences == cleared,
+            "its own plugin's stop clears the saved provider to None, Manual");
     host->removeInstance(one.id(), module);
     host->selectFees({});
 }

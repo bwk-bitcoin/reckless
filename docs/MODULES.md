@@ -1002,12 +1002,15 @@ are pushed by the provider; there is no host polling or automatic expiry.
 `Host::feeSources()` lists each source's Default/Smart capabilities.
 `Host::selectedFees()` returns cached optional recommendations and `FeePreferences`:
 `mode` Manual/Default/Smart and one `source` ID. `selectFees(preferences)` persists only
-mode and source globally for all networks. Settings offers one provider picker,
-including no selection and configured-but-unavailable IDs. Default, Low, Medium and
+mode and source globally for all networks. Settings offers one provider picker of the
+loaded providers and None; a saved provider that is not loaded shows as None, with the
+mode Manual, and is listed again once it loads. Default, Low, Medium and
 Fast recommendations all come from that one source, regardless of mode. Missing
 capabilities or rates remain unavailable; another provider never supplies a substitute.
 `HostEvents::feeSourcesChanged` and `selectedFeesChanged` notify consumers. Missing
 sources retain their configured IDs; the host never automatically selects another.
+Disabling or removing a plugin clears a saved provider of that plugin to no provider,
+Manual (`HostImpl::forgetFeeProvider`); quitting does not.
 Invalid or withdrawn rates are unavailable, not zero-fee recommendations.
 
 Global Settings shows the fee mode and the provider on one row and no rate: the

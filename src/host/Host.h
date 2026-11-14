@@ -50,6 +50,9 @@ public:
     [[nodiscard]] auto feeSources() const -> QList<FeeSource> override;
     [[nodiscard]] auto selectedFees() const -> SelectedFees override;
     void selectFees(const FeePreferences &preferences) override;
+    // A plugin the user disables or removes takes the fee provider it serves with it
+    // (ws-plaude/silent#109): a saved provider of that plugin goes back to none, Manual.
+    void forgetFeeProvider(const QString &plugin_id);
     // The registry supplies the stable plugin id once it attributes a live instance.
     void registerPriceSource(const QString &instance_id, const QString &plugin_id);
     void setKeys(IKeys *keys, IModule *owner) override;

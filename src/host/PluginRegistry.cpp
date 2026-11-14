@@ -1195,6 +1195,12 @@ void PluginRegistry::startPluginStop(const QString &plugin_id, bool remove) {
     ++m_state_revision;
     m_records[plugin_id].enabled = false;
     auto *host = dynamic_cast<HostImpl *>(Host::get());
+    if (host != nullptr) {
+        host->forgetFeeProvider(plugin_id);
+        if (alive == nullptr) {
+            return;
+        }
+    }
     for (auto *module : modules) {
         if (host != nullptr) {
             host->setCallerClosing(module, true);

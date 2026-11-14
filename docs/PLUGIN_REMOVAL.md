@@ -35,8 +35,9 @@ thread-local destruction. Cancel timers and retire queued callbacks. Never repor
 success merely because cancellation was requested.
 
 The host withdraws feed sources and runtime UI without changing selected source
-IDs, including the single configured fee provider. Its recommendations become
-unavailable, not replaced by another provider. Once every
+IDs, except the single configured fee provider: a disabled or removed plugin's saved
+fee provider is cleared to no provider and Manual mode. Recommendations are never
+replaced by another provider. Once every
 module reports successful shutdown the host revokes caller handles, waits for accepted host-owned storage
 and transaction jobs, destroys deferred plugin UI, and unloads the library.
 

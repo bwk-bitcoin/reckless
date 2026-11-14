@@ -357,21 +357,20 @@ void AppSettings::onFeeSourcesChanged() {
             hasSmart = true;
         }
     }
-    if (!preferences.source.isEmpty() && m_fee_source_picker->findData(preferences.source) < 0) {
-        m_fee_source_picker->addItem(TR("settings-price-unavailable").arg(preferences.source),
-                                     preferences.source);
-    }
-    m_fee_source_picker->setCurrentIndex(m_fee_source_picker->findData(preferences.source));
+    // A saved provider that is not loaded is not listed (ws-plaude/silent#109): the
+    // pickers show None and Manual until it comes back.
+    auto current = std::max(0, m_fee_source_picker->findData(preferences.source));
+    m_fee_source_picker->setCurrentIndex(current);
+    // No provider: the fee is entered by hand, the mode is Manual and cannot change.
+    bool noProvider = current == 0;
     m_fee_mode_picker->clear();
     m_fee_mode_picker->addItem(TR("fee-manual"), static_cast<int>(FeeMode::Manual));
-    if (hasDefault || preferences.mode == FeeMode::Default) {
+    if (hasDefault || (!noProvider && preferences.mode == FeeMode::Default)) {
         m_fee_mode_picker->addItem(TR("fee-default"), static_cast<int>(FeeMode::Default));
     }
-    if (hasSmart || preferences.mode == FeeMode::Smart) {
+    if (hasSmart || (!noProvider && preferences.mode == FeeMode::Smart)) {
         m_fee_mode_picker->addItem(TR("fee-smart"), static_cast<int>(FeeMode::Smart));
     }
-    // No provider: the fee is entered by hand, the mode is Manual and cannot change.
-    bool noProvider = preferences.source.isEmpty();
     auto mode = noProvider ? FeeMode::Manual : preferences.mode;
     m_fee_mode_picker->setCurrentIndex(m_fee_mode_picker->findData(static_cast<int>(mode)));
     m_fee_mode_picker->setEnabled(!noProvider);

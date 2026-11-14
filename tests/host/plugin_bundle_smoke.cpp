@@ -418,6 +418,16 @@ void pluginBundleSmoke(const QString &bundle) {
         require(!sources.isEmpty(), "the real fee producer is available before removal");
         selectedSource = sources.first().id;
         host->selectFees({.mode = FeeMode::Smart, .source = selectedSource});
+        // Disabling the plugin clears its saved provider (ws-plaude/silent#109).
+        require(stopPlugin(&registry, id).isEmpty(), "the fee plugin disables");
+        require(host->selectedFees().preferences ==
+                    FeePreferences{.mode = FeeMode::Manual, .source = QString()},
+                "a disabled fee plugin's provider is cleared to None, Manual");
+        requireEnabled(registry, manifest);
+        sources = host->feeSources();
+        require(!sources.isEmpty() && sources.first().id == selectedSource,
+                "the fee producer is back once the plugin is enabled again");
+        host->selectFees({.mode = FeeMode::Smart, .source = selectedSource});
     }
     require(stopPlugin(&registry, id, true).isEmpty(), "the plugin is removed");
     require(!isInstalled(id), "a removed plugin is no longer listed");
@@ -428,9 +438,10 @@ void pluginBundleSmoke(const QString &bundle) {
                 "removed price provider stays selected but unavailable, with no fallback");
     } else if (shape == FeedShape::Fee) {
         auto selected = host->selectedFees();
-        require(selected.preferences.source == selectedSource && !selected.medium.has_value() &&
-                    !selected.default_rate.has_value(),
-                "removed fee provider stays selected but unavailable, with no fallback");
+        require(selected.preferences ==
+                        FeePreferences{.mode = FeeMode::Manual, .source = QString()} &&
+                    !selected.medium.has_value() && !selected.default_rate.has_value(),
+                "a removed fee plugin's provider is cleared to None, Manual, with no fallback");
     }
 }
 

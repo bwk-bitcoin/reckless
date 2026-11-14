@@ -1340,6 +1340,15 @@ void HostImpl::selectFees(const FeePreferences &preferences) {
     m_prices->selectFees(preferences);
 }
 
+void HostImpl::forgetFeeProvider(const QString &plugin_id) {
+    assertGuiThread();
+    // A source id is the JSON array [plugin id, module id, instance id].
+    auto key = QJsonDocument::fromJson(m_prices->selectedFees().preferences.source.toUtf8());
+    if (key.isArray() && !key.array().isEmpty() && key.array().first().toString() == plugin_id) {
+        selectFees({.mode = FeeMode::Manual, .source = QString()});
+    }
+}
+
 void HostImpl::dispatchFeeWrite() {
     if (m_fee_write_thread != nullptr || m_fee_writes.empty()) {
         return;
