@@ -363,7 +363,8 @@ CARGO_EOF
           installPhase = ''
             mkdir -p $out/bin
             if [ -f silent ]; then
-              cp silent $out/bin/
+              # The binary, its desktop entry and hicolor icons (ws-plaude/silent#112).
+              cmake --install . --prefix $out
             elif [ -f silent.exe ]; then
               cp silent.exe $out/bin/
             elif [ -f silent.app/Contents/MacOS/silent ]; then

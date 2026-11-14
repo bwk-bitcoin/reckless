@@ -1,0 +1,3 @@
+// The Windows app icon (ws-plaude/silent#112), compiled into the executable. CMake
+// configures this file with the absolute path of the generated reckless.ico.
+IDI_ICON1 ICON "@RECKLESS_ICO@"

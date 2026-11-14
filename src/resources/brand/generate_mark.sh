@@ -2,6 +2,8 @@
 # Generates the app mark's derived files from reckless_mark.svg:
 #   src/resources/icon/reckless_mark.h   the SVG embedded as a C++ raw string
 #   src/resources/brand/png/reckless_mark_<size>.png at 16, 24, 32, 48, 64, 128, 256, 512
+#   src/resources/brand/reckless.ico and reckless.icns, the Windows and macOS app icons
+#   (pack_icons.py, from those PNGs and a 1024 px one for macOS)
 # The PNGs come from Qt's SVG renderer (render_mark.cpp), the one the app draws with.
 # CMake checks at configure time that the header holds the SVG unchanged.
 #
@@ -38,5 +40,9 @@ c++ -std=c++17 -fPIC "$DIR/render_mark.cpp" -o "$TOOL_DIR/render_mark" \
     $(pkg-config --cflags --libs Qt6Svg Qt6Gui)
 mkdir -p "$PNG_DIR"
 "$TOOL_DIR/render_mark" "$SVG" "$PNG_DIR/reckless_mark_" "${SIZES[@]}"
+# The 1024 px render is only for the macOS 512@2x entry.
+cp "$PNG_DIR"/reckless_mark_*.png "$TOOL_DIR/"
+"$TOOL_DIR/render_mark" "$SVG" "$TOOL_DIR/reckless_mark_" 1024
+python3 "$DIR/pack_icons.py" "$TOOL_DIR" reckless_mark_ "$DIR"
 
-echo "Wrote $HEADER and ${#SIZES[@]} PNGs in $PNG_DIR"
+echo "Wrote $HEADER, ${#SIZES[@]} PNGs in $PNG_DIR, reckless.ico and reckless.icns"

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Reckless
+GenericName=Bitcoin Wallet
+Comment=Bitcoin wallet for Silent Payments and multikey accounts
+Exec=silent
+Icon=reckless
+Terminal=false
+Categories=Office;Finance;Qt;
+Keywords=bitcoin;wallet;silent payments;
+StartupWMClass=silent

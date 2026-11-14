@@ -86,3 +86,12 @@ It regenerates `icon/reckless_mark.h` (the SVG as `embedded_icon::RECKLESS_MARK`
 `brand/png/reckless_mark_<size>.png` at 16, 24, 32, 48, 64, 128, 256 and 512 px, rendered
 by Qt's SVG renderer (`brand/render_mark.cpp`). CMake stops at configure time when the
 header does not hold the SVG unchanged.
+
+## Platform app icons
+
+The same script writes `brand/reckless.ico` (16, 24, 32, 48, 64 and 256 px) and
+`brand/reckless.icns` (16 to 512 px at @1x and @2x) with `brand/pack_icons.py`. CMake
+compiles the `.ico` into the Windows executable (`brand/reckless.rc.in`), makes the
+`.icns` the macOS bundle icon (`MACOSX_BUNDLE_ICON_FILE`), and on Linux installs
+`brand/reckless.desktop` with the mark under `share/icons/hicolor` (scalable SVG plus
+the PNGs). The Nix Linux output gets them through `cmake --install`.

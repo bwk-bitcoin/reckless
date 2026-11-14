@@ -76,6 +76,8 @@ auto main(int argc, char *argv[]) -> int {
     Theme::init();
     Theme::get()->apply();
     // The reckless mark (ws-plaude/silent#111), in its own colours.
+    // The desktop entry the installed icon belongs to (ws-plaude/silent#112).
+    QGuiApplication::setDesktopFileName(QStringLiteral("reckless"));
     QApplication::setWindowIcon(icon::windowIcon(icon::windowIconPremultiplied()));
 
     // Initialize i18n before creating UI widgets

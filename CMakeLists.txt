@@ -645,6 +645,36 @@ set_target_properties(${BIN} PROPERTIES
     MACOSX_BUNDLE ON
 )
 
+# The app icon outside the running window (ws-plaude/silent#112), all from
+# src/resources/brand (generate_mark.sh): the .ico compiled into the Windows
+# executable, the .icns as the macOS bundle icon, and on Linux a desktop entry with
+# the mark installed under the hicolor theme.
+set(RECKLESS_BRAND_DIR ${CMAKE_SOURCE_DIR}/src/resources/brand)
+if(WIN32)
+    enable_language(RC)
+    set(RECKLESS_ICO ${RECKLESS_BRAND_DIR}/reckless.ico)
+    configure_file(${RECKLESS_BRAND_DIR}/reckless.rc.in ${CMAKE_BINARY_DIR}/reckless.rc @ONLY)
+    target_sources(${BIN} PRIVATE ${CMAKE_BINARY_DIR}/reckless.rc)
+    set_property(SOURCE ${CMAKE_BINARY_DIR}/reckless.rc APPEND PROPERTY OBJECT_DEPENDS ${RECKLESS_ICO})
+elseif(APPLE)
+    set(RECKLESS_ICNS ${RECKLESS_BRAND_DIR}/reckless.icns)
+    set_source_files_properties(${RECKLESS_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(${BIN} PRIVATE ${RECKLESS_ICNS})
+    set_target_properties(${BIN} PROPERTIES MACOSX_BUNDLE_ICON_FILE reckless.icns)
+else()
+    include(GNUInstallDirs)
+    install(TARGETS ${BIN} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${RECKLESS_BRAND_DIR}/reckless.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES ${RECKLESS_BRAND_DIR}/reckless_mark.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps RENAME reckless.svg)
+    foreach(size 16 24 32 48 64 128 256 512)
+        install(FILES ${RECKLESS_BRAND_DIR}/png/reckless_mark_${size}.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
+            RENAME reckless.png)
+    endforeach()
+endif()
+
 # Opt-in plugin host/registry smoke test. OFF by default so it never affects the
 # normal build. When ON it reuses the shared application sources so it links the
 # real Host and PluginRegistry, and drives them headless with mock plugins.
