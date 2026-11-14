@@ -835,18 +835,26 @@ fn test_sp_verify_request_needs_the_descriptor_origin() {
 
 #[test]
 fn test_sp_verify_answer_is_compared_with_the_address() {
-    for (answered, matched) in [(SP_ADDRESS, true), ("tsp1qqother", false)] {
+    // A device answers a silent payment address as BIP-321's `sp=` parameter
+    // (ws-plaude/silent#122); the URI path is only a fallback address, never compared.
+    for (answered, matched) in [
+        (format!("bitcoin:?sp={SP_ADDRESS}"), true),
+        ("bitcoin:?sp=tsp1qqother".to_string(), false),
+        (format!("bitcoin:{SP_ADDRESS}"), false),
+    ] {
         let mut session = QrSession::new();
         let (id, _) = sp_verify_request(&mut session);
         let answer = encode_response(&Response {
             id,
             body: response::Body::AddressUri(response::AddressUri {
-                uri: format!("bitcoin:{answered}"),
+                uri: answered.clone(),
             }),
         })
         .expect("encodes");
         match session.decode_response(&answer) {
-            Ok(QrResponse::AddressVerified(verified)) => assert_eq!(verified, matched),
+            Ok(QrResponse::AddressVerified(verified)) => {
+                assert_eq!(verified, matched, "answered {answered}")
+            }
             Ok(_) => panic!("not an address verification"),
             Err(e) => panic!("refused: {e}"),
         }
