@@ -753,9 +753,7 @@ keys-xpubs-empty-offline
 main-keys-tab => "Keys" => "NONE"
 main-menu-tab => "+" => "+"
 main-settings-tab => "Settings" => "NONE"
-main-window-title
-=> "Reckless - Silent Payments Wallet"
-=> "Reckless - Silent Payments Wallet";;
+main-window-title => "Reckless" => "Reckless"
 musig-account-restore => "Restore Multikey Wallet" => "Restore Multikey Wallet"
 musig-account-type => "Multikey Wallet" => "NONE"
 musig-backend-busy
