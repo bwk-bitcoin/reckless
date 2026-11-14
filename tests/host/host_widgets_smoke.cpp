@@ -218,6 +218,14 @@ void hostWidgetsSmoke() {
         pump(50);
         require(dots(trail) == 3 && hasLabel(trail, QStringLiteral("Check")),
                 "a longer list grows the trail");
+        // ws-plaude/silent#133: a step's state stays through a longer list.
+        trail->setStepState(1, plugin::StepState::Failed);
+        trail->setSteps({QStringLiteral("Device"), QStringLiteral("Wallet"),
+                         QStringLiteral("Check"), QStringLiteral("Done")});
+        pump(50);
+        require(trail->findChild<catalog::WizardSteps *>()->stepState(1) ==
+                    plugin::StepState::Failed,
+                "a step's state is kept when the plugin grows the list");
         trail->setStepCount(4);
         pump(50);
         require(dots(trail) == 4, "a count without names numbers its steps");

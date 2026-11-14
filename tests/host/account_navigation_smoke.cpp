@@ -451,6 +451,25 @@ void hostWidgetsFixture(MainWindow &window) {
             shot(window,
                  QStringLiteral("issue-129-40-steps-%1-%2.png").arg(QLatin1String(name), suffix));
         }
+        // ws-plaude/silent#133: failed and skipped steps, in full and in a window.
+        QStringList ten = forty.mid(0, 10);
+        // Failed and skipped next to the current step, so they show.
+        trail->setSteps(ten);
+        trail->setCurrent(5);
+        trail->setStepState(4, plugin::StepState::Failed);
+        trail->setStepState(6, plugin::StepState::Skipped);
+        QApplication::processEvents();
+        shot(window, QStringLiteral("issue-133-10-steps-%1.png").arg(suffix));
+        trail->setSteps(forty);
+        trail->setCurrent(20);
+        // Step 5 failed in the hidden run before the window: its ellipsis warns.
+        trail->setStepState(19, plugin::StepState::Failed);
+        trail->setStepState(21, plugin::StepState::Skipped);
+        QApplication::processEvents();
+        shot(window, QStringLiteral("issue-133-40-steps-%1.png").arg(suffix));
+        for (int i = 0; i < 40; ++i) {
+            trail->setStepState(i, plugin::StepState::Pending);
+        }
     }
     theme->setMode(initial);
     theme->apply();

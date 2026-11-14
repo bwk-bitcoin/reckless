@@ -1,5 +1,6 @@
 #pragma once
 
+#include "interfaces/enums.h"
 #include "theme/Palette.h"
 
 #include <QList>
@@ -25,6 +26,10 @@ class WizardSteps : public QWidget {
 public:
     explicit WizardSteps(const QStringList &steps, QWidget *parent = nullptr);
     void setCurrent(int index);
+    // A step's outcome (ws-plaude/silent#133): Failed a cross in the error colour,
+    // Skipped a dash, Passed the check; Pending follows the current index.
+    void setStepState(int index, plugin::StepState state);
+    [[nodiscard]] auto stepState(int index) const -> plugin::StepState;
     static auto qss(const Palette &p) -> QString;
 
 protected:
@@ -38,6 +43,7 @@ private:
     QList<QWidget *> m_steps;
     // The ellipsis after each step but the last, shown before a hidden run.
     QList<QLabel *> m_gaps;
+    QList<plugin::StepState> m_states;
     QList<QLabel *> m_dots;
     QList<Label *> m_names;
     // The rule before each step but the first.

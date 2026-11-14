@@ -80,6 +80,7 @@ WizardSteps::WizardSteps(const QStringList &steps, QWidget *parent) : QWidget(pa
         sizeName(name, nameWidth);
         m_dots.append(dot);
         m_names.append(name);
+        m_states.append(plugin::StepState::Pending);
         auto *step = (new qontrol::Row)->spacing(gap)->push(dot)->push(name);
         m_steps.append(step);
         if (!last) {
@@ -115,6 +116,18 @@ void WizardSteps::setCurrent(int index) {
     refresh();
 }
 
+void WizardSteps::setStepState(int index, plugin::StepState state) {
+    if (index < 0 || index >= m_states.size() || !plugin::enumToWire(state).has_value()) {
+        return;
+    }
+    m_states[index] = state;
+    refresh();
+}
+
+auto WizardSteps::stepState(int index) const -> plugin::StepState {
+    return index >= 0 && index < m_states.size() ? m_states.at(index) : plugin::StepState::Pending;
+}
+
 auto WizardSteps::shown(int index) const -> bool {
     auto last = int(m_dots.size()) - 1;
     if (m_dots.size() <= MAX_FULL_STEPS) {
@@ -134,10 +147,19 @@ void WizardSteps::refresh() {
                 m_steps.at(i)->setVisible(visible);
             }
             if (i < m_gaps.size()) {
-                // Before a hidden run: the ellipsis in place of this step's rule.
+                // Before a hidden run: the ellipsis in place of this step's rule, in the
+                // error tone when the run holds a failed step, so it is not lost.
                 auto before_run = visible && !shown(i + 1);
                 if (before_run == showing) {
                     m_gaps.at(i)->setVisible(before_run);
+                }
+                if (before_run && showing) {
+                    bool failed = false;
+                    for (int hidden = i + 1; hidden < m_steps.size() && !shown(hidden); ++hidden) {
+                        failed |= m_states.at(hidden) == plugin::StepState::Failed;
+                    }
+                    m_gaps.at(i)->setProperty("failed", failed);
+                    repolish(m_gaps.at(i));
                 }
                 if (!before_run == showing) {
                     m_rules.at(i)->setVisible(!before_run);
@@ -148,18 +170,39 @@ void WizardSteps::refresh() {
     for (int i = 0; i < m_dots.size(); ++i) {
         auto *dot = m_dots.at(i);
         auto *name = m_names.at(i);
-        bool done = i < m_current;
         bool current = i == m_current;
-        if (done) {
+        auto state = m_states.at(i);
+        // A step with no outcome set follows the current index, as before #133.
+        if (state == plugin::StepState::Pending && i < m_current) {
+            state = plugin::StepState::Passed;
+        }
+        // The current step keeps its accent ring whatever its state.
+        dot->setProperty("current", current);
+        switch (state) {
+        case plugin::StepState::Passed:
             dot->setProperty("state", "done");
             dot->setText({});
             dot->setPixmap(icon::check(IconColor::OnAccent).pixmap(CHECK_SIZE, CHECK_SIZE));
-            name->setTone(LabelTone::Secondary);
-        } else {
+            name->setTone(current ? LabelTone::Default : LabelTone::Secondary);
+            break;
+        case plugin::StepState::Failed:
+            dot->setProperty("state", "failed");
+            dot->setText({});
+            dot->setPixmap(icon::x(IconColor::OnAccent).pixmap(CHECK_SIZE, CHECK_SIZE));
+            name->setTone(LabelTone::Error);
+            break;
+        case plugin::StepState::Skipped:
+            dot->setProperty("state", "skipped");
+            dot->setText({});
+            dot->setPixmap(icon::minus(IconColor::Muted).pixmap(CHECK_SIZE, CHECK_SIZE));
+            name->setTone(LabelTone::Muted);
+            break;
+        case plugin::StepState::Pending:
             dot->setProperty("state", current ? "current" : "next");
             dot->setPixmap({});
             dot->setText(QString::number(i + 1));
             name->setTone(current ? LabelTone::Default : LabelTone::Muted);
+            break;
         }
         auto nameFont = name->font();
         nameFont.setWeight(current ? font::DEMIBOLD : QFont::Normal);
@@ -183,12 +226,18 @@ auto WizardSteps::qss(const Palette &p) -> QString {
                    "  color: %2; }"
                    "QLabel[class=\"wizard-dot\"][state=\"done\"] { border-color: %2;"
                    "  background: %2; }"
-                   "QLabel[class=\"wizard-gap\"] { color: %5; background: transparent; }")
+                   "QLabel[class=\"wizard-dot\"][state=\"failed\"] { border-color: %6;"
+                   "  background: %6; }"
+                   "QLabel[class=\"wizard-dot\"][state=\"skipped\"] { border-style: dashed; }"
+                   "QLabel[class=\"wizard-dot\"][current=\"true\"] { border-color: %2; }"
+                   "QLabel[class=\"wizard-gap\"] { color: %5; background: transparent; }"
+                   "QLabel[class=\"wizard-gap\"][failed=\"true\"] { color: %6; }")
         .arg(p.borderLight.name())
         .arg(p.accent.name())
         .arg(p.border.name())
         .arg(DOT_SIZE / 2)
-        .arg(p.textMuted.name());
+        .arg(p.textMuted.name())
+        .arg(p.error.name());
 }
 
 } // namespace catalog

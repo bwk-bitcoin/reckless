@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QStringList>
 #include <QWidget>
+#include <interfaces/enums.h>
 
 // Reckless's own widgets, made by the host for a plugin's views (ws-plaude/silent#121):
 // the plugin hands data in, the host draws them in its live theme, so a plugin's QR
@@ -64,4 +65,9 @@ public:
     virtual void setStepCount(int count) = 0;
     // The current step, 0-based: the ones before it show done.
     virtual void setCurrent(int index) = 0;
+    // Step `index`'s outcome (ws-plaude/silent#133): Passed shows the check, Failed a
+    // cross in the error colour, Skipped a dash; Pending, every step's state until set,
+    // follows the current index. The current step keeps its accent ring whatever its
+    // state. setSteps() and setStepCount() keep the states of the steps they keep.
+    virtual void setStepState(int index, plugin::StepState state) = 0;
 };

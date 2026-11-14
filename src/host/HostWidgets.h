@@ -68,14 +68,17 @@ public:
     void setSteps(const QStringList &names) override;
     void setStepCount(int count) override;
     void setCurrent(int index) override;
+    void setStepState(int index, plugin::StepState state) override;
 
 private:
-    // WizardSteps takes its steps once: a new list builds a new trail in its place.
+    // WizardSteps takes its steps once: a new list builds a new trail in its place,
+    // with the states of the steps it keeps.
     void rebuild();
 
     QVBoxLayout *m_layout = nullptr;
     catalog::WizardSteps *m_trail = nullptr;
     QStringList m_names;
+    QList<plugin::StepState> m_states;
     int m_current = 0;
 };
 

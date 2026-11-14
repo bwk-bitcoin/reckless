@@ -172,6 +172,82 @@ void checkWindowed(int count, int width) {
     }
 }
 
+// ws-plaude/silent#133: a step's own outcome, drawn over the current index's done
+// steps; a hidden run holding a failed step shows its ellipsis in the error tone.
+void checkStates() {
+    QStringList labels;
+    for (int i = 0; i < 10; ++i) {
+        labels.append(QStringLiteral("Step %1").arg(i + 1));
+    }
+    QWidget window;
+    auto *trail = new catalog::WizardSteps(labels);
+    (new qontrol::Column)->margins(0)->push(trail)->pushSpacer()->into(&window);
+    window.resize(1024, 768);
+    window.show();
+    QList<QLabel *> dots;
+    for (auto *child : trail->findChildren<QLabel *>()) {
+        if (child->property("class") == "wizard-dot") {
+            dots.append(child);
+        }
+    }
+    auto state = [&dots](int index) { return dots.at(index)->property("state").toString(); };
+    trail->setCurrent(5);
+    settle(window);
+    check(state(4) == "done" && state(5) == "current" && state(6) == "next",
+          "with no state set, the trail follows the current index as before");
+    trail->setStepState(2, plugin::StepState::Failed);
+    trail->setStepState(3, plugin::StepState::Skipped);
+    trail->setStepState(7, plugin::StepState::Passed);
+    trail->setStepState(5, plugin::StepState::Failed);
+    trail->setStepState(42, plugin::StepState::Failed);
+    trail->setStepState(1, static_cast<plugin::StepState>(9));
+    settle(window);
+    check(state(2) == "failed" && dots.at(2)->text().isEmpty(), "a failed step shows its cross");
+    check(state(3) == "skipped", "a skipped step shows apart from done and next");
+    check(state(7) == "done", "a passed step after the current one shows its check");
+    check(state(1) == "done", "an unknown state is ignored");
+    check(state(5) == "failed" && dots.at(5)->property("current").toBool(),
+          "the current step keeps its ring whatever its state");
+    auto names = trail->findChildren<catalog::Label *>();
+    check(names.at(2)->property("tone").toString() == QStringLiteral("error"),
+          "a failed step's name is in the error tone");
+    trail->setStepState(2, plugin::StepState::Pending);
+    settle(window);
+    check(state(2) == "done", "back to Pending, a step follows the current index again");
+
+    // Forty steps on the twentieth, step 11 failed: the ellipsis before its run warns.
+    QStringList forty;
+    for (int i = 0; i < 40; ++i) {
+        forty.append(QStringLiteral("Step %1").arg(i + 1));
+    }
+    QWidget wide;
+    auto *windowed = new catalog::WizardSteps(forty);
+    (new qontrol::Column)->margins(0)->push(windowed)->pushSpacer()->into(&wide);
+    wide.resize(1024, 768);
+    wide.show();
+    windowed->setCurrent(19);
+    windowed->setStepState(10, plugin::StepState::Failed);
+    windowed->setStepState(30, plugin::StepState::Skipped);
+    settle(wide);
+    QList<QLabel *> gaps;
+    for (auto *child : windowed->findChildren<QLabel *>()) {
+        if (child->property("class") == "wizard-gap" && child->isVisible()) {
+            gaps.append(child);
+        }
+    }
+    check(gaps.size() == 2, "two hidden runs, two ellipses");
+    check(gaps.at(0)->property("failed").toBool() && !gaps.at(1)->property("failed").toBool(),
+          "the ellipsis of the run holding the failed step is in the error tone, the other not");
+    windowed->setCurrent(10);
+    settle(wide);
+    for (auto *child : windowed->findChildren<QLabel *>()) {
+        if (child->property("class") == "wizard-gap" && child->isVisible()) {
+            check(!child->property("failed").toBool(),
+                  "once the failed step shows, no ellipsis warns of it");
+        }
+    }
+}
+
 } // namespace
 
 namespace smoke {
@@ -204,6 +280,7 @@ void wizardStepsGeometrySmoke() {
         checkWindowed(40, width);
         checkWindowed(60, width);
     }
+    checkStates();
     check(i18n::I18nManager::get()->applyLocale("en", false), "Failed to restore locale");
     qInfo() << "WizardSteps geometry checks passed";
 }

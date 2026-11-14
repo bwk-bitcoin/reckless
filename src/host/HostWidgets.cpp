@@ -99,12 +99,27 @@ void HostStepTrail::setCurrent(int index) {
     }
 }
 
+void HostStepTrail::setStepState(int index, plugin::StepState state) {
+    if (index < 0 || index >= m_names.size() || !plugin::enumToWire(state).has_value()) {
+        return;
+    }
+    m_states[index] = state;
+    if (m_trail != nullptr) {
+        m_trail->setStepState(index, state);
+    }
+}
+
 void HostStepTrail::rebuild() {
     if (m_trail != nullptr) {
         m_layout->removeWidget(m_trail);
         delete m_trail;
     }
+    // The steps kept keep their states; new ones start Pending.
+    m_states.resize(m_names.size(), plugin::StepState::Pending);
     m_trail = new catalog::WizardSteps(m_names, this);
+    for (int i = 0; i < m_states.size(); ++i) {
+        m_trail->setStepState(i, m_states.at(i));
+    }
     m_trail->setCurrent(m_current);
     m_layout->addWidget(m_trail);
 }
