@@ -13,7 +13,15 @@ namespace keys::flow {
 // What a signing flow was opened for: it sets every title and line the steps show.
 // Fetch asks the key for its sp() descriptor, FetchXpub for its xpub at a path.
 // Nonces fills the key's nonce cache with one session, bound to no transaction.
-enum class Context : std::uint8_t { Sign, Verify, Fetch, FetchXpub, Nonces, Register };
+enum class Context : std::uint8_t {
+    Sign,
+    Verify,
+    Fetch,
+    FetchXpub,
+    Nonces,
+    Register,
+    CheckRegistration
+};
 
 // The copy of one context. `usbWait` takes the device name, `hotPrompt` the key alias.
 struct FlowCopy {

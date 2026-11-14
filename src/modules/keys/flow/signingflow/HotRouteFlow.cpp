@@ -217,6 +217,7 @@ void HotRouteFlow::onPasswordEntered(const QString &password) {
         break;
     case Context::Verify:
     case Context::Register:
+    case Context::CheckRegistration:
         // A hot key has no screen and registers nothing: these flows never pick it.
         break;
     }

@@ -68,6 +68,9 @@ void QrRouteFlow::start() {
     case Context::Register:
         m_qr_engine->registerDescriptor(request().descriptor);
         return;
+    case Context::CheckRegistration:
+        m_qr_engine->checkRegistration(request().descriptor);
+        return;
     }
 }
 
@@ -275,6 +278,10 @@ void QrRouteFlow::onQrVerified(bool matched) {
 
 void QrRouteFlow::onQrRegistered(bool registered, const QString &proof_hex) {
     m_camera->stop();
+    if (request().context == Context::CheckRegistration) {
+        emit registrationChecked(registered);
+        return;
+    }
     if (!registered) {
         emit failed(TR("keys-register-refused"));
         return;

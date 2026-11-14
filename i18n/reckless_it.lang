@@ -250,6 +250,22 @@ flow-camera-none-title => "No camera found" => "NONE"
 flow-camera-settings-title => "Camera Settings" => "NONE"
 flow-camera-source => "Camera Source:" => "NONE"
 flow-camera-starting => "Starting the camera…" => "NONE"
+flow-check-registration-qr-hint
+=> "Scan this code with the device to check whether it holds the wallet."
+=> "Scansiona questo codice con il dispositivo per verificare se contiene il portafoglio.";;
+flow-check-registration-qr-title
+=> "Show Registration Check"
+=> "Mostra verifica di registrazione";;
+flow-check-registration-scan-hint
+=> "Show the device's answer to the camera."
+=> "Mostra la risposta del dispositivo alla fotocamera.";;
+flow-check-registration-scan-title
+=> "Scan Registration Status"
+=> "Scansiona stato di registrazione";;
+flow-check-registration-title => "Check Registration" => "Verifica registrazione"
+flow-check-registration-usb-wait
+=> "Checking the wallet on %1."
+=> "Verifica del portafoglio su %1.";;
 flow-fetch-hot-busy => "Getting the descriptor…" => "NONE"
 flow-fetch-hot-prompt
 => "Enter the password of “%1” to get its silent payment descriptor."

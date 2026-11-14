@@ -731,6 +731,8 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
             qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::descriptorRegistered, this,
             &KeysModule::onFlowDescriptorRegistered, qontrol::UNIQUE);
+    connect(flow, &flow::SigningFlow::registrationChecked, m_bus.get(),
+            &KeysBus::deliverRegistrationChecked, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::failed, m_bus.get(), &KeysBus::deliverError, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::cancelled, m_bus.get(), &KeysBus::deliverCancelled,
             qontrol::UNIQUE);
@@ -1052,6 +1054,14 @@ void KeysModule::checkDescriptorRegistered(ReqId req_id, const QString &fingerpr
                                            const QString &descriptor) {
     auto device = registrationDevice(fingerprint);
     if (!device.has_value()) {
+        // A QR device answers the check through its QR window (ws-plaude/silent#115).
+        if (hasRoute(fingerprint, KeyRouteKind::Qr)) {
+            runFlow(new flow::SigningFlow(this, {.context = flow::Context::CheckRegistration,
+                                                 .req_id = req_id,
+                                                 .descriptor = descriptor,
+                                                 .fingerprint = fingerprint}));
+            return;
+        }
         m_bus->deliverError(req_id, TR("flow-usb-disconnected-body").arg(fingerprint));
         return;
     }

@@ -143,6 +143,14 @@ void BwkQrEngine::registerDescriptor(const QString &descriptor) {
     issue(m_module->rust()->qr_request_register_descriptor(rust::Str(descriptor.toStdString())));
 }
 
+void BwkQrEngine::checkRegistration(const QString &descriptor) {
+    if (m_module->rust() == nullptr) {
+        emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
+        return;
+    }
+    issue(m_module->rust()->qr_request_check_registration(rust::Str(descriptor.toStdString())));
+}
+
 void BwkQrEngine::stop() {
     m_waiting = false;
     m_cancelled = true;

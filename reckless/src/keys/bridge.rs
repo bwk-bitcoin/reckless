@@ -772,6 +772,10 @@ impl KeysModule {
         to_message(self.session.register_descriptor(descriptor))
     }
 
+    pub fn qr_request_check_registration(&mut self, descriptor: &str) -> ffi::QrMessageResult {
+        to_message(self.session.check_registration(descriptor))
+    }
+
     pub fn qr_request_verify_address(
         &mut self,
         descriptor: &str,

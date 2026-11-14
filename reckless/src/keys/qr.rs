@@ -203,6 +203,17 @@ impl QrSession {
         self.issue(body, None, None, None)
     }
 
+    /// Asks whether the device holds the wallet `descriptor`: the registration request
+    /// with its alias and no descriptor body (bipqr's registration check,
+    /// ws-plaude/silent#115). The answer is a Registration.
+    pub fn check_registration(&mut self, descriptor: &str) -> Result<QrRequest, Error> {
+        let body = request::Body::RegisterDescriptor(request::RegisterDescriptor {
+            descriptor_alias: hwi::wallet_name(descriptor),
+            descriptor: None,
+        });
+        self.issue(body, None, None, None)
+    }
+
     /// A silent payment address is asked for with its account's keys instead of the
     /// sp() descriptor, which holds the scan secret: `path` is then its label, empty
     /// for the account's address.

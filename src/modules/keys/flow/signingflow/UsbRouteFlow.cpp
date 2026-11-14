@@ -89,6 +89,7 @@ void UsbRouteFlow::start() {
         emit failed(TR("keys-sp-descriptor-unavailable"));
         return;
     case Context::Register:
+    case Context::CheckRegistration:
         // A USB registration goes through KeysModule::sendDeviceRegistration.
         emit failed(TR("keys-route-unavailable"));
         return;

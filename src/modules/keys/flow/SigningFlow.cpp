@@ -208,6 +208,7 @@ void SigningFlow::begin() {
     case Context::Fetch:
     case Context::FetchXpub:
     case Context::Register:
+    case Context::CheckRegistration:
         m_current = fetchRow();
         startRoute();
         return;
@@ -410,7 +411,9 @@ auto SigningFlow::fetchRow() const -> FlowRow {
             row.route = KeysModule::xpubRoute(info);
             break;
         case Context::Register:
-            // Only a QR key registers through the flow (ws-plaude/silent#114).
+        case Context::CheckRegistration:
+            // Only a QR key registers, or checks it, through the flow
+            // (ws-plaude/silent#114, #115).
             row.route = KeyRouteKind::Qr;
             break;
         default:
@@ -508,6 +511,8 @@ void SigningFlow::startRoute() {
             qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::descriptorRegistered, this,
             &SigningFlow::onDescriptorRegistered, qontrol::UNIQUE);
+    connect(m_flow, &SigningRouteFlow::registrationChecked, this,
+            &SigningFlow::onRegistrationChecked, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::failed, this, &SigningFlow::onFailed, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::cancelled, this, &QDialog::reject, qontrol::UNIQUE);
     setPage(m_flow);
@@ -573,6 +578,7 @@ void SigningFlow::onDevicesChanged() {
     case Context::Fetch:
     case Context::FetchXpub:
     case Context::Register:
+    case Context::CheckRegistration:
         return;
     }
     showPicker();
@@ -665,6 +671,15 @@ void SigningFlow::onDescriptorRegistered(const QString &proof_hex) {
     m_answered = true;
     emit descriptorRegistered(m_request.req_id, m_request.fingerprint, m_request.descriptor,
                               proof_hex);
+    accept();
+}
+
+void SigningFlow::onRegistrationChecked(bool registered) {
+    if (m_answered) {
+        return;
+    }
+    m_answered = true;
+    emit registrationChecked(m_request.req_id, registered);
     accept();
 }
 

@@ -1,6 +1,8 @@
 // ws-plaude/silent#114: registerDescriptor on a QR key shows the Descriptor
 // Registration request in the key's QR window, and answers only with the device's
 // answer: closing the window answers cancelled, never registered.
+// ws-plaude/silent#115: checkDescriptorRegistered on a QR key shows the registration
+// check there too, never a "disconnected" error about a device that has no connection.
 #include "modules/keys/KeysModule.h"
 #include "modules/keys/flow/SigningFlow.h"
 #include "qr/QrDisplay.h"
@@ -40,6 +42,7 @@ class BusSpy final : public QObject {
 
 public:
     int registered = 0;
+    int checked = 0;
     int cancelled = 0;
     int errors = 0;
 
@@ -47,6 +50,10 @@ public slots:
 
     void onRegistered([[maybe_unused]] ReqId req_id, [[maybe_unused]] const QString &fingerprint) {
         ++registered;
+    }
+
+    void onChecked([[maybe_unused]] ReqId req_id, [[maybe_unused]] bool registered) {
+        ++checked;
     }
 
     void onCancelled([[maybe_unused]] ReqId req_id) {
@@ -86,7 +93,7 @@ public slots:
         title = flow->windowTitle();
         auto *display = flow->findChild<qr::QrDisplay *>();
         showsCode = display != nullptr && display->isVisible();
-        answeredBefore = m_spy.registered + m_spy.cancelled + m_spy.errors > 0;
+        answeredBefore = m_spy.registered + m_spy.checked + m_spy.cancelled + m_spy.errors > 0;
         flow->reject();
     }
 
@@ -107,6 +114,8 @@ void qrRegistrationSmoke() {
     BusSpy spy;
     QObject::connect(module->bus(), &keys::KeysBus::descriptorRegistered, &spy,
                      &BusSpy::onRegistered, qontrol::UNIQUE);
+    QObject::connect(module->bus(), &keys::KeysBus::registrationChecked, &spy,
+                     &BusSpy::onChecked, qontrol::UNIQUE);
     QObject::connect(module->bus(), &keys::KeysBus::cancelled, &spy, &BusSpy::onCancelled,
                      qontrol::UNIQUE);
     QObject::connect(module->bus(), &keys::KeysBus::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
@@ -120,6 +129,18 @@ void qrRegistrationSmoke() {
     require(!probe.answeredBefore, "nothing is answered before the device's answer");
     require(spy.registered == 0 && spy.cancelled == 1 && spy.errors == 0,
             "closing the window answers cancelled, never registered");
+
+    spy.cancelled = 0;
+    WindowProbe check(spy);
+    module->checkDescriptorRegistered(42, QString::fromLatin1(FINGERPRINT),
+                                      QString::fromLatin1(POLICY));
+    require(check.seen, "checking a registration on a QR key opens its QR window");
+    require(check.title == QStringLiteral("Show Registration Check"),
+            "the window shows the registration check");
+    require(check.showsCode, "the window shows the check's QR code");
+    require(!check.answeredBefore, "the check answers nothing before the device does");
+    require(spy.checked == 0 && spy.cancelled == 1 && spy.errors == 0,
+            "closing the check answers cancelled, never a disconnected error");
 }
 
 } // namespace smoke

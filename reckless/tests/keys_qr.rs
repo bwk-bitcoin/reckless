@@ -1257,3 +1257,37 @@ fn the_registration_answer_keeps_whether_it_was_stored_and_its_proof() {
         assert_eq!((got_stored, got_proof), (stored, proof));
     }
 }
+
+// ws-plaude/silent#115: a registration check is the registration request with the
+// wallet's alias and no descriptor body, and its answer says whether the device holds it.
+#[test]
+fn a_registration_check_carries_no_descriptor_and_reads_the_answer() {
+    for registered in [true, false] {
+        let mut session = QrSession::new();
+        let check = session
+            .check_registration("wpkh(desc)")
+            .expect("check_registration request");
+        let Message::Request(decoded) = decode(check.message()).expect("decode request") else {
+            panic!("expected a request");
+        };
+        let request::Body::RegisterDescriptor(body) = decoded.body else {
+            panic!("expected the registration request, got {:?}", decoded.body);
+        };
+        assert!(body.descriptor.is_none(), "a check carries no descriptor body");
+        assert!(!body.descriptor_alias.is_empty(), "a check names the wallet's alias");
+        let encoded = respond(
+            &session,
+            response::Body::Registration(response::Registration {
+                descriptor_alias: body.descriptor_alias,
+                registered,
+                stored: None,
+                proof: None,
+            }),
+        );
+        let answer = session.decode_response(&encoded).expect("check answer");
+        assert!(
+            matches!(answer, QrResponse::Registration { registered: got, .. } if got == registered),
+            "expected registered {registered}, got {answer:?}"
+        );
+    }
+}

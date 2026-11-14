@@ -3065,6 +3065,11 @@ mod ffi {
             self: &mut KeysModule,
             descriptor: &str,
         ) -> QrMessageResult;
+        /// The registration check of `descriptor`: its alias, no descriptor body.
+        fn qr_request_check_registration(
+            self: &mut KeysModule,
+            descriptor: &str,
+        ) -> QrMessageResult;
         fn qr_request_verify_address(
             self: &mut KeysModule,
             descriptor: &str,

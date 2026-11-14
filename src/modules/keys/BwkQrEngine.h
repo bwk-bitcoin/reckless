@@ -24,6 +24,7 @@ public:
     void verifyAddress(const QString &descriptor, const QString &path,
                        const QString &address) override;
     void registerDescriptor(const QString &descriptor) override;
+    void checkRegistration(const QString &descriptor) override;
     void stop() override;
 
 signals:

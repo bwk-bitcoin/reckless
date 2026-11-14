@@ -123,6 +123,8 @@ signals:
     // registration to keep, empty when the device stored it (ws-plaude/silent#114).
     void descriptorRegistered(ReqId req_id, QString fingerprint, QString descriptor,
                               QString proof_hex);
+    // Whether the device holds the request's wallet (ws-plaude/silent#115).
+    void registrationChecked(ReqId req_id, bool registered);
     // A failure the flow cannot recover from; the window closes.
     void failed(ReqId req_id, QString message, plugin::SignError kind = plugin::SignError::Other);
     // Closed before an answer, or after showing why there is none.
@@ -142,6 +144,7 @@ public slots:
     void onDescriptorFetched(const QString &descriptor, const QList<qr::QrXpub> &xpubs);
     void onXpubFetched(const QString &xpub);
     void onDescriptorRegistered(const QString &proof_hex);
+    void onRegistrationChecked(bool registered);
     void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other);
 
 protected:
@@ -221,6 +224,8 @@ signals:
     void xpubFetched(const QString &xpub);
     // The device registered the wallet; `proof_hex` as in SigningFlow.
     void descriptorRegistered(const QString &proof_hex);
+    // Whether the device holds the wallet, for a registration check.
+    void registrationChecked(bool registered);
     // A failure the route cannot recover from: SigningFlow closes. `kind` says why,
     // for the caller to retry or restart.
     void failed(const QString &message, plugin::SignError kind = plugin::SignError::Other);

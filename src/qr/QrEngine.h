@@ -40,6 +40,9 @@ public:
                                const QString &address) = 0;
     // Asks the device to register the wallet `descriptor` (ws-plaude/silent#114).
     virtual void registerDescriptor(const QString &descriptor) = 0;
+    // Asks whether the device holds the wallet `descriptor` (ws-plaude/silent#115):
+    // answered through descriptorRegistered too, `registered` saying whether it does.
+    virtual void checkRegistration(const QString &descriptor) = 0;
     // Ends the exchange: a late answer is dropped.
     virtual void stop() = 0;
 
