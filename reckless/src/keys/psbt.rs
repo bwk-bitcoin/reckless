@@ -369,7 +369,7 @@ fn resolve_sp_fingerprint(
     }
 
     if sp_outputs_pending {
-        return resolve_by_input_owner(psbt, sp_descriptors);
+        return resolve_by_input_owner(psbt);
     }
 
     Ok(None)
@@ -377,24 +377,17 @@ fn resolve_sp_fingerprint(
 
 /// No silent payment input names the signer that must derive the pending outputs:
 /// the key that owns every input does (BIP375: the shares come from the inputs'
-/// keys), for instance an account spending its own sub-account coins to its reckless
-/// payment change. It must hold a registered sp() descriptor to sign as one. Inputs
-/// of several keys need each to contribute its share, which is not supported.
-fn resolve_by_input_owner(
-    psbt: &PsbtV2,
-    sp_descriptors: &[SpDescriptor],
-) -> Result<Option<Fingerprint>, Error> {
+/// keys and the recipient's scan key, which the PSBT carries), for instance any
+/// wallet paying a silent payment address, or an account spending its sub-account
+/// coins to its silent payment change. It needs no sp() descriptor of its own
+/// (ws-plaude/silent#123). Inputs of several keys need each to contribute its share,
+/// which is not supported yet.
+fn resolve_by_input_owner(psbt: &PsbtV2) -> Result<Option<Fingerprint>, Error> {
     let owners = scan(psbt)?.required;
     let mut owners = owners.into_iter();
     let (Some(owner), None) = (owners.next(), owners.next()) else {
         return Err(Error::SpOutputsUnresolvable);
     };
-    if !sp_descriptors
-        .iter()
-        .any(|descriptor| descriptor.fingerprint() == Some(owner))
-    {
-        return Err(Error::SpKeyUnknown(Some(owner)));
-    }
     Ok(Some(owner))
 }
 
@@ -1492,11 +1485,10 @@ mod tests {
 
         let artifacts = inspect(&psbt, &[descriptor], &secp).expect("inspect succeeds");
         assert_eq!(artifacts.sp_fingerprint, Some(fp));
-        // Without that key's sp() descriptor it cannot derive the outputs.
-        assert!(matches!(
-            inspect(&psbt, &[], &secp),
-            Err(Error::SpKeyUnknown(Some(unknown))) if unknown == fp
-        ));
+        // ws-plaude/silent#123: paying a silent payment address needs no sp() descriptor
+        // on the sending key; its input keys give the shares.
+        let artifacts = inspect(&psbt, &[], &secp).expect("a plain wallet's key resolves");
+        assert_eq!(artifacts.sp_fingerprint, Some(fp));
     }
 
     #[test]
