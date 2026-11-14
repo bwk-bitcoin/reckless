@@ -129,7 +129,7 @@ public slots:
     // `matched` is the device's own answer; false is a refusal, not a failure.
     void deliverVerified(ReqId req_id, bool matched);
     void deliverError(std::optional<ReqId> req_id, const QString &message,
-                      plugin::SignError kind = plugin::SignError::Other);
+                      plugin::SignError kind = plugin::SignError::Other, quint8 device_code = 0);
     void deliverCancelled(ReqId req_id);
     void deliverSpDescriptor(ReqId req_id, const QString &descriptor, const QString &fingerprint);
     void deliverXpub(ReqId req_id, const QString &xpub, const QString &fingerprint,

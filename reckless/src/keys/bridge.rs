@@ -1634,6 +1634,25 @@ impl QrResponse {
         }
     }
 
+    /// The device's bipqr error code when it refused the request (ws-plaude/silent#126),
+    /// 0 for any other failure or an accepted answer.
+    pub fn device_error_code(&self) -> u8 {
+        match self.inner.as_ref() {
+            Err(Error::SignerRefused { code, .. }) => u8::from(*code),
+            Err(Error::MusigSession) => u8::from(bipqr::ll::response::Error::MusigSession),
+            Err(Error::AlreadyRegistered { .. }) => {
+                u8::from(bipqr::ll::response::Error::AlreadyRegistered)
+            }
+            Err(Error::SignerUnsupported { .. }) => {
+                u8::from(bipqr::ll::response::Error::UnsupportedOperation)
+            }
+            Err(Error::SignerNetworkMismatch { .. }) => {
+                u8::from(bipqr::ll::response::Error::NetworkMismatch)
+            }
+            _ => 0,
+        }
+    }
+
     /// Whether the device said it kept the wallet, when kind() is Registration.
     pub fn registration_stored(&self) -> bool {
         matches!(
@@ -2316,6 +2335,60 @@ mod key_accounts_tests {
 mod qr_error_kind_tests {
     use super::{ffi, Error};
     use bipqr::ll::{response, MessageType};
+
+    // ws-plaude/silent#126: each device refusal answers its bipqr code, every other
+    // failure 0.
+    #[test]
+    fn a_device_refusal_answers_its_bipqr_code() {
+        let code = |inner: Result<crate::keys::qr::QrResponse, Error>| {
+            super::QrResponse { inner }.device_error_code()
+        };
+        assert_eq!(
+            code(Err(Error::SignerRefused {
+                message_type: MessageType::Signing,
+                code: response::Error::UserDeclined,
+                message: "declined".into(),
+            })),
+            0x01
+        );
+        assert_eq!(
+            code(Err(Error::SignerRefused {
+                message_type: MessageType::Signing,
+                code: response::Error::Vendor,
+                message: "vendor".into(),
+            })),
+            0xff
+        );
+        assert_eq!(code(Err(Error::MusigSession)), 0x0d);
+        assert_eq!(
+            code(Err(Error::AlreadyRegistered {
+                message_type: MessageType::RegisterDescriptor,
+                message: "taken".into(),
+            })),
+            0x0e
+        );
+        assert_eq!(
+            code(Err(Error::SignerUnsupported {
+                message_type: MessageType::Signing,
+                message: "no".into(),
+            })),
+            0x0f
+        );
+        assert_eq!(
+            code(Err(Error::SignerNetworkMismatch {
+                message: "mainnet".into(),
+            })),
+            0x10
+        );
+        assert_eq!(
+            code(Err(Error::RequestIdMismatch {
+                expected: "0001".into(),
+                got: "0002".into(),
+            })),
+            0
+        );
+        assert_eq!(code(Err(Error::NothingSigned)), 0);
+    }
 
     // ws-plaude/silent#116: the device's own error answer ends the request; a reply
     // that is not this request's answer does not.

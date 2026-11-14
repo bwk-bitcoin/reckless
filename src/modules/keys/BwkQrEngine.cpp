@@ -134,10 +134,9 @@ void BwkQrEngine::verifyAddress(const QString &fingerprint, const QString &descr
         emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
         return;
     }
-    issue(m_module->rust()->qr_request_verify_address(rust::Str(fingerprint.toStdString()),
-                                                      rust::Str(descriptor.toStdString()),
-                                                      rust::Str(path.toStdString()),
-                                                      rust::Str(address.toStdString())));
+    issue(m_module->rust()->qr_request_verify_address(
+        rust::Str(fingerprint.toStdString()), rust::Str(descriptor.toStdString()),
+        rust::Str(path.toStdString()), rust::Str(address.toStdString())));
 }
 
 void BwkQrEngine::registerDescriptor(const QString &descriptor) {
@@ -187,7 +186,8 @@ void BwkQrEngine::response(const qr::QrResponse &response) {
             decoded->error_kind() == QrErrorKind::DeviceRefused) {
             m_waiting = false;
         }
-        emit error(toQrError(decoded->error_kind()), KeysModule::toQt(decoded->get_error()));
+        emit error(toQrError(decoded->error_kind()), KeysModule::toQt(decoded->get_error()),
+                   decoded->device_error_code());
         return;
     }
     switch (decoded->kind()) {

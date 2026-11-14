@@ -370,17 +370,17 @@ void KeysBus::deliverNoncesPrepared(ReqId req_id, const QString &fingerprint) {
 }
 
 void KeysBus::deliverError(std::optional<ReqId> req_id, const QString &message,
-                           plugin::SignError kind) {
+                           plugin::SignError kind, quint8 device_code) {
     if (req_id.has_value() && m_coordination.contains(*req_id)) {
         cancelRequest(*req_id);
         emit coordinationError(*req_id,
-                               kind == plugin::SignError::MusigSession
+                               plugin::musigSessionLost(kind, device_code)
                                    ? plugin::SpendError::LostSession
                                    : plugin::SpendError::Other,
                                message);
         return;
     }
-    emit error(req_id, message, kind);
+    emit error(req_id, message, kind, device_code);
 }
 
 void KeysBus::deliverCancelled(ReqId req_id) {
@@ -1451,6 +1451,13 @@ void KeysModule::onDeviceSignFailed(flow::UsbError error, const QString &message
     case flow::UsbError::Failed:
         text = TR("flow-usb-failed-body").arg(request.device);
         break;
+    }
+    // A USB device that rejected the request refused it itself: the user declined on
+    // it (ws-plaude/silent#126).
+    if (error == flow::UsbError::Rejected) {
+        m_bus->deliverError(request.bus_req, text, plugin::SignError::DeviceRefused,
+                            plugin::DEVICE_USER_DECLINED);
+        return;
     }
     m_bus->deliverError(request.bus_req, text, kind);
 }

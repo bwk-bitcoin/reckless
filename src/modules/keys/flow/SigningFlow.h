@@ -129,7 +129,9 @@ signals:
     // Whether the device holds the request's wallet (ws-plaude/silent#115).
     void registrationChecked(ReqId req_id, bool registered);
     // A failure the flow cannot recover from; the window closes.
-    void failed(ReqId req_id, QString message, plugin::SignError kind = plugin::SignError::Other);
+    // `device_code` is the device's bipqr error code when `kind` is DeviceRefused.
+    void failed(ReqId req_id, QString message, plugin::SignError kind = plugin::SignError::Other,
+                quint8 device_code = 0);
     // Closed before an answer, or after showing why there is none.
     void cancelled(ReqId req_id);
 
@@ -148,8 +150,9 @@ public slots:
     void onXpubFetched(const QString &xpub);
     void onDescriptorRegistered(bool stored, const QString &proof_hex);
     void onRegistrationChecked(bool registered);
-    void onRefused(const QString &reason);
-    void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other);
+    void onRefused(const QString &reason, quint8 device_code);
+    void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other,
+                  quint8 device_code = 0);
 
 protected:
     void init();
@@ -233,10 +236,11 @@ signals:
     // The device refused the request with `reason`: SigningFlow answers the caller
     // with it at once, and the route keeps showing it until closed
     // (ws-plaude/silent#116).
-    void refused(const QString &reason);
+    void refused(const QString &reason, quint8 device_code);
     // A failure the route cannot recover from: SigningFlow closes. `kind` says why,
     // for the caller to retry or restart.
-    void failed(const QString &message, plugin::SignError kind = plugin::SignError::Other);
+    void failed(const QString &message, plugin::SignError kind = plugin::SignError::Other,
+                quint8 device_code = 0);
     // Left with no picker to go back to: SigningFlow closes as cancelled.
     void cancelled();
 

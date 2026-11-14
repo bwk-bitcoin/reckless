@@ -3138,6 +3138,9 @@ mod ffi {
         fn registration_proof(self: &QrResponse) -> String;
         /// Whether the device said it kept the wallet, when kind() is Registration.
         fn registration_stored(self: &QrResponse) -> bool;
+        /// The device's bipqr error code when it refused the request, else 0
+        /// (ws-plaude/silent#126).
+        fn device_error_code(self: &QrResponse) -> u8;
     }
 
     // ===== Camera Methods =====

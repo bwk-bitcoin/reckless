@@ -688,13 +688,14 @@ void SigningFlow::onRegistrationChecked(bool registered) {
     accept();
 }
 
-void SigningFlow::onRefused(const QString &reason) {
+void SigningFlow::onRefused(const QString &reason, quint8 device_code) {
     if (m_answered) {
         return;
     }
-    // Answered now, not cancelled when the window closes.
+    // Answered now, not cancelled when the window closes: the device's own refusal,
+    // with its code (ws-plaude/silent#126).
     m_answered = true;
-    emit failed(m_request.req_id, reason, plugin::SignError::Other);
+    emit failed(m_request.req_id, reason, plugin::SignError::DeviceRefused, device_code);
 }
 
 void SigningFlow::onRequestCancelled(ReqId req_id) {
@@ -713,9 +714,9 @@ void SigningRouteFlow::cancel() {
     emit cancelled();
 }
 
-void SigningFlow::onFailed(const QString &message, plugin::SignError kind) {
+void SigningFlow::onFailed(const QString &message, plugin::SignError kind, quint8 device_code) {
     m_answered = true;
-    emit failed(m_request.req_id, message, kind);
+    emit failed(m_request.req_id, message, kind, device_code);
     reject();
 }
 

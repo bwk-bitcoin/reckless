@@ -957,7 +957,12 @@ enum class SignerState { Ready, Locked, Unsupported };
 // one live signer: which entry it is, where it came from, how to reach it
 struct SignerEntry { QString instanceId; IModule *module; ISigner *signer; };
 // why a sign request failed, beyond its message
-enum class SignError : std::uint32_t { Other = 0, MusigSession = 1, InvalidRequest = 2 };
+enum class SignError : std::uint32_t {
+    Other = 0,
+    MusigSession = 1,
+    InvalidRequest = 2,
+    DeviceRefused = 3
+};
 }
 ```
 
@@ -1169,12 +1174,22 @@ gathers the partial signatures. The caller calls `sign()` again for the next rou
 
 ```cpp
 void error(std::optional<ReqId> req_id, QString message,
-           plugin::SignError kind = plugin::SignError::Other);
+           plugin::SignError kind = plugin::SignError::Other, quint8 device_code = 0);
 ```
 
-`kind` is `MusigSession` when a device lost its MuSig2 session (QR error `0x0D`, a hot
-key, or a USB device reporting it): the caller drops every nonce and partial signature
-and starts again from round 1. It is `Other` for everything else.
+The kinds (ws-plaude/silent#126):
+- `DeviceRefused`: the signing device refused the request itself. `device_code` is its
+  bipqr error code (`0x01` declined to `0x10`, `0xFF` vendor) and `message` its reason;
+  a USB device's rejection is `0x01`. A caller can tell the device's answer from
+  Reckless's own failures by the kind alone, never by the message text.
+- `MusigSession`: Reckless lost the MuSig2 session (a hot key, a USB device's session
+  state, the nonce cache). A device's own `0x0D` is `DeviceRefused` with code `0x0D`.
+  Either way (`plugin::musigSessionLost(kind, device_code)`) the caller drops every
+  nonce and partial signature and starts again from round 1.
+- `InvalidRequest`: a request Reckless cannot take.
+- `Other`: any other failure of Reckless's.
+
+`device_code` is 0 unless the kind is `DeviceRefused`.
 
 `keys(network)` lists the registered keys as `KeyEntry` rows. Before asking
 `verifyAddress()`, a caller checks `can_show_address`: true when the key has a USB or QR

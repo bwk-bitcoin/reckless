@@ -612,13 +612,13 @@ void KeysHandle::onRegistrationChecked(ReqId req_id, bool registered) {
 }
 
 void KeysHandle::onError(std::optional<ReqId> req_id, const QString &message,
-                         plugin::SignError kind) {
+                         plugin::SignError kind, quint8 device_code) {
     // A failure tied to no request goes to every caller allowed to use keys.
     QPointer<KeysHandle> guard(this);
     bool forMe =
         req_id.has_value() ? finish(*req_id) : m_host->allowed(m_module, Grant::Keys, false);
     if (guard != nullptr && forMe) {
-        emit error(req_id, message, kind);
+        emit error(req_id, message, kind, device_code);
     }
 }
 

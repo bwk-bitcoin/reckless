@@ -193,12 +193,17 @@ signals:
     void descriptorRegistered(ReqId req_id, QString fingerprint);
     // The device's answer to checkDescriptorRegistered().
     void registrationChecked(ReqId req_id, bool registered);
-    // A failure the caller reports, once. `kind` is MusigSession when a key lost its
-    // MuSig2 session: retire the account's Ledger attempts before dropping every nonce
-    // and partial signature and starting a fresh attempt at round 1. Other for
-    // everything else.
+    // A failure the caller reports, once. `kind` is DeviceRefused when the signing
+    // device refused the request itself, `device_code` then being its bipqr error code
+    // (0x01 to 0x10, 0xFF vendor) and `message` its reason (ws-plaude/silent#126).
+    // MusigSession is Reckless's own lost MuSig2 session; a device's 0x0D is
+    // DeviceRefused with code 0x0D. Either way (plugin::musigSessionLost()), retire the
+    // account's Ledger attempts before dropping every nonce and partial signature and
+    // starting a fresh attempt at round 1. InvalidRequest is a request Reckless cannot
+    // take, Other is any other failure of Reckless's. `device_code` is 0 unless
+    // DeviceRefused.
     void error(std::optional<ReqId> req_id, QString message,
-               plugin::SignError kind = plugin::SignError::Other);
+               plugin::SignError kind = plugin::SignError::Other, quint8 device_code = 0);
     // The user closed the flow, or it already showed why there is no answer: the
     // caller shows nothing.
     void cancelled(ReqId req_id);

@@ -120,7 +120,8 @@ private slots:
                      const QString &path);
     void onDescriptorRegistered(ReqId req_id, const QString &fingerprint);
     void onRegistrationChecked(ReqId req_id, bool registered);
-    void onError(std::optional<ReqId> req_id, const QString &message, plugin::SignError kind);
+    void onError(std::optional<ReqId> req_id, const QString &message, plugin::SignError kind,
+                 quint8 device_code);
     void onCancelled(ReqId req_id);
 
 protected:

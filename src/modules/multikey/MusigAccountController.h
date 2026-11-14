@@ -206,7 +206,8 @@ public slots:
     void cancelSigning();
     void restartRounds();
     void onKeysSigned(ReqId req_id, const QString &psbt_v2_hex);
-    void onKeysError(std::optional<ReqId> req_id, const QString &message, plugin::SignError kind);
+    void onKeysError(std::optional<ReqId> req_id, const QString &message, plugin::SignError kind,
+                     quint8 device_code);
     void onKeysCancelled(ReqId req_id);
     void onNoncesPrepared(ReqId req_id, const QString &fingerprint);
     void onWorkerFinished();

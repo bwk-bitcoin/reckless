@@ -349,18 +349,24 @@ void QrRouteFlow::onQrXpubs(const QString &fingerprint, const QList<qr::QrXpub> 
     emit xpubFetched(xpubs.first().xpub);
 }
 
-void QrRouteFlow::onQrError(qr::QrError kind, const QString &message) {
+void QrRouteFlow::onQrError(qr::QrError kind, const QString &message, quint8 device_code) {
     if (kind == qr::QrError::MusigSession) {
-        // The signer holds no MuSig2 session for this PSBT: the caller restarts.
+        // The signer holds no MuSig2 session for this PSBT: the caller restarts. The
+        // device said so itself (0x0D): DeviceRefused with its code
+        // (ws-plaude/silent#126).
         m_camera->stop();
-        emit failed(message, plugin::SignError::MusigSession);
+        if (device_code != 0) {
+            emit failed(message, plugin::SignError::DeviceRefused, device_code);
+        } else {
+            emit failed(message, plugin::SignError::MusigSession);
+        }
         return;
     }
     if (kind == qr::QrError::DeviceRefused) {
         // The device refused the request itself (ws-plaude/silent#116): the request
         // is over. The caller gets the reason now; the window shows it until closed.
         m_camera->stop();
-        emit refused(message);
+        emit refused(message, device_code);
         showRefused(message);
         return;
     }

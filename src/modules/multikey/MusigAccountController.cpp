@@ -1077,7 +1077,12 @@ void MusigAccountController::onKeysSigned(ReqId req_id, const QString &psbt_v2_h
 }
 
 void MusigAccountController::onKeysError(std::optional<ReqId> req_id, const QString &message,
-                                         plugin::SignError kind) {
+                                         plugin::SignError kind, quint8 device_code) {
+    // A device's own 0x0D is a lost MuSig2 session too (ws-plaude/silent#126): the
+    // account restarts the attempt as for Reckless's own.
+    if (plugin::musigSessionLost(kind, device_code)) {
+        kind = plugin::SignError::MusigSession;
+    }
     if (!req_id.has_value()) {
         return;
     }

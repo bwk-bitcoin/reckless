@@ -50,8 +50,27 @@ enum class SpendError : std::uint32_t {
     Cancelled = 6
 };
 enum class RetirementStatus : std::uint32_t { Pending = 0, Retired = 1, Failed = 2 };
-// MusigSession means the device lost its session; restart from round 1.
-enum class SignError : std::uint32_t { Other = 0, MusigSession = 1, InvalidRequest = 2 };
+// MusigSession means Reckless lost the MuSig2 session; restart from round 1.
+// DeviceRefused is the signing device's own refusal, with its bipqr error code
+// (ws-plaude/silent#126): a device's 0x0D comes as DeviceRefused with code 0x0D.
+enum class SignError : std::uint32_t {
+    Other = 0,
+    MusigSession = 1,
+    InvalidRequest = 2,
+    DeviceRefused = 3
+};
+
+// The device's bipqr codes a DeviceRefused error carries (ENCODING.md): 0x01 to 0x10,
+// 0xFF for a vendor error. Only the ones Reckless itself acts on are named.
+inline constexpr std::uint8_t DEVICE_USER_DECLINED = 0x01;
+inline constexpr std::uint8_t DEVICE_MUSIG_SESSION = 0x0D;
+
+// Whether a sign error means the MuSig2 session is lost, whoever lost it: the caller
+// restarts the attempt from round 1.
+constexpr auto musigSessionLost(SignError kind, std::uint8_t device_code) -> bool {
+    return kind == SignError::MusigSession ||
+           (kind == SignError::DeviceRefused && device_code == DEVICE_MUSIG_SESSION);
+}
 
 namespace detail {
 template <typename Enum> struct WireValues;
@@ -118,7 +137,7 @@ template <> struct WireValues<RetirementStatus> {
 
 template <> struct WireValues<SignError> {
     static constexpr std::array VALUES{SignError::Other, SignError::MusigSession,
-                                       SignError::InvalidRequest};
+                                       SignError::InvalidRequest, SignError::DeviceRefused};
 };
 } // namespace detail
 

@@ -47,6 +47,8 @@ public:
     int checked = 0;
     int cancelled = 0;
     int errors = 0;
+    plugin::SignError lastKind = plugin::SignError::Other;
+    quint8 lastCode = 0;
 
 public slots:
 
@@ -63,8 +65,11 @@ public slots:
     }
 
     void onError([[maybe_unused]] std::optional<ReqId> req_id,
-                 [[maybe_unused]] const QString &message, [[maybe_unused]] plugin::SignError kind) {
+                 [[maybe_unused]] const QString &message, plugin::SignError kind,
+                 quint8 device_code) {
         ++errors;
+        lastKind = kind;
+        lastCode = device_code;
     }
 };
 
@@ -155,6 +160,24 @@ void qrRegistrationSmoke() {
     checkWindow(
         spy, waitForFlow(), QStringLiteral("Show Registration Check"),
         [&module, &fingerprint, &policy] { module->registerDescriptor(44, fingerprint, policy); });
+
+    // ws-plaude/silent#126: a device refusal reaches the caller as DeviceRefused with its
+    // bipqr code; Reckless's own failures keep their kinds with no code.
+    module->bus()->deliverError(45, QStringLiteral("declined on the device"),
+                                plugin::SignError::DeviceRefused, plugin::DEVICE_USER_DECLINED);
+    require(spy.errors == 1 && spy.lastKind == plugin::SignError::DeviceRefused &&
+                spy.lastCode == 0x01,
+            "a device refusal comes with its kind and code");
+    module->bus()->deliverError(46, QStringLiteral("lost"), plugin::SignError::MusigSession);
+    require(spy.errors == 2 && spy.lastKind == plugin::SignError::MusigSession && spy.lastCode == 0,
+            "Reckless's own lost session keeps MusigSession, with no device code");
+    require(
+        plugin::musigSessionLost(plugin::SignError::DeviceRefused, plugin::DEVICE_MUSIG_SESSION) &&
+            plugin::musigSessionLost(plugin::SignError::MusigSession, 0) &&
+            !plugin::musigSessionLost(plugin::SignError::DeviceRefused,
+                                      plugin::DEVICE_USER_DECLINED) &&
+            !plugin::musigSessionLost(plugin::SignError::Other, 0),
+        "a device's 0x0D and Reckless's own lost session both restart the attempt");
 }
 
 } // namespace smoke

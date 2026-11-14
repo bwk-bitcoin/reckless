@@ -62,7 +62,9 @@ signals:
     // The device's registration answer: `stored` when it kept the wallet itself, else
     // `proof_hex` is the proof of registration to keep (empty when it gave none).
     void descriptorRegistered(bool registered, bool stored, const QString &proof_hex);
-    void error(qr::QrError kind, const QString &message);
+    // `device_code` is the device's bipqr error code when it refused the request
+    // (DeviceRefused, or MusigSession for its 0x0D), else 0 (ws-plaude/silent#126).
+    void error(qr::QrError kind, const QString &message, quint8 device_code = 0);
 
 public slots:
     virtual void response(const qr::QrResponse &response) = 0;
