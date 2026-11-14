@@ -1,6 +1,7 @@
 // ws-plaude/silent#114: registerDescriptor on a QR key shows the Descriptor
 // Registration request in the key's QR window, and answers only with the device's
 // answer: closing the window answers cancelled, never registered.
+// ws-plaude/silent#125: the window does not block the rest of the app, one at a time.
 // ws-plaude/silent#115: checkDescriptorRegistered on a QR key shows the registration
 // check there too, never a "disconnected" error about a device that has no connection.
 #include "modules/keys/KeysModule.h"
@@ -10,10 +11,11 @@
 
 #include <QApplication>
 #include <QElapsedTimer>
+#include <QList>
 #include <QObject>
 #include <QPointer>
 #include <QString>
-#include <QTimer>
+#include <functional>
 
 #include <common.h>
 #include <memory>
@@ -66,41 +68,63 @@ public slots:
     }
 };
 
-// Looks at the registration window once its exec() shows it, then closes it.
-class WindowProbe final : public QObject {
-    Q_OBJECT
-
-public:
-    explicit WindowProbe(const BusSpy &spy) : m_spy(spy) {
-        connect(&m_timer, &QTimer::timeout, this, &WindowProbe::onTick, qontrol::UNIQUE);
-        m_timer.start(20);
-    }
-
-    bool seen = false;
-    QString title;
-    bool showsCode = false;
-    bool answeredBefore = true;
-
-public slots:
-
-    void onTick() {
-        auto *flow = qobject_cast<keys::flow::SigningFlow *>(QApplication::activeModalWidget());
-        if (flow == nullptr || !flow->isVisible()) {
-            return;
+// The keys flow windows open now.
+auto openFlows() -> QList<keys::flow::SigningFlow *> {
+    QList<keys::flow::SigningFlow *> flows;
+    for (auto *widget : QApplication::topLevelWidgets()) {
+        if (auto *flow = qobject_cast<keys::flow::SigningFlow *>(widget);
+            flow != nullptr && flow->isVisible()) {
+            flows.append(flow);
         }
-        m_timer.stop();
-        seen = true;
-        title = flow->windowTitle();
-        auto *display = flow->findChild<qr::QrDisplay *>();
-        showsCode = display != nullptr && display->isVisible();
-        answeredBefore = m_spy.registered + m_spy.checked + m_spy.cancelled + m_spy.errors > 0;
-        flow->reject();
     }
+    return flows;
+}
 
-private:
-    const BusSpy &m_spy;
-    QTimer m_timer;
-};
+void pump(int ms) {
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < ms) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+}
+
+// The keys flow window the last call opened, once it shows.
+auto waitForFlow() -> keys::flow::SigningFlow * {
+    QElapsedTimer timer;
+    timer.start();
+    while (openFlows().isEmpty() && timer.elapsed() < 5000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    return openFlows().isEmpty() ? nullptr : openFlows().first();
+}
+
+// Checks the window `call` opened, then closes it: it answers cancelled.
+void checkWindow(BusSpy &spy, keys::flow::SigningFlow *flow, const QString &title,
+                 const std::function<void()> &second_call) {
+    require(flow != nullptr, "the call on a QR key opens its QR window");
+    require(flow->windowTitle() == title, "the window shows the request asked");
+    auto *display = flow->findChild<qr::QrDisplay *>();
+    require(display != nullptr && display->isVisible(), "the window shows the request's QR code");
+    require(spy.registered + spy.checked + spy.cancelled + spy.errors == 0,
+            "nothing is answered before the device's answer");
+    // ws-plaude/silent#125: the window leaves the rest of the app usable, a plugin's tab
+    // included, and stays one at a time.
+    require(!flow->isModal() && flow->windowModality() == Qt::NonModal &&
+                QApplication::activeModalWidget() == nullptr,
+            "the keys window blocks nothing behind it");
+    second_call();
+    require(spy.errors == 1 && openFlows().size() == 1,
+            "a second keys call while one is open is refused, never two windows");
+    spy.errors = 0;
+    QPointer<keys::flow::SigningFlow> closed = flow;
+    flow->reject();
+    pump(200);
+    require(spy.registered == 0 && spy.checked == 0 && spy.cancelled == 1 && spy.errors == 0,
+            "closing the window answers cancelled, never registered or disconnected");
+    require(closed.isNull() && openFlows().isEmpty(), "the closed window is deleted");
+    spy.cancelled = 0;
+}
 
 } // namespace
 
@@ -114,33 +138,23 @@ void qrRegistrationSmoke() {
     BusSpy spy;
     QObject::connect(module->bus(), &keys::KeysBus::descriptorRegistered, &spy,
                      &BusSpy::onRegistered, qontrol::UNIQUE);
-    QObject::connect(module->bus(), &keys::KeysBus::registrationChecked, &spy,
-                     &BusSpy::onChecked, qontrol::UNIQUE);
+    QObject::connect(module->bus(), &keys::KeysBus::registrationChecked, &spy, &BusSpy::onChecked,
+                     qontrol::UNIQUE);
     QObject::connect(module->bus(), &keys::KeysBus::cancelled, &spy, &BusSpy::onCancelled,
                      qontrol::UNIQUE);
     QObject::connect(module->bus(), &keys::KeysBus::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
-    WindowProbe probe(spy);
-    // Runs the window: returns once the probe closed it.
-    module->registerDescriptor(41, QString::fromLatin1(FINGERPRINT), QString::fromLatin1(POLICY));
-    require(probe.seen, "registering on a QR key opens its QR window");
-    require(probe.title == QStringLiteral("Show Registration Request"),
-            "the window shows the registration request");
-    require(probe.showsCode, "the window shows the request's QR code");
-    require(!probe.answeredBefore, "nothing is answered before the device's answer");
-    require(spy.registered == 0 && spy.cancelled == 1 && spy.errors == 0,
-            "closing the window answers cancelled, never registered");
-
-    spy.cancelled = 0;
-    WindowProbe check(spy);
-    module->checkDescriptorRegistered(42, QString::fromLatin1(FINGERPRINT),
-                                      QString::fromLatin1(POLICY));
-    require(check.seen, "checking a registration on a QR key opens its QR window");
-    require(check.title == QStringLiteral("Show Registration Check"),
-            "the window shows the registration check");
-    require(check.showsCode, "the window shows the check's QR code");
-    require(!check.answeredBefore, "the check answers nothing before the device does");
-    require(spy.checked == 0 && spy.cancelled == 1 && spy.errors == 0,
-            "closing the check answers cancelled, never a disconnected error");
+    const auto fingerprint = QString::fromLatin1(FINGERPRINT);
+    const auto policy = QString::fromLatin1(POLICY);
+    // The call returns at once (ws-plaude/silent#125): the window opens over the app.
+    module->registerDescriptor(41, fingerprint, policy);
+    checkWindow(spy, waitForFlow(), QStringLiteral("Show Registration Request"),
+                [&module, &fingerprint, &policy] {
+                    module->checkDescriptorRegistered(43, fingerprint, policy);
+                });
+    module->checkDescriptorRegistered(42, fingerprint, policy);
+    checkWindow(
+        spy, waitForFlow(), QStringLiteral("Show Registration Check"),
+        [&module, &fingerprint, &policy] { module->registerDescriptor(44, fingerprint, policy); });
 }
 
 } // namespace smoke

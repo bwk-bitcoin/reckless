@@ -593,6 +593,9 @@ keys-file-read-title => "Could not read the file" => "NONE"
 keys-file-route
 => "This key file has a route type Reckless does not know (“%1”). Remove that route from the file, or update Reckless."
 => "NONE";;
+keys-flow-busy
+=> "Another keys request is open. Finish or close it, then try again."
+=> "Outro pedido de chaves está aberto. Conclua-o ou feche-o e tente novamente.";;
 keys-generate-failed-title => "Could Not Generate the Words" => "NONE"
 keys-hot-generate-12 => "Generate 12 Words" => "NONE"
 keys-hot-generate-12-sub => "A new mnemonic. Enough for most uses." => "NONE"

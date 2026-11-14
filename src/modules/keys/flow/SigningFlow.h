@@ -108,6 +108,8 @@ public:
     // fails at once answers before the window opens (see answered()).
     void begin();
     [[nodiscard]] auto answered() const -> bool;
+    // The request this flow answers.
+    [[nodiscard]] auto requestId() const -> ReqId;
     void done(int result) override;
 
 signals:
@@ -122,8 +124,8 @@ signals:
     // The device registered the request's wallet (ws-plaude/silent#114): `stored`
     // when it kept the wallet itself, else `proof_hex` is the proof of registration to
     // keep, empty when it gave none (ws-plaude/silent#117).
-    void descriptorRegistered(ReqId req_id, QString fingerprint, QString descriptor,
-                              bool stored, QString proof_hex);
+    void descriptorRegistered(ReqId req_id, QString fingerprint, QString descriptor, bool stored,
+                              QString proof_hex);
     // Whether the device holds the request's wallet (ws-plaude/silent#115).
     void registrationChecked(ReqId req_id, bool registered);
     // A failure the flow cannot recover from; the window closes.

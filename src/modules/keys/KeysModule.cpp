@@ -736,6 +736,12 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
     connect(flow, &flow::SigningFlow::failed, m_bus.get(), &KeysBus::deliverError, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::cancelled, m_bus.get(), &KeysBus::deliverCancelled,
             qontrol::UNIQUE);
+    if (m_open_flow != nullptr) {
+        // One keys window at a time: never two over each other.
+        m_bus->deliverError(flow->requestId(), TR("keys-flow-busy"));
+        delete flow;
+        return;
+    }
     flow->begin();
     if (flow->answered()) {
         // A route that answered at once (it failed, or a named hot key asked its
@@ -743,7 +749,16 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
         delete flow;
         return;
     }
-    AppController::execModal(flow);
+    // Not modal (ws-plaude/silent#125): it stays over the main window, which keeps
+    // taking clicks, a plugin's tab included. Deleted once it closes.
+    m_open_flow = flow;
+    flow->setParent(AppController::get() != nullptr ? AppController::get()->getWindow() : nullptr,
+                    Qt::Dialog);
+    flow->setWindowModality(Qt::NonModal);
+    connect(flow, &QDialog::finished, flow, &QObject::deleteLater, qontrol::UNIQUE);
+    flow->show();
+    flow->raise();
+    flow->activateWindow();
 }
 
 void KeysModule::sign(ReqId req_id, const QString &psbt_v2_hex, const QStringList &descriptors,

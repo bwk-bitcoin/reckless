@@ -456,7 +456,11 @@ protected:
     [[nodiscard]] auto insertKey(const QString &fingerprint, const QString &alias,
                                  const QList<KeyRouteKind> &routes, const QList<PathXpub> &xpubs)
         -> KeyOpResult;
-    // Opens `flow`, wired to answer through the bus, and returns once it has closed.
+    // Opens `flow`, wired to answer through the bus, as a window over the main window
+    // that leaves the rest of the app usable (ws-plaude/silent#125): a plugin can take
+    // clicks in its tab while the device shows the request. Returns at once; the flow
+    // deletes itself once closed. One flow at a time: a call while one is open is
+    // answered with an error.
     void runFlow(flow::SigningFlow *flow);
     // buildKeyEntry() helpers: pick a live device signer for a Usb route, or build
     // and cache a module-supplied one for any other usable route.
@@ -500,6 +504,8 @@ private:
     std::optional<Network> m_scope;
     std::unique_ptr<KeysBus> m_bus;
     QPointer<HwiModule> m_hwi;
+    // The keys flow window open now, if any (ws-plaude/silent#125).
+    QPointer<flow::SigningFlow> m_open_flow;
     std::unique_ptr<KeysInstance> m_instance;
     bool m_tab_shown = false;
     ReqId m_next_req_id = 0;

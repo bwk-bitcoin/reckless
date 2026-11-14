@@ -219,6 +219,10 @@ auto SigningFlow::answered() const -> bool {
     return m_answered;
 }
 
+auto SigningFlow::requestId() const -> ReqId {
+    return m_request.req_id;
+}
+
 void SigningFlow::done(int result) {
     closeFlow();
     if (!m_answered) {
@@ -670,8 +674,8 @@ void SigningFlow::onDescriptorRegistered(bool stored, const QString &proof_hex) 
         return;
     }
     m_answered = true;
-    emit descriptorRegistered(m_request.req_id, m_request.fingerprint, m_request.descriptor,
-                              stored, proof_hex);
+    emit descriptorRegistered(m_request.req_id, m_request.fingerprint, m_request.descriptor, stored,
+                              proof_hex);
     accept();
 }
 

@@ -759,6 +759,7 @@ flow-check-registration-qr-hint => "Scan this code with the device to check whet
 flow-check-registration-scan-title => "Scan Registration Status"
 flow-check-registration-scan-hint => "Show the device's answer to the camera."
 keys-register-refused => "The device did not register the wallet."
+keys-flow-busy => "Another keys request is open. Finish or close it, then try again."
 flow-qr-refused-title => "The Device Refused"
 keys-register-proof-not-stored => "The device registered the wallet, but its proof of registration could not be saved."
 
