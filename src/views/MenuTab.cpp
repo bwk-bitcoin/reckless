@@ -134,7 +134,8 @@ void MenuTab::view() {
     mark->setAlignment(Qt::AlignCenter);
     auto *markRow = (new qontrol::Row)->pushSpacer()->push(mark)->pushSpacer();
 
-    auto *title = new Label(TR("main-window-title"), LabelRole::Title);
+    // The mark above already names the app (ws-plaude/silent#120).
+    auto *title = new Label(TR("menu-heading"), LabelRole::Title);
     title->setAlignment(Qt::AlignCenter);
 
     auto *titleRow = (new qontrol::Row)->pushSpacer()->push(title)->pushSpacer();

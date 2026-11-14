@@ -715,6 +715,7 @@ main-settings-tab => "Settings" => "NONE"
 main-window-title
 => "Reckless - Silent Payments Wallet"
 => "Reckless - Cartera Silent Payments";;
+menu-heading => "Silent Payments Wallet" => "Cartera Silent Payments"
 musig-account-restore => "Restore Multikey Wallet" => "Restore Multikey Wallet"
 musig-account-type => "Multikey Wallet" => "NONE"
 musig-backend-busy
