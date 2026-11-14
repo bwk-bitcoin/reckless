@@ -702,9 +702,6 @@ fn registration_response(registration: response::Registration) -> QrResponse {
     }
 }
 
-/// The device echoes back the address it independently derived as `bitcoin:<address>`,
-/// never the bare address; comparing it against `expected_address` is the whole
-/// point of the request.
 /// The keys a signer rebuilds an sp() descriptor's address from, with no secret: its
 /// fingerprint and the BIP-352 spend and scan paths of its account.
 fn sp_keys(descriptor: &SpDescriptor) -> Result<SpKeys, Error> {
@@ -731,14 +728,57 @@ fn sp_keys(descriptor: &SpDescriptor) -> Result<SpKeys, Error> {
     })
 }
 
+/// The device echoes back the address it independently derived as a BIP-321 URI,
+/// never the bare address; comparing it against `expected_address` is the whole
+/// point of the request.
 fn validate_address_uri(
     address_uri: response::AddressUri,
     expected_address: Option<String>,
 ) -> Result<QrResponse, Error> {
     let expected = expected_address.ok_or(Error::MissingExpectedAddress)?;
-    let uri = address_uri.uri;
-    let address = uri.strip_prefix("bitcoin:").unwrap_or(&uri);
-    Ok(QrResponse::AddressVerified(address == expected))
+    Ok(QrResponse::AddressVerified(uri_names_address(
+        &address_uri.uri,
+        &expected,
+    )))
+}
+
+/// Whether the BIP-321 URI `uri` names `expected` (ws-plaude/silent#122): a silent
+/// payment address is the `sp=` parameter (`bitcoin:?sp=sp1q...`), the path then being
+/// only a fallback for wallets without silent payments; any other address is the path,
+/// whatever query follows it.
+pub fn uri_names_address(uri: &str, expected: &str) -> bool {
+    let Some(rest) = uri
+        .get(..8)
+        .filter(|scheme| scheme.eq_ignore_ascii_case("bitcoin:"))
+        .map(|_| &uri[8..])
+    else {
+        return false;
+    };
+    let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+    if is_sp_address(expected) {
+        return query
+            .split('&')
+            .filter_map(|parameter| parameter.split_once('='))
+            .any(|(key, value)| key.eq_ignore_ascii_case("sp") && same_address(value, expected));
+    }
+    !path.is_empty() && same_address(path, expected)
+}
+
+/// A silent payment address, by its human-readable part (BIP-352: `sp`, `tsp`).
+fn is_sp_address(address: &str) -> bool {
+    let lower = address.to_ascii_lowercase();
+    lower.starts_with("sp1") || lower.starts_with("tsp1")
+}
+
+/// The same address: exactly, or in the other case for a bech32 address, which is
+/// written all lower or all upper case. A base58 address only compares exactly.
+fn same_address(found: &str, expected: &str) -> bool {
+    if found == expected {
+        return true;
+    }
+    let single_case = expected == expected.to_ascii_lowercase()
+        || expected == expected.to_ascii_uppercase();
+    single_case && expected.contains('1') && found.eq_ignore_ascii_case(expected)
 }
 
 /// Hex-encodes a request id for error messages.
@@ -782,5 +822,52 @@ mod tests {
             RequestId([0, 1]),
             "0x0000 is never issued"
         );
+    }
+}
+
+#[cfg(test)]
+mod address_uri_tests {
+    use super::uri_names_address;
+
+    const WPKH: &str = "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080";
+    const BASE58: &str = "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn";
+    const SP: &str = "tsp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv";
+    const SP_LABEL_1: &str = "tsp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqah4hxfsjdwyaeel4g8x2npkj7qlvf2692l5760z5ut0ggnlrhdzsy3cvsj";
+
+    #[test]
+    fn a_plain_address_is_the_path() {
+        assert!(uri_names_address(&format!("bitcoin:{WPKH}"), WPKH));
+        assert!(uri_names_address(&format!("BITCOIN:{}", WPKH.to_uppercase()), WPKH));
+        assert!(uri_names_address(&format!("bitcoin:{BASE58}"), BASE58));
+        assert!(!uri_names_address(&format!("bitcoin:{}", BASE58.to_lowercase()), BASE58));
+    }
+
+    #[test]
+    fn a_plain_address_with_a_query_is_the_path() {
+        assert!(uri_names_address(&format!("bitcoin:{WPKH}?amount=0.1&label=x"), WPKH));
+    }
+
+    #[test]
+    fn a_silent_payment_address_is_the_sp_parameter() {
+        assert!(uri_names_address(&format!("bitcoin:?sp={SP}"), SP));
+        assert!(uri_names_address(&format!("bitcoin:?SP={}", SP.to_uppercase()), SP));
+        // The path is a fallback address, never the one compared.
+        assert!(uri_names_address(&format!("bitcoin:{WPKH}?sp={SP}"), SP));
+        assert!(!uri_names_address(&format!("bitcoin:{SP}"), SP));
+    }
+
+    #[test]
+    fn a_labelled_silent_payment_address_verifies_the_same_way() {
+        assert!(uri_names_address(&format!("bitcoin:?sp={SP_LABEL_1}"), SP_LABEL_1));
+        assert!(!uri_names_address(&format!("bitcoin:?sp={SP}"), SP_LABEL_1));
+    }
+
+    #[test]
+    fn another_address_or_none_does_not_match() {
+        assert!(!uri_names_address(&format!("bitcoin:{BASE58}"), WPKH));
+        assert!(!uri_names_address(&format!("bitcoin:?sp={SP_LABEL_1}"), SP));
+        assert!(!uri_names_address("bitcoin:", WPKH));
+        assert!(!uri_names_address("bitcoin:?amount=1", SP));
+        assert!(!uri_names_address(WPKH, WPKH));
     }
 }
