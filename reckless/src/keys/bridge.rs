@@ -2172,6 +2172,10 @@ impl From<&Error> for ffi::QrErrorKind {
             Error::RequestIdMismatch { .. } => ffi::QrErrorKind::RequestIdMismatch,
             Error::SignaturesUnsupported => ffi::QrErrorKind::SignaturesUnsupported,
             Error::MusigSession => ffi::QrErrorKind::MusigSession,
+            Error::SignerRefused { .. }
+            | Error::AlreadyRegistered { .. }
+            | Error::SignerUnsupported { .. }
+            | Error::SignerNetworkMismatch { .. } => ffi::QrErrorKind::DeviceRefused,
             _ => ffi::QrErrorKind::Other,
         }
     }
@@ -2211,5 +2215,53 @@ mod key_accounts_tests {
             entries,
             [("shared", "tr(a)", "musig"), ("alias-b", "tr(b)", "")]
         );
+    }
+}
+
+#[cfg(test)]
+mod qr_error_kind_tests {
+    use super::{ffi, Error};
+    use bipqr::ll::{response, MessageType};
+
+    // ws-plaude/silent#116: the device's own error answer ends the request; a reply
+    // that is not this request's answer does not.
+    #[test]
+    fn the_device_refusal_is_its_own_kind() {
+        let refusals = [
+            Error::SignerRefused {
+                message_type: MessageType::Signing,
+                code: response::Error::UserDeclined,
+                message: "declined on the device".into(),
+            },
+            Error::AlreadyRegistered {
+                message_type: MessageType::RegisterDescriptor,
+                message: "alias taken".into(),
+            },
+            Error::SignerUnsupported {
+                message_type: MessageType::Signing,
+                message: "no".into(),
+            },
+            Error::SignerNetworkMismatch {
+                message: "mainnet".into(),
+            },
+        ];
+        for refusal in &refusals {
+            assert!(
+                matches!(ffi::QrErrorKind::from(refusal), ffi::QrErrorKind::DeviceRefused),
+                "{refusal:?} is the device's refusal"
+            );
+        }
+        let not_an_answer = Error::RequestIdMismatch {
+            expected: "0001".into(),
+            got: "0002".into(),
+        };
+        assert!(matches!(
+            ffi::QrErrorKind::from(&not_an_answer),
+            ffi::QrErrorKind::RequestIdMismatch
+        ));
+        assert!(matches!(
+            ffi::QrErrorKind::from(&Error::MusigSession),
+            ffi::QrErrorKind::MusigSession
+        ));
     }
 }

@@ -13,6 +13,7 @@ class Card;
 class ChunkedAddress;
 class Label;
 class ModalActions;
+class ModalStatus;
 } // namespace catalog
 
 namespace qr {
@@ -51,11 +52,12 @@ public slots:
                    const qr::QrDevice &device);
     void onQrError(qr::QrError kind, const QString &message);
     void onQrSettingsClicked();
+    void onRefusedCloseClicked();
     void onQrFrame(const qr::QrFrame &frame);
 
 protected:
     // The view on display: Back and the primary action act on it.
-    enum class View : std::uint8_t { Display, Camera, VerifyResult };
+    enum class View : std::uint8_t { Display, Camera, VerifyResult, Refused };
 
     void init();
     void doConnect();
@@ -80,6 +82,13 @@ protected:
     void showVerifyResult(SigningFlow::VerifyResult result);
     void hideVerifyResult();
 
+    // Refused view: the device's own refusal of the request, its reason and Close
+    // (ws-plaude/silent#116).
+    void initRefused();
+    void connectRefused();
+    void showRefused(const QString &reason);
+    void hideRefused();
+
     // Shared
     void stop();
 
@@ -100,6 +109,10 @@ private:
     CameraStep *m_camera = nullptr;
 
     VerifyResultView *m_result = nullptr;
+
+    catalog::ModalStatus *m_refused = nullptr;
+    catalog::Button *m_refused_close = nullptr;
+    catalog::ModalActions *m_refused_actions = nullptr;
 };
 
 } // namespace keys::flow

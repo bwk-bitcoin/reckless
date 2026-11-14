@@ -237,6 +237,10 @@ auto btnDone() -> Button * {
     return make({.role = ButtonRole::Primary, .label = TR("btn-done"), .width = BtnWidth::M});
 }
 
+auto btnClose() -> Button * {
+    return make({.role = ButtonRole::Default, .label = TR("btn-close"), .width = BtnWidth::M});
+}
+
 auto btnGetDescriptorHot() -> Button * {
     return make(
         {.role = ButtonRole::Primary, .label = TR("btn-get-descriptor"), .width = BtnWidth::L});

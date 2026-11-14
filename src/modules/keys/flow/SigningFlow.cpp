@@ -513,6 +513,7 @@ void SigningFlow::startRoute() {
             &SigningFlow::onDescriptorRegistered, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::registrationChecked, this,
             &SigningFlow::onRegistrationChecked, qontrol::UNIQUE);
+    connect(m_flow, &SigningRouteFlow::refused, this, &SigningFlow::onRefused, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::failed, this, &SigningFlow::onFailed, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::cancelled, this, &QDialog::reject, qontrol::UNIQUE);
     setPage(m_flow);
@@ -681,6 +682,15 @@ void SigningFlow::onRegistrationChecked(bool registered) {
     m_answered = true;
     emit registrationChecked(m_request.req_id, registered);
     accept();
+}
+
+void SigningFlow::onRefused(const QString &reason) {
+    if (m_answered) {
+        return;
+    }
+    // Answered now, not cancelled when the window closes.
+    m_answered = true;
+    emit failed(m_request.req_id, reason, plugin::SignError::Other);
 }
 
 void SigningFlow::onRequestCancelled(ReqId req_id) {

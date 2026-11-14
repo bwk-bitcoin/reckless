@@ -260,7 +260,8 @@ void QrFlow::onQrXpubs(const QString &fingerprint, const QList<qr::QrXpub> &xpub
 }
 
 void QrFlow::onQrError(qr::QrError kind, const QString &message) {
-    if (kind != qr::QrError::RequestFailed) {
+    // The device's refusal ends the request, as a failure would (ws-plaude/silent#116).
+    if (kind != qr::QrError::RequestFailed && kind != qr::QrError::DeviceRefused) {
         // A refused answer: the scan goes on.
         m_camera->showScanError(kind, message);
         window()->adjustSize();

@@ -24,6 +24,8 @@ auto toQrError(QrErrorKind kind) -> qr::QrError {
         return qr::QrError::Unsupported;
     case QrErrorKind::MusigSession:
         return qr::QrError::MusigSession;
+    case QrErrorKind::DeviceRefused:
+        return qr::QrError::DeviceRefused;
     case QrErrorKind::Other:
     default:
         return qr::QrError::Refused;
@@ -175,9 +177,11 @@ void BwkQrEngine::response(const qr::QrResponse &response) {
     auto decoded = m_module->rust()->qr_decode_response(rust::Slice<const std::uint8_t>(
         reinterpret_cast<const std::uint8_t *>(response.payload.data()), response.payload.size()));
     if (!decoded->is_ok()) {
-        // A refused answer leaves the request outstanding: the scan goes on. A lost
-        // MuSig2 session ends it: a later scan must not be decoded against it.
-        if (decoded->error_kind() == QrErrorKind::MusigSession) {
+        // A reply that is not this request's answer leaves it outstanding: the scan
+        // goes on. A lost MuSig2 session, or the device's own refusal of the request
+        // (ws-plaude/silent#116), ends it: a later scan must not be decoded against it.
+        if (decoded->error_kind() == QrErrorKind::MusigSession ||
+            decoded->error_kind() == QrErrorKind::DeviceRefused) {
             m_waiting = false;
         }
         emit error(toQrError(decoded->error_kind()), KeysModule::toQt(decoded->get_error()));

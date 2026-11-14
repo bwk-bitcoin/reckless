@@ -10,6 +10,7 @@
 #include "catalog/containers/ModalActions.h"
 #include "catalog/containers/ViewSlots.h"
 #include "catalog/display/Label.h"
+#include "catalog/feedback/ModalStatus.h"
 #include "catalog/panels/receive/ChunkedAddress.h"
 #include "i18n/Tr.h"
 #include "modules/keys/BwkQrEngine.h"
@@ -18,6 +19,7 @@
 #include "qr/QrDisplay.h"
 #include "qr/QrDisplayEngine.h"
 #include "qr/bbqr/BbqrDisplayEngine.h"
+#include "theme/Icon.h"
 #include "theme/Palette.h"
 
 #include <QDebug>
@@ -79,18 +81,21 @@ void QrRouteFlow::init() {
     initDisplay();
     initCamera();
     initVerifyResult();
+    initRefused();
 }
 
 void QrRouteFlow::doConnect() {
     connectDisplay();
     connectCamera();
     connectVerifyResult();
+    connectRefused();
 }
 
 void QrRouteFlow::view() {
     m_qr_step = viewDisplay();
     hideCamera();
     hideVerifyResult();
+    hideRefused();
 }
 
 // ===== QR code view =====
@@ -231,6 +236,41 @@ void QrRouteFlow::stop() {
 
 // ===== Slots =====
 
+// ===== Refused view =====
+
+void QrRouteFlow::initRefused() {
+    m_refused = new catalog::ModalStatus;
+    m_refused->setIcon(icon::circleX, IconColor::Error);
+    m_refused->setTitle(TR("flow-qr-refused-title"));
+    m_refused_close = catalog::btnClose();
+    m_refused_actions = new catalog::ModalActions;
+    m_refused_actions->addAction(m_refused_close);
+}
+
+void QrRouteFlow::connectRefused() {
+    connect(m_refused_close, &QPushButton::clicked, this, &QrRouteFlow::onRefusedCloseClicked,
+            qontrol::UNIQUE);
+}
+
+void QrRouteFlow::showRefused(const QString &reason) {
+    m_view = View::Refused;
+    m_refused->setSubtitle(reason);
+    viewSlots()->setHeader(nullptr);
+    viewSlots()->setBody(m_refused);
+    viewSlots()->setFooter(m_refused_actions);
+    emit viewChanged(copy().title, ModalWidth::S);
+}
+
+void QrRouteFlow::hideRefused() {
+    viewSlots()->keep(m_refused);
+    viewSlots()->keep(m_refused_actions);
+}
+
+void QrRouteFlow::onRefusedCloseClicked() {
+    // The caller already has the refusal: closing only ends the window.
+    emit cancelled();
+}
+
 void QrRouteFlow::onBackClicked() {
     switch (m_view) {
     case View::Camera:
@@ -240,6 +280,7 @@ void QrRouteFlow::onBackClicked() {
         return;
     case View::Display:
     case View::VerifyResult:
+    case View::Refused:
         return;
     }
 }
@@ -256,6 +297,7 @@ void QrRouteFlow::onNextClicked() {
         start();
         return;
     case View::Camera:
+    case View::Refused:
         return;
     }
 }
@@ -313,8 +355,16 @@ void QrRouteFlow::onQrError(qr::QrError kind, const QString &message) {
         emit failed(message, plugin::SignError::MusigSession);
         return;
     }
+    if (kind == qr::QrError::DeviceRefused) {
+        // The device refused the request itself (ws-plaude/silent#116): the request
+        // is over. The caller gets the reason now; the window shows it until closed.
+        m_camera->stop();
+        emit refused(message);
+        showRefused(message);
+        return;
+    }
     if (kind != qr::QrError::RequestFailed) {
-        // A refused answer: the scan goes on.
+        // A reply that is not this request's answer: the scan goes on.
         m_camera->showScanError(kind, message);
         window()->adjustSize();
         return;

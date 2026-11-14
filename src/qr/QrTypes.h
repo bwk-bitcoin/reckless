@@ -132,7 +132,10 @@ enum class QrError : std::uint8_t {
     WrongRequest,
     Unsupported,
     Refused,
-    MusigSession
+    MusigSession,
+    // The device's own error answer to the request: the request is over
+    // (ws-plaude/silent#116).
+    DeviceRefused
 };
 
 } // namespace qr

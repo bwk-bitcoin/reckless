@@ -40,6 +40,7 @@ auto btnCheckAddress() -> Button *;
 auto btnContinue() -> Button *;
 auto btnCreate() -> Button *;
 auto btnDone() -> Button *;
+auto btnClose() -> Button *;
 auto btnGetDescriptorHot() -> Button *;
 auto btnGetXpubHot() -> Button *;
 // The hot nonce-cache password prompt's proceed.

@@ -145,6 +145,7 @@ public slots:
     void onXpubFetched(const QString &xpub);
     void onDescriptorRegistered(const QString &proof_hex);
     void onRegistrationChecked(bool registered);
+    void onRefused(const QString &reason);
     void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other);
 
 protected:
@@ -226,6 +227,10 @@ signals:
     void descriptorRegistered(const QString &proof_hex);
     // Whether the device holds the wallet, for a registration check.
     void registrationChecked(bool registered);
+    // The device refused the request with `reason`: SigningFlow answers the caller
+    // with it at once, and the route keeps showing it until closed
+    // (ws-plaude/silent#116).
+    void refused(const QString &reason);
     // A failure the route cannot recover from: SigningFlow closes. `kind` says why,
     // for the caller to retry or restart.
     void failed(const QString &message, plugin::SignError kind = plugin::SignError::Other);

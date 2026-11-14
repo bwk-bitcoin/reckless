@@ -225,6 +225,10 @@ mod ffi {
         SignaturesUnsupported,
         /// The device lost or refused its MuSig2 session (response error 0x0D).
         MusigSession,
+        /// The device answered the outstanding request with an error of its own:
+        /// declined, unregistered wallet, unsupported, network mismatch, ...
+        /// (ws-plaude/silent#116). It ends the request.
+        DeviceRefused,
     }
 
     // ===== Shared Structs =====
