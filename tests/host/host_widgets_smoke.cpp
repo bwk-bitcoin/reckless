@@ -2,6 +2,7 @@
 // step trail through the plugin interface (interfaces/widgets.h), made by Host and
 // drawn in the live theme; #127 its confirmation modal (Host::createConfirmModal).
 #include "catalog/Button.h"
+#include "catalog/containers/Modal.h"
 #include "catalog/display/WizardSteps.h"
 #include "catalog/feedback/ScanProgress.h"
 #include "interfaces/host.h"
