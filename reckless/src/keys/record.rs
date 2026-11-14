@@ -197,6 +197,15 @@ pub struct DescriptorEntry {
     /// the Ledger derives it from the seed, so every device of the seed shares it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hmac: Option<String>,
+    /// A QR device that registered the descriptor kept the wallet itself: its later
+    /// requests carry the alias alone (ws-plaude/silent#117).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stored: bool,
+    /// The proof of registration a QR device returned when it did not keep the wallet,
+    /// lowercase hex of any length: its later requests carry the descriptor body and
+    /// this proof (ws-plaude/silent#117).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<String>,
 }
 
 /// An encrypted secret at rest. This task only declares the shape; a later task fills

@@ -76,14 +76,16 @@ void BwkQrEngine::getSpAccount() {
     issue(m_module->rust()->qr_request_get_sp_account());
 }
 
-void BwkQrEngine::sign(const QString &psbt_v2_hex, const QString &descriptor) {
+void BwkQrEngine::sign(const QString &fingerprint, const QString &psbt_v2_hex,
+                       const QString &descriptor) {
     if (m_module->rust() == nullptr) {
         emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
         return;
     }
     rust::Vec<rust::String> descriptors;
     descriptors.push_back(rust::String(descriptor.toStdString()));
-    issue(m_module->rust()->qr_request_sign(std::move(descriptors),
+    issue(m_module->rust()->qr_request_sign(rust::Str(fingerprint.toStdString()),
+                                            std::move(descriptors),
                                             rust::Str(psbt_v2_hex.toStdString())));
 }
 
@@ -126,13 +128,14 @@ void BwkQrEngine::signMusig(const QString &fingerprint, const QString &psbt_v2_h
     thread->start();
 }
 
-void BwkQrEngine::verifyAddress(const QString &descriptor, const QString &path,
-                                const QString &address) {
+void BwkQrEngine::verifyAddress(const QString &fingerprint, const QString &descriptor,
+                                const QString &path, const QString &address) {
     if (m_module->rust() == nullptr) {
         emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
         return;
     }
-    issue(m_module->rust()->qr_request_verify_address(rust::Str(descriptor.toStdString()),
+    issue(m_module->rust()->qr_request_verify_address(rust::Str(fingerprint.toStdString()),
+                                                      rust::Str(descriptor.toStdString()),
                                                       rust::Str(path.toStdString()),
                                                       rust::Str(address.toStdString())));
 }
@@ -282,7 +285,7 @@ void BwkQrEngine::forwardResponse(const ::QrResponse &decoded) {
         emit addressVerified(decoded.verified());
         return;
     case QrResponseKind::Registration:
-        emit descriptorRegistered(decoded.registered(),
+        emit descriptorRegistered(decoded.registered(), decoded.registration_stored(),
                                   KeysModule::toQt(decoded.registration_proof()));
         return;
     default:

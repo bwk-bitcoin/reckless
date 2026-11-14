@@ -219,6 +219,16 @@ pub trait KeyManagerImpl {
     ) -> Result<(), Error>;
     /// The stored proof of `descriptor` on the key, None when absent or unreadable.
     fn descriptor_hmac(&self, fingerprint: Fingerprint, descriptor: &str) -> Option<[u8; 32]>;
+    /// Records a QR device's registration of `descriptor` (ws-plaude/silent#117): it kept
+    /// the wallet (`stored`), or it gave `proof` for later requests to carry.
+    fn set_descriptor_registration(
+        &mut self,
+        fingerprint: Fingerprint,
+        alias: String,
+        descriptor: String,
+        stored: bool,
+        proof: Option<Vec<u8>>,
+    ) -> Result<(), Error>;
     fn clear_descriptor_registration(
         &mut self,
         fingerprint: Fingerprint,
@@ -1052,6 +1062,24 @@ impl KeyManagerImpl for KeyManager {
         })
     }
 
+    fn set_descriptor_registration(
+        &mut self,
+        fingerprint: Fingerprint,
+        alias: String,
+        descriptor: String,
+        stored: bool,
+        proof: Option<Vec<u8>>,
+    ) -> Result<(), Error> {
+        self.refuse_sp_spend_descriptor(&descriptor)?;
+        self.mark_xpubs_used(&descriptor)?;
+        self.mutate(fingerprint, |record| {
+            let entry = upsert_descriptor_entry(record, alias, descriptor);
+            entry.stored = stored;
+            entry.proof = proof.map(hex::encode);
+            Ok(())
+        })
+    }
+
     fn descriptor_hmac(&self, fingerprint: Fingerprint, descriptor: &str) -> Option<[u8; 32]> {
         let hmac = self
             .registered_descriptors(fingerprint)
@@ -1229,6 +1257,8 @@ fn upsert_descriptor_entry(
                     alias,
                     descriptor,
                     hmac: None,
+                    stored: false,
+                    proof: None,
                 },
             );
             index
@@ -1507,6 +1537,8 @@ mod tests {
             alias: "descriptor alias".to_string(),
             descriptor: "descriptor string".to_string(),
             hmac: None,
+            stored: false,
+            proof: None,
         });
         manager.add_key(record).expect("add key");
 
@@ -2603,6 +2635,8 @@ mod tests {
                 alias: "first alias".to_string(),
                 descriptor: "descriptor".to_string(),
                 hmac: None,
+                stored: false,
+                proof: None,
             }],
             "expected a single entry after registering twice with the same alias, got {descriptors:?}"
         );
@@ -2621,6 +2655,8 @@ mod tests {
                 alias: "new alias".to_string(),
                 descriptor: "descriptor".to_string(),
                 hmac: None,
+                stored: false,
+                proof: None,
             }],
             "expected the alias to update in place, got {descriptors:?}"
         );
@@ -2847,6 +2883,8 @@ mod tests {
                 alias: "alias".to_string(),
                 descriptor: "descriptor".to_string(),
                 hmac: Some("ab".repeat(32)),
+                stored: false,
+                proof: None,
             }],
             "expected one entry carrying the hmac, got {descriptors:?}"
         );
@@ -2879,6 +2917,8 @@ mod tests {
                 alias: "new alias".to_string(),
                 descriptor: "descriptor".to_string(),
                 hmac: Some("ab".repeat(32)),
+                stored: false,
+                proof: None,
             }],
             "expected the alias updated and the hmac kept, got {descriptors:?}"
         );
@@ -3529,6 +3569,8 @@ mod tests {
                 alias: "alias".to_string(),
                 descriptor: watch_only_descriptor,
                 hmac: None,
+                stored: false,
+                proof: None,
             }],
             "expected the watch-only descriptor to register"
         );

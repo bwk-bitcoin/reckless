@@ -1273,8 +1273,14 @@ fn a_registration_check_carries_no_descriptor_and_reads_the_answer() {
         let request::Body::RegisterDescriptor(body) = decoded.body else {
             panic!("expected the registration request, got {:?}", decoded.body);
         };
-        assert!(body.descriptor.is_none(), "a check carries no descriptor body");
-        assert!(!body.descriptor_alias.is_empty(), "a check names the wallet's alias");
+        assert!(
+            body.descriptor.is_none(),
+            "a check carries no descriptor body"
+        );
+        assert!(
+            !body.descriptor_alias.is_empty(),
+            "a check names the wallet's alias"
+        );
         let encoded = respond(
             &session,
             response::Body::Registration(response::Registration {
@@ -1289,5 +1295,62 @@ fn a_registration_check_carries_no_descriptor_and_reads_the_answer() {
             matches!(answer, QrResponse::Registration { registered: got, .. } if got == registered),
             "expected registered {registered}, got {answer:?}"
         );
+    }
+}
+
+// ws-plaude/silent#117: a request to a device carries what its registration needs: the
+// alias alone when it kept the wallet, the body and its proof when it gave one, the body
+// alone when no answer is recorded.
+#[test]
+fn requests_carry_the_body_and_proof_or_the_alias_as_the_registration_says() {
+    use reckless::keys::qr::QrRegistration;
+    let proof = vec![9u8; 40];
+    for (registration, body, carried_proof) in [
+        (QrRegistration::Unknown, true, None),
+        (QrRegistration::Stored, false, None),
+        (
+            QrRegistration::Proof(proof.clone()),
+            true,
+            Some(proof.clone()),
+        ),
+    ] {
+        let mut session = QrSession::new();
+        let sign = session
+            .sign_registered(&["wpkh(desc)".to_string()], &sign_psbt_bytes(), &|_| {
+                registration.clone()
+            })
+            .expect("sign request");
+        let Message::Request(decoded) = decode(sign.message()).expect("decode sign") else {
+            panic!("expected a request");
+        };
+        let request::Body::Sign(signing) = decoded.body else {
+            panic!("expected a signing request");
+        };
+        let named = &signing.descriptors[0];
+        assert!(!named.alias.is_empty(), "the wallet is named by its alias");
+        assert_eq!(named.descriptor.is_some(), body, "{registration:?}: body");
+        assert_eq!(named.proof, carried_proof, "{registration:?}: proof");
+
+        let mut session = QrSession::new();
+        let verify = session
+            .verify_address_registered(
+                "wpkh(desc)",
+                DerivationPath::from_str("m/0/0").expect("path"),
+                "address".to_string(),
+                &registration,
+            )
+            .expect("verify request");
+        let Message::Request(decoded) = decode(verify.message()).expect("decode verify") else {
+            panic!("expected a request");
+        };
+        let request::Body::VerifyAddress(verification) = decoded.body else {
+            panic!("expected an address verification");
+        };
+        assert_eq!(
+            verification.descriptor.is_some(),
+            body,
+            "{registration:?}: body"
+        );
+        assert_eq!(verification.proof, carried_proof, "{registration:?}: proof");
     }
 }

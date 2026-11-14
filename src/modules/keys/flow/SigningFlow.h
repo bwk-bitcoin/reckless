@@ -119,10 +119,11 @@ signals:
     void descriptorFetched(ReqId req_id, QString descriptor, QString fingerprint,
                            QList<qr::QrXpub> xpubs);
     void xpubFetched(ReqId req_id, QString xpub, QString fingerprint, QString path);
-    // The device registered the request's wallet: `proof_hex` is the proof of
-    // registration to keep, empty when the device stored it (ws-plaude/silent#114).
+    // The device registered the request's wallet (ws-plaude/silent#114): `stored`
+    // when it kept the wallet itself, else `proof_hex` is the proof of registration to
+    // keep, empty when it gave none (ws-plaude/silent#117).
     void descriptorRegistered(ReqId req_id, QString fingerprint, QString descriptor,
-                              QString proof_hex);
+                              bool stored, QString proof_hex);
     // Whether the device holds the request's wallet (ws-plaude/silent#115).
     void registrationChecked(ReqId req_id, bool registered);
     // A failure the flow cannot recover from; the window closes.
@@ -143,7 +144,7 @@ public slots:
     void onVerifyResultChanged(std::optional<SigningFlow::VerifyResult> result);
     void onDescriptorFetched(const QString &descriptor, const QList<qr::QrXpub> &xpubs);
     void onXpubFetched(const QString &xpub);
-    void onDescriptorRegistered(const QString &proof_hex);
+    void onDescriptorRegistered(bool stored, const QString &proof_hex);
     void onRegistrationChecked(bool registered);
     void onRefused(const QString &reason);
     void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other);
@@ -223,8 +224,8 @@ signals:
     // `xpubs` are the sub-account xpubs handed along, none on a route that has none.
     void descriptorFetched(const QString &descriptor, const QList<qr::QrXpub> &xpubs);
     void xpubFetched(const QString &xpub);
-    // The device registered the wallet; `proof_hex` as in SigningFlow.
-    void descriptorRegistered(const QString &proof_hex);
+    // The device registered the wallet; `stored` and `proof_hex` as in SigningFlow.
+    void descriptorRegistered(bool stored, const QString &proof_hex);
     // Whether the device holds the wallet, for a registration check.
     void registrationChecked(bool registered);
     // The device refused the request with `reason`: SigningFlow answers the caller

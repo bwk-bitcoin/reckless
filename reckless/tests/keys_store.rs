@@ -191,11 +191,15 @@ fn test_record_round_trip_every_field() {
         alias: "descriptor one".to_string(),
         descriptor: "descriptor string one".to_string(),
         hmac: None,
+        stored: false,
+        proof: None,
     });
     record.descriptors.push(DescriptorEntry {
         alias: "descriptor two".to_string(),
         descriptor: "descriptor string two".to_string(),
         hmac: None,
+        stored: false,
+        proof: None,
     });
     record.secret = Some(secret_envelope());
 

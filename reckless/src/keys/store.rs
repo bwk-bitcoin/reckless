@@ -432,6 +432,8 @@ mod tests {
             alias: "descriptor alias".to_string(),
             descriptor: "descriptor string".to_string(),
             hmac: None,
+            stored: false,
+            proof: None,
         });
         record.secret = Some(SecretEnvelope {
             version: 1,

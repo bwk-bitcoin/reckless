@@ -223,16 +223,29 @@ impl QrSession {
         path: DerivationPath,
         address: String,
     ) -> Result<QrRequest, Error> {
+        self.verify_address_registered(descriptor, path, address, &QrRegistration::Unknown)
+    }
+
+    /// [`QrSession::verify_address`] to a device whose registration of `descriptor` is
+    /// `registration` (ws-plaude/silent#117).
+    pub fn verify_address_registered(
+        &mut self,
+        descriptor: &str,
+        path: DerivationPath,
+        address: String,
+        registration: &QrRegistration,
+    ) -> Result<QrRequest, Error> {
         let body = match SpDescriptor::from_str(descriptor) {
             Ok(sp) => request::DescriptorBody::SpKeys(sp_keys(&sp)?),
             Err(_) => request::DescriptorBody::Bip380(descriptor.to_string()),
         };
+        let (descriptor_body, proof) = registration.carried(body);
         let body = request::Body::VerifyAddress(request::VerifyAddress {
             descriptor_alias: hwi::wallet_name(descriptor),
             derivation_path: Active::to_ll_path(&path),
             address: Some(address.clone()),
-            descriptor: Some(body),
-            proof: None,
+            descriptor: descriptor_body,
+            proof,
         });
         self.issue(body, None, Some(address), None)
     }
@@ -242,12 +255,27 @@ impl QrSession {
         descriptors: &[String],
         psbt_v2_bytes: &[u8],
     ) -> Result<QrRequest, Error> {
+        self.sign_registered(descriptors, psbt_v2_bytes, &|_| QrRegistration::Unknown)
+    }
+
+    /// [`QrSession::sign`] to a device whose registration of each descriptor is
+    /// `registration(descriptor)` (ws-plaude/silent#117).
+    pub fn sign_registered(
+        &mut self,
+        descriptors: &[String],
+        psbt_v2_bytes: &[u8],
+        registration: &dyn Fn(&str) -> QrRegistration,
+    ) -> Result<QrRequest, Error> {
         let descriptors = descriptors
             .iter()
-            .map(|descriptor| request::Descriptor {
-                alias: hwi::wallet_name(descriptor),
-                descriptor: Some(request::DescriptorBody::Bip380(descriptor.clone())),
-                proof: None,
+            .map(|descriptor| {
+                let (body, proof) = registration(descriptor)
+                    .carried(request::DescriptorBody::Bip380(descriptor.clone()));
+                request::Descriptor {
+                    alias: hwi::wallet_name(descriptor),
+                    descriptor: body,
+                    proof,
+                }
             })
             .collect();
         // Round 1 goes out without nonces: a device decides its round from its own
@@ -787,14 +815,40 @@ fn same_address(found: &str, expected: &str) -> bool {
     if found == expected {
         return true;
     }
-    let single_case = expected == expected.to_ascii_lowercase()
-        || expected == expected.to_ascii_uppercase();
+    let single_case =
+        expected == expected.to_ascii_lowercase() || expected == expected.to_ascii_uppercase();
     single_case && expected.contains('1') && found.eq_ignore_ascii_case(expected)
 }
 
 /// Hex-encodes a request id for error messages.
 fn hex_id(id: RequestId) -> String {
     id.0.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// How a device holds a wallet a request names (ws-plaude/silent#117).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QrRegistration {
+    /// No registration answer is recorded: the request carries the descriptor body.
+    Unknown,
+    /// The device kept the wallet: the request names its alias alone.
+    Stored,
+    /// The device gave this proof of registration instead of keeping the wallet: the
+    /// request carries the descriptor body and the proof.
+    Proof(Vec<u8>),
+}
+
+impl QrRegistration {
+    /// The descriptor body and proof a request carries for this registration.
+    fn carried(
+        &self,
+        body: request::DescriptorBody,
+    ) -> (Option<request::DescriptorBody>, Option<Vec<u8>>) {
+        match self {
+            Self::Unknown => (Some(body), None),
+            Self::Stored => (None, None),
+            Self::Proof(proof) => (Some(body), Some(proof.clone())),
+        }
+    }
 }
 
 /// One request as issued: its id and the protocol message carrying it.
@@ -848,20 +902,32 @@ mod address_uri_tests {
     #[test]
     fn a_plain_address_is_the_path() {
         assert!(uri_names_address(&format!("bitcoin:{WPKH}"), WPKH));
-        assert!(uri_names_address(&format!("BITCOIN:{}", WPKH.to_uppercase()), WPKH));
+        assert!(uri_names_address(
+            &format!("BITCOIN:{}", WPKH.to_uppercase()),
+            WPKH
+        ));
         assert!(uri_names_address(&format!("bitcoin:{BASE58}"), BASE58));
-        assert!(!uri_names_address(&format!("bitcoin:{}", BASE58.to_lowercase()), BASE58));
+        assert!(!uri_names_address(
+            &format!("bitcoin:{}", BASE58.to_lowercase()),
+            BASE58
+        ));
     }
 
     #[test]
     fn a_plain_address_with_a_query_is_the_path() {
-        assert!(uri_names_address(&format!("bitcoin:{WPKH}?amount=0.1&label=x"), WPKH));
+        assert!(uri_names_address(
+            &format!("bitcoin:{WPKH}?amount=0.1&label=x"),
+            WPKH
+        ));
     }
 
     #[test]
     fn a_silent_payment_address_is_the_sp_parameter() {
         assert!(uri_names_address(&format!("bitcoin:?sp={SP}"), SP));
-        assert!(uri_names_address(&format!("bitcoin:?SP={}", SP.to_uppercase()), SP));
+        assert!(uri_names_address(
+            &format!("bitcoin:?SP={}", SP.to_uppercase()),
+            SP
+        ));
         // The path is a fallback address, never the one compared.
         assert!(uri_names_address(&format!("bitcoin:{WPKH}?sp={SP}"), SP));
         assert!(!uri_names_address(&format!("bitcoin:{SP}"), SP));
@@ -869,7 +935,10 @@ mod address_uri_tests {
 
     #[test]
     fn a_labelled_silent_payment_address_verifies_the_same_way() {
-        assert!(uri_names_address(&format!("bitcoin:?sp={SP_LABEL_1}"), SP_LABEL_1));
+        assert!(uri_names_address(
+            &format!("bitcoin:?sp={SP_LABEL_1}"),
+            SP_LABEL_1
+        ));
         assert!(!uri_names_address(&format!("bitcoin:?sp={SP}"), SP_LABEL_1));
     }
 

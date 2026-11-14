@@ -665,13 +665,13 @@ void SigningFlow::onXpubFetched(const QString &xpub) {
     accept();
 }
 
-void SigningFlow::onDescriptorRegistered(const QString &proof_hex) {
+void SigningFlow::onDescriptorRegistered(bool stored, const QString &proof_hex) {
     if (m_answered) {
         return;
     }
     m_answered = true;
     emit descriptorRegistered(m_request.req_id, m_request.fingerprint, m_request.descriptor,
-                              proof_hex);
+                              stored, proof_hex);
     accept();
 }
 

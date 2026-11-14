@@ -2836,6 +2836,16 @@ mod ffi {
             descriptor: &str,
             hmac: &str,
         ) -> KeyOpResult;
+        /// Records a QR device's registration answer for `descriptor`: it kept the wallet
+        /// (`stored`), or gave `proof_hex` (any length, hex) for later requests to carry
+        /// (ws-plaude/silent#117).
+        fn set_descriptor_registration(
+            self: &mut KeysModule,
+            fingerprint: &str,
+            descriptor: &str,
+            stored: bool,
+            proof_hex: &str,
+        ) -> KeyOpResult;
         fn unregister_descriptor(
             self: &mut KeysModule,
             fingerprint: &str,
@@ -3074,14 +3084,19 @@ mod ffi {
             self: &mut KeysModule,
             descriptor: &str,
         ) -> QrMessageResult;
+        /// To the QR device of `fingerprint`: the request carries the descriptor body
+        /// and proof, or the alias alone, as that key's recorded registration says
+        /// (ws-plaude/silent#117).
         fn qr_request_verify_address(
             self: &mut KeysModule,
+            fingerprint: &str,
             descriptor: &str,
             path: &str,
             address: &str,
         ) -> QrMessageResult;
         fn qr_request_sign(
             self: &mut KeysModule,
+            fingerprint: &str,
             descriptors: Vec<String>,
             psbt_v2_hex: &str,
         ) -> QrMessageResult;
@@ -3121,6 +3136,8 @@ mod ffi {
         /// When kind() is Registration and the device did not store the registration:
         /// the proof of registration to keep, hex; else empty.
         fn registration_proof(self: &QrResponse) -> String;
+        /// Whether the device said it kept the wallet, when kind() is Registration.
+        fn registration_stored(self: &QrResponse) -> bool;
     }
 
     // ===== Camera Methods =====

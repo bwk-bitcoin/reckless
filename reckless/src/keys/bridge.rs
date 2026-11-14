@@ -778,6 +778,7 @@ impl KeysModule {
 
     pub fn qr_request_verify_address(
         &mut self,
+        fingerprint: &str,
         descriptor: &str,
         path: &str,
         address: &str,
@@ -786,14 +787,18 @@ impl KeysModule {
             Ok(path) => path,
             Err(e) => return failed_message(&format!("invalid derivation path '{path}': {e}")),
         };
-        to_message(
-            self.session
-                .verify_address(descriptor, path, address.to_string()),
-        )
+        let registration = self.qr_registration(fingerprint, descriptor);
+        to_message(self.session.verify_address_registered(
+            descriptor,
+            path,
+            address.to_string(),
+            &registration,
+        ))
     }
 
     pub fn qr_request_sign(
         &mut self,
+        fingerprint: &str,
         descriptors: Vec<String>,
         psbt_v2_hex: &str,
     ) -> ffi::QrMessageResult {
@@ -801,7 +806,85 @@ impl KeysModule {
             Ok(psbt) => psbt,
             Err(e) => return failed_message(&format!("invalid psbt hex: {e}")),
         };
-        to_message(self.session.sign(&descriptors, &psbt))
+        let registrations: BTreeMap<String, qr::QrRegistration> = descriptors
+            .iter()
+            .map(|descriptor| {
+                (
+                    descriptor.clone(),
+                    self.qr_registration(fingerprint, descriptor),
+                )
+            })
+            .collect();
+        let registration = |descriptor: &str| {
+            registrations
+                .get(descriptor)
+                .cloned()
+                .unwrap_or(qr::QrRegistration::Unknown)
+        };
+        to_message(
+            self.session
+                .sign_registered(&descriptors, &psbt, &registration),
+        )
+    }
+
+    /// How the QR device of `fingerprint` holds `descriptor`, from its recorded
+    /// registration answer (ws-plaude/silent#117).
+    fn qr_registration(&self, fingerprint: &str, descriptor: &str) -> qr::QrRegistration {
+        let Some(manager) = self.inner.as_ref() else {
+            return qr::QrRegistration::Unknown;
+        };
+        let Ok(fp) = Fingerprint::from_str(fingerprint) else {
+            return qr::QrRegistration::Unknown;
+        };
+        let Some(entry) = manager
+            .registered_descriptors(fp)
+            .iter()
+            .find(|entry| entry.descriptor == descriptor)
+        else {
+            return qr::QrRegistration::Unknown;
+        };
+        if entry.stored {
+            return qr::QrRegistration::Stored;
+        }
+        match entry.proof.as_deref().map(hex::decode) {
+            Some(Ok(proof)) if !proof.is_empty() => qr::QrRegistration::Proof(proof),
+            Some(Err(e)) => {
+                log::warn!("malformed stored proof of registration for key {fp}: {e}");
+                qr::QrRegistration::Unknown
+            }
+            _ => qr::QrRegistration::Unknown,
+        }
+    }
+
+    /// Records a QR device's registration answer for `descriptor` (ws-plaude/silent#117):
+    /// it kept the wallet (`stored`), or gave `proof_hex` for later requests to carry.
+    pub fn set_descriptor_registration(
+        &mut self,
+        fingerprint: &str,
+        descriptor: &str,
+        stored: bool,
+        proof_hex: &str,
+    ) -> ffi::KeyOpResult {
+        let Some(manager) = self.inner.as_mut() else {
+            return failed_op(&self.error);
+        };
+        let fp = match registration_key(fingerprint, descriptor) {
+            Ok(fp) => fp,
+            Err(e) => return failed_op(&e),
+        };
+        let proof = match proof_hex {
+            "" => None,
+            hex_text => match hex::decode(hex_text) {
+                Ok(proof) => Some(proof),
+                Err(e) => return failed_op(&format!("invalid proof of registration: {e}")),
+            },
+        };
+        let alias = wallet_name(descriptor);
+        match manager.set_descriptor_registration(fp, alias, descriptor.to_string(), stored, proof)
+        {
+            Ok(()) => ok_op(),
+            Err(e) => failed_op(&format!("set_descriptor_registration {fingerprint}: {e}")),
+        }
     }
 
     /// The silent payment account on the module's network.
@@ -1551,6 +1634,17 @@ impl QrResponse {
         }
     }
 
+    /// Whether the device said it kept the wallet, when kind() is Registration.
+    pub fn registration_stored(&self) -> bool {
+        matches!(
+            self.inner.as_ref(),
+            Ok(qr::QrResponse::Registration {
+                stored: Some(true),
+                ..
+            })
+        )
+    }
+
     /// The proof of registration to keep, hex, when the device registered the wallet
     /// without storing it; empty otherwise.
     pub fn registration_proof(&self) -> String {
@@ -2247,7 +2341,10 @@ mod qr_error_kind_tests {
         ];
         for refusal in &refusals {
             assert!(
-                matches!(ffi::QrErrorKind::from(refusal), ffi::QrErrorKind::DeviceRefused),
+                matches!(
+                    ffi::QrErrorKind::from(refusal),
+                    ffi::QrErrorKind::DeviceRefused
+                ),
                 "{refusal:?} is the device's refusal"
             );
         }

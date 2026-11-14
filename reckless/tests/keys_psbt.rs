@@ -739,3 +739,55 @@ fn test_usb_sign_payload_refuses_a_pending_sp_output() {
         payload.psbt_base64
     );
 }
+
+// ws-plaude/silent#117: a recorded registration answer decides what a request to that key
+// carries; a proof of any length is kept (a QR proof is not the Ledger's 32-byte HMAC).
+#[test]
+fn a_recorded_registration_answer_shapes_the_requests_to_that_key() {
+    use bipqr::ll::{decode, request, Message};
+    const POLICY: &str = "tr(musig([73c5da0a/87h/1h/0h]tpubDCChhoz5Qdrkn7Z7KXawq6Ad6r3A4MUkCoVTqeWxfTkA6bHNJ3CHUEtALQdkNeixNz4446PcAmw4WKcj3mV2vb29H7sg9EPzbyCU1y2merw,[b8688df1/87h/1h/0h]tpubDC44ZFebbFm5ZXnG5Xt8k9PpdSZXUQ4HyuU8e8u5zfutYuu8EW4MLKS54EFTfGYgeqt7P2jEEd1iCF5kSPi7Xrj6EZcsStCcAjPy97DSiLb)/<0;1>/*)";
+    datadir();
+    let mut module = reckless::new_keys_module(FfiNetwork::Regtest);
+    assert!(
+        module.is_ok(),
+        "module failed to open: {}",
+        module.get_error()
+    );
+    let added = module.add_key(TEST_FINGERPRINT_HEX, "QR device");
+    assert!(added.is_ok, "add key: {}", added.error);
+    let verification = |module: &mut reckless::keys::bridge::KeysModule| {
+        let message =
+            module.qr_request_verify_address(TEST_FINGERPRINT_HEX, POLICY, "m/0/0", "address");
+        assert!(message.is_ok, "verify request: {}", message.error);
+        let Message::Request(decoded) = decode(&message.payload).expect("decode request") else {
+            panic!("expected a request");
+        };
+        let request::Body::VerifyAddress(body) = decoded.body else {
+            panic!("expected an address verification");
+        };
+        body
+    };
+
+    let proof = vec![0x5au8; 40];
+    let saved = module.set_descriptor_registration(
+        TEST_FINGERPRINT_HEX,
+        POLICY,
+        false,
+        &hex::encode(&proof),
+    );
+    assert!(saved.is_ok, "record the proof: {}", saved.error);
+    let body = verification(&mut *module);
+    assert!(
+        body.descriptor.is_some(),
+        "a proof goes with the descriptor body"
+    );
+    assert_eq!(body.proof, Some(proof), "the recorded proof is carried");
+
+    let saved = module.set_descriptor_registration(TEST_FINGERPRINT_HEX, POLICY, true, "");
+    assert!(saved.is_ok, "record the device kept it: {}", saved.error);
+    let body = verification(&mut *module);
+    assert!(
+        body.descriptor.is_none() && body.proof.is_none(),
+        "a kept wallet is named by its alias alone"
+    );
+}

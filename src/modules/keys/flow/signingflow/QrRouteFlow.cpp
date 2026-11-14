@@ -53,13 +53,14 @@ void QrRouteFlow::start() {
                                    request().routes);
             return;
         }
-        m_qr_engine->sign(psbt(), request().descriptor);
+        m_qr_engine->sign(row().fingerprint, psbt(), request().descriptor);
         return;
     case Context::Nonces:
         m_qr_engine->prepareMusig(row().fingerprint, request().descriptor);
         return;
     case Context::Verify:
-        m_qr_engine->verifyAddress(request().descriptor, request().path, request().address);
+        m_qr_engine->verifyAddress(row().fingerprint, request().descriptor, request().path,
+                                   request().address);
         return;
     case Context::Fetch:
         m_qr_engine->getSpAccount();
@@ -318,7 +319,7 @@ void QrRouteFlow::onQrVerified(bool matched) {
                              : SigningFlow::VerifyResult::Mismatch);
 }
 
-void QrRouteFlow::onQrRegistered(bool registered, const QString &proof_hex) {
+void QrRouteFlow::onQrRegistered(bool registered, bool stored, const QString &proof_hex) {
     m_camera->stop();
     if (request().context == Context::CheckRegistration) {
         emit registrationChecked(registered);
@@ -328,7 +329,7 @@ void QrRouteFlow::onQrRegistered(bool registered, const QString &proof_hex) {
         emit failed(TR("keys-register-refused"));
         return;
     }
-    emit descriptorRegistered(proof_hex);
+    emit descriptorRegistered(stored, proof_hex);
 }
 
 void QrRouteFlow::onQrSpAccount(const QString &descriptor, const QList<qr::QrXpub> &xpubs) {

@@ -26,7 +26,10 @@ public:
     // The silent payment account: its sp() descriptor, with its taproot and segwit
     // sub-accounts' xpubs.
     virtual void getSpAccount() = 0;
-    virtual void sign(const QString &psbt_v2_hex, const QString &descriptor) = 0;
+    // To the device of the key `fingerprint`: the request carries what that key's
+    // recorded registration of `descriptor` needs (ws-plaude/silent#117).
+    virtual void sign(const QString &fingerprint, const QString &psbt_v2_hex,
+                      const QString &descriptor) = 0;
     // A cached MuSig preparation: public nonces for a fresh cache session, bound to
     // no transaction.
     virtual void prepareMusig(const QString &fingerprint, const QString &descriptor) = 0;
@@ -36,8 +39,8 @@ public:
     virtual void signMusig(const QString &fingerprint, const QString &psbt_v2_hex,
                            const QString &descriptor,
                            const QHash<QString, KeyRouteKind> &routes) = 0;
-    virtual void verifyAddress(const QString &descriptor, const QString &path,
-                               const QString &address) = 0;
+    virtual void verifyAddress(const QString &fingerprint, const QString &descriptor,
+                               const QString &path, const QString &address) = 0;
     // Asks the device to register the wallet `descriptor` (ws-plaude/silent#114).
     virtual void registerDescriptor(const QString &descriptor) = 0;
     // Asks whether the device holds the wallet `descriptor` (ws-plaude/silent#115):
@@ -56,9 +59,9 @@ signals:
     // The prepared answer checked out and is in the cache.
     void noncesPrepared();
     void addressVerified(bool matched);
-    // The device's registration answer: `proof_hex` is the proof of registration to
-    // keep when the device did not store the registration itself, else empty.
-    void descriptorRegistered(bool registered, const QString &proof_hex);
+    // The device's registration answer: `stored` when it kept the wallet itself, else
+    // `proof_hex` is the proof of registration to keep (empty when it gave none).
+    void descriptorRegistered(bool registered, bool stored, const QString &proof_hex);
     void error(qr::QrError kind, const QString &message);
 
 public slots:

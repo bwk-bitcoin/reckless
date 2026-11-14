@@ -394,10 +394,12 @@ private slots:
     void onHotXpubFinished(ReqId req_id, bool is_ok, QString xpub, QString error,
                            bool wrong_password);
     // A flow fetched an xpub: cached on its key, then handed to the caller.
-    // A QR device registered the wallet: a proof it did not store is kept, then the
-    // caller is answered (ws-plaude/silent#114).
+    // A QR device registered the wallet: its answer, kept the wallet or a proof for
+    // later requests, is recorded, then the caller is answered (ws-plaude/silent#114,
+    // #117).
     void onFlowDescriptorRegistered(ReqId req_id, const QString &fingerprint,
-                                    const QString &descriptor, const QString &proof_hex);
+                                    const QString &descriptor, bool stored,
+                                    const QString &proof_hex);
     void onFlowXpubFetched(ReqId req_id, const QString &xpub, const QString &fingerprint,
                            const QString &path);
     // A flow fetched an sp() descriptor: the xpubs handed with it cached on its key,

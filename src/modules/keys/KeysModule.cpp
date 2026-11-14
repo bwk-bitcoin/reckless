@@ -1088,10 +1088,23 @@ auto KeysModule::hasRoute(const QString &fingerprint, KeyRouteKind route) const 
 }
 
 void KeysModule::onFlowDescriptorRegistered(ReqId req_id, const QString &fingerprint,
-                                            const QString &descriptor, const QString &proof_hex) {
-    if (!proof_hex.isEmpty() && !storeRegistrationHmac(fingerprint, descriptor, proof_hex)) {
-        m_bus->deliverError(req_id, TR("keys-register-proof-not-stored"));
-        return;
+                                            const QString &descriptor, bool stored,
+                                            const QString &proof_hex) {
+    // The answer decides what later requests to this key carry (ws-plaude/silent#117).
+    if (stored || !proof_hex.isEmpty()) {
+        if (rust() == nullptr) {
+            m_bus->deliverError(req_id, TR("keys-register-proof-not-stored"));
+            return;
+        }
+        auto result = rust()->set_descriptor_registration(
+            rust::Str(fingerprint.toStdString()), rust::Str(descriptor.toStdString()), stored,
+            rust::Str(proof_hex.toStdString()));
+        if (!result.is_ok) {
+            qWarning() << "keys: registration answer not recorded:" << toQt(result.error);
+            m_bus->deliverError(req_id, TR("keys-register-proof-not-stored"));
+            return;
+        }
+        emit keysChanged();
     }
     m_bus->deliverDescriptorRegistered(req_id, fingerprint);
 }
