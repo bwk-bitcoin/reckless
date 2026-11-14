@@ -30,7 +30,9 @@ public:
 
 signals:
     void signedPsbt(ReqId req_id, QString psbt);
-    void failed(ReqId req_id, QString message, plugin::SignError kind);
+    // The same shape as SigningFlow::failed, so it reaches KeysBus::deliverError: a hot
+    // signer has no device, so `device_code` stays 0.
+    void failed(ReqId req_id, QString message, plugin::SignError kind, quint8 device_code = 0);
     void cancelled(ReqId req_id);
     void finished();
 
