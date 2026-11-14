@@ -830,14 +830,35 @@ pub fn merge_sp_signed(original: &mut PsbtV2, signed: &PsbtV2) -> Result<usize, 
 /// keys can sign. Returns how many inputs gained a share.
 pub fn merge_sp_shares(original: &mut PsbtV2, signed: &PsbtV2) -> Result<usize, Error> {
     check_same_transaction(original, signed)?;
+    let gained = check_new_input_shares(original, signed)?;
+    for &index in &gained {
+        copy_unknown(
+            &mut original.inputs[index].psbt.unknown,
+            &signed.inputs[index].psbt.unknown,
+            &[PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_DLEQ],
+        );
+    }
+    if sp_shares_complete(original)? {
+        let invalid = |e: bwk_sp::account::AccountError| Error::SpSignedInvalid(e.to_string());
+        bip375::complete_output_scripts(original).map_err(invalid)?;
+        original.tx_modifiable = Some(TxModifiable::none());
+    }
+    Ok(gained.len())
+}
+
+/// Every per-input ECDH share `signed` adds over `original` must come with its DLEQ
+/// proof, valid for its input's key and the scan key (BIP-374), whether or not the
+/// outputs can be derived yet (ws-plaude/silent#132). Returns the inputs that gained
+/// one.
+pub fn check_new_input_shares(original: &PsbtV2, signed: &PsbtV2) -> Result<Vec<usize>, Error> {
     let invalid = |e: bwk_sp::account::AccountError| Error::SpSignedInvalid(e.to_string());
     bip375::validate_share_maps(signed).map_err(invalid)?;
     bip375::validate_input_share_pairs(signed).map_err(invalid)?;
-    let mut touched = 0;
-    for (input, signed_input) in original.inputs.iter_mut().zip(&signed.inputs) {
+    let mut gained = Vec::new();
+    for (index, (input, signed_input)) in original.inputs.iter().zip(&signed.inputs).enumerate() {
         let shares = sp_input_ecdh_shares(&signed_input.psbt)
             .map_err(|e| Error::PsbtParse(e.to_string()))?;
-        let mut gained = false;
+        let mut new_share = false;
         for share in shares {
             if sp_input_ecdh_share(&input.psbt, share.scan_key)
                 .map_err(|e| Error::PsbtParse(e.to_string()))?
@@ -851,23 +872,16 @@ pub fn merge_sp_shares(original: &mut PsbtV2, signed: &PsbtV2) -> Result<usize, 
             let proof = sp_input_dleq(&signed_input.psbt, share.scan_key)
                 .map_err(|e| Error::PsbtParse(e.to_string()))?
                 .ok_or_else(|| Error::SpSignedInvalid("a share without its proof".into()))?;
-            bip375::verify_proof(public, share.scan_key, share.share, proof).map_err(invalid)?;
-            gained = true;
+            bip375::verify_proof(public, share.scan_key, share.share, proof).map_err(|_| {
+                Error::SpSignedInvalid("a share's DLEQ proof does not verify".into())
+            })?;
+            new_share = true;
         }
-        if gained {
-            copy_unknown(
-                &mut input.psbt.unknown,
-                &signed_input.psbt.unknown,
-                &[PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_DLEQ],
-            );
-            touched += 1;
+        if new_share {
+            gained.push(index);
         }
     }
-    if sp_shares_complete(original)? {
-        bip375::complete_output_scripts(original).map_err(invalid)?;
-        original.tx_modifiable = Some(TxModifiable::none());
-    }
-    Ok(touched)
+    Ok(gained)
 }
 
 /// The fields that make the transaction, compared one by one since `original` has
