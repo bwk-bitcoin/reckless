@@ -20,7 +20,7 @@ const char *const K_TYPE = "typeIndex";
 auto typeIcon(const IModule *module) -> IconFn {
     auto name = module->meta().value(QStringLiteral("icon"));
     if (name == QStringLiteral("silent")) {
-        return icon::silentMark;
+        return icon::spMark;
     }
     if (name == QStringLiteral("users")) {
         return icon::users;

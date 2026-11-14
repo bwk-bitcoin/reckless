@@ -72,3 +72,17 @@ Use the search bar to find icons by name or concept (e.g. "wallet",
 "arrow", "settings"). The filename on the site maps directly to the
 header name: `arrow-right` on the site → `icon/arrow_right.h` →
 `embedded_icon::ARROW_RIGHT`.
+
+## The app mark
+
+`brand/reckless_mark.svg` is the app mark, drawn in its own colours: the window icon
+(`icon::windowIcon`) and the menu tab (`icon::recklessMark`). After changing it, run
+
+```bash
+src/resources/brand/generate_mark.sh
+```
+
+It regenerates `icon/reckless_mark.h` (the SVG as `embedded_icon::RECKLESS_MARK`) and
+`brand/png/reckless_mark_<size>.png` at 16, 24, 32, 48, 64, 128, 256 and 512 px, rendered
+by Qt's SVG renderer (`brand/render_mark.cpp`). CMake stops at configure time when the
+header does not hold the SVG unchanged.

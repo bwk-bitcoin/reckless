@@ -69,7 +69,7 @@ auto maxError(const QIcon &icon) -> int {
         mark.fill(Qt::transparent);
         {
             QPainter painter(&mark);
-            icon::silentMark(IconColor::Accent).paint(&painter, mark.rect());
+            icon::recklessMark().paint(&painter, mark.rect());
         }
         mark = mark.convertToFormat(QImage::Format_ARGB32);
         const QImage buffer = waylandBuffer(icon, size);
@@ -92,6 +92,28 @@ void windowIconSmoke() {
     for (const QSize &size : straight.availableSizes()) {
         require(straight.pixmap(size, 1.0).size() == size, "a window icon size is rescaled");
     }
+    // The reckless mark (ws-plaude/silent#111) keeps its 206.37 x 211.83 proportions,
+    // centred: the R's stem, at the SVG's left edge, lands about 3 px in from the 256 px
+    // image's left side instead of on it, and the mark draws its own blues.
+    const QImage big = straight.pixmap(QSize(256, 256), 1.0).toImage();
+    require(qAlpha(big.pixel(0, 128)) == 0 && qAlpha(big.pixel(255, 128)) == 0,
+            "the mark is stretched to the square: its sides touch the icon's edges");
+    int inked = 0;
+    for (int x = 0; x < big.width(); ++x) {
+        const QRgb pixel = big.pixel(x, 128);
+        if (qAlpha(pixel) == 255) {
+            require(qBlue(pixel) > qRed(pixel) && qBlue(pixel) > qGreen(pixel),
+                    "the window icon is not drawn in the reckless mark's blues");
+            ++inked;
+        }
+    }
+    require(inked > 0, "the window icon draws nothing across its middle");
+    bool stem = false;
+    for (int x = 3; x <= 8; ++x) {
+        stem |= qAlpha(big.pixel(x, 128)) == 255;
+    }
+    require(stem, "no R stem 3 to 8 px in from the left: the window icon is not the reckless mark");
+
     // The offscreen platform is not Wayland: the icon goes as it is.
     require(!icon::windowIconPremultiplied(), "offscreen asks for a premultiplied window icon");
 

@@ -25,10 +25,11 @@
 #include "resources/icon/plus.h"
 #include "resources/icon/puzzle.h"
 #include "resources/icon/qr_code.h"
+#include "resources/icon/reckless_mark.h"
 #include "resources/icon/refresh_cw.h"
 #include "resources/icon/sd_card.h"
 #include "resources/icon/settings.h"
-#include "resources/icon/silent_mark.h"
+#include "resources/icon/sp_mark.h"
 #include "resources/icon/trash_2.h"
 #include "resources/icon/triangle_alert.h"
 #include "resources/icon/upload.h"
@@ -98,6 +99,8 @@ public:
         svg.replace(QStringLiteral("stroke-width=\"2\""),
                     QStringLiteral("stroke-width=\"%1\"").arg(m_stroke_width));
         QSvgRenderer renderer(svg.toUtf8());
+        // A mark that is not square (the reckless one) keeps its proportions, centred.
+        renderer.setAspectRatioMode(Qt::KeepAspectRatio);
         // Qt rasterizes a 1px diagonal stroke unevenly (a cross loses an arm's end on
         // its left): render at a multiple of the target pixels and scale down.
         const qreal dpr =
@@ -248,8 +251,13 @@ auto layout(IconColor color) -> QIcon {
     return renderIcon(embedded_icon::LAYOUT_DASHBOARD, defaultStroke(), color);
 }
 
-auto silentMark(IconColor color) -> QIcon {
-    return renderIcon(embedded_icon::SILENT_MARK, defaultStroke(), color);
+auto recklessMark() -> QIcon {
+    // Drawn in its own colours: the SVG names no currentColor for a tint to replace.
+    return renderIcon(embedded_icon::RECKLESS_MARK, defaultStroke(), IconColor::Default);
+}
+
+auto spMark(IconColor color) -> QIcon {
+    return renderIcon(embedded_icon::SP_MARK, defaultStroke(), color);
 }
 
 auto key(IconColor color) -> QIcon {
@@ -308,7 +316,7 @@ auto windowIcon(bool premultiply) -> QIcon {
         image.fill(Qt::transparent);
         {
             QPainter painter(&image);
-            silentMark(IconColor::Accent).paint(&painter, image.rect());
+            recklessMark().paint(&painter, image.rect());
         }
         if (premultiply) {
             // Read back as straight alpha, the premultiplied colours survive the copy

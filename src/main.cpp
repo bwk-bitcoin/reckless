@@ -75,7 +75,7 @@ auto main(int argc, char *argv[]) -> int {
     // Initialize and apply default theme; persisted provider themes are applied by AppController.
     Theme::init();
     Theme::get()->apply();
-    // The Silent mark, in the accent colour so it reads on light and dark title bars.
+    // The reckless mark (ws-plaude/silent#111), in its own colours.
     QApplication::setWindowIcon(icon::windowIcon(icon::windowIconPremultiplied()));
 
     // Initialize i18n before creating UI widgets

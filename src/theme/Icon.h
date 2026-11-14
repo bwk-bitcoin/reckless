@@ -41,7 +41,10 @@ auto usb(IconColor color = IconColor::Default) -> QIcon;
 auto refresh(IconColor color = IconColor::Default) -> QIcon;
 auto qr(IconColor color = IconColor::Default) -> QIcon;
 auto layout(IconColor color = IconColor::Default) -> QIcon;
-auto silentMark(IconColor color = IconColor::Default) -> QIcon;
+// The app mark (ws-plaude/silent#111), from src/resources/brand/reckless_mark.svg.
+auto recklessMark() -> QIcon;
+// The Silent Payments account type mark.
+auto spMark(IconColor color = IconColor::Default) -> QIcon;
 auto key(IconColor color = IconColor::Default) -> QIcon;
 auto lock(IconColor color = IconColor::Default) -> QIcon;
 auto sdCard(IconColor color = IconColor::Default) -> QIcon;

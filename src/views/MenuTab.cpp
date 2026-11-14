@@ -130,7 +130,7 @@ void MenuTab::onAccountDeletionFinished(IModule *module, const QString &id, cons
 
 void MenuTab::view() {
     auto *mark = new Label(LabelRole::Title);
-    mark->setPixmap(icon::silentMark().pixmap(48, 48));
+    mark->setPixmap(icon::recklessMark().pixmap(48, 48));
     mark->setAlignment(Qt::AlignCenter);
     auto *markRow = (new qontrol::Row)->pushSpacer()->push(mark)->pushSpacer();
 

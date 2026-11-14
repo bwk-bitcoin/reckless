@@ -21,6 +21,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# The embedded app mark must hold the brand SVG unchanged (ws-plaude/silent#111):
+# src/resources/brand/generate_mark.sh regenerates the header and PNGs from it.
+set(RECKLESS_MARK_SVG_FILE ${CMAKE_SOURCE_DIR}/src/resources/brand/reckless_mark.svg)
+set(RECKLESS_MARK_HEADER_FILE ${CMAKE_SOURCE_DIR}/src/resources/icon/reckless_mark.h)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${RECKLESS_MARK_SVG_FILE} ${RECKLESS_MARK_HEADER_FILE})
+file(READ ${RECKLESS_MARK_SVG_FILE} RECKLESS_MARK_SVG)
+file(READ ${RECKLESS_MARK_HEADER_FILE} RECKLESS_MARK_HEADER)
+string(FIND "${RECKLESS_MARK_HEADER}" "R\"svg(${RECKLESS_MARK_SVG})svg\";" RECKLESS_MARK_AT)
+if(RECKLESS_MARK_AT EQUAL -1)
+    message(FATAL_ERROR "src/resources/icon/reckless_mark.h does not hold "
+        "src/resources/brand/reckless_mark.svg: run src/resources/brand/generate_mark.sh")
+endif()
+
 # Import Rust static library
 add_library(silent_rust STATIC IMPORTED)
 set_target_properties(silent_rust PROPERTIES
