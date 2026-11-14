@@ -480,28 +480,37 @@ void hostWidgetsFixture(MainWindow &window) {
     auto *count = window.findChild<QPushButton *>(QStringLiteral("host-widgets-count"));
     auto *clicks = window.findChild<QLabel *>(QStringLiteral("host-widgets-clicks"));
     require(count != nullptr && clicks != nullptr, "the fixture shows its Count button");
-    // The check sees a blocking window: made application modal, the click never lands.
-    flow->setWindowModality(Qt::ApplicationModal);
-    flow->hide();
-    flow->show();
-    flow->move(window.x() + window.width() - flow->width() - 24, window.y() + 120);
-    QApplication::processEvents();
-    windowClick(count);
-    windowClick(count);
-    require(clicks->text() == QStringLiteral("0"),
-            "a modal keys window blocks the plugin's tab: the check would see the bug");
-    shot(window, QStringLiteral("issue-125-fixture-modal-blocked.png"));
-    flow->hide();
-    flow->setWindowModality(Qt::NonModal);
-    flow->show();
-    // Beside the Count button, so the shot shows both.
-    flow->move(window.x() + window.width() - flow->width() - 24, window.y() + 120);
-    QApplication::processEvents();
-    windowClick(count);
-    windowClick(count);
-    require(flow->isVisible() && clicks->text() == QStringLiteral("2"),
-            "the plugin's button takes clicks while the keys window is open");
-    shot(window, QStringLiteral("issue-125-fixture-click.png"));
+    // In both themes: made application modal, the keys window blocks the clicks (the
+    // check sees the bug); as Reckless opens it, they land.
+    for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+        theme->setMode(mode);
+        theme->apply();
+        const auto suffix = mode == ThemeMode::Light ? QStringLiteral("") : QStringLiteral("-dark");
+        const auto before = clicks->text().toInt();
+        flow->hide();
+        flow->setWindowModality(Qt::ApplicationModal);
+        flow->show();
+        // Beside the Count button, so the shots show both.
+        flow->move(window.x() + window.width() - flow->width() - 24, window.y() + 120);
+        QApplication::processEvents();
+        windowClick(count);
+        windowClick(count);
+        require(clicks->text().toInt() == before,
+                "a modal keys window blocks the plugin's tab: the check would see the bug");
+        shot(window, QStringLiteral("issue-125-fixture-modal-blocked%1.png").arg(suffix));
+        flow->hide();
+        flow->setWindowModality(Qt::NonModal);
+        flow->show();
+        flow->move(window.x() + window.width() - flow->width() - 24, window.y() + 120);
+        QApplication::processEvents();
+        windowClick(count);
+        windowClick(count);
+        require(flow->isVisible() && clicks->text().toInt() == before + 2,
+                "the plugin's button takes clicks while the keys window is open");
+        shot(window, QStringLiteral("issue-125-fixture-click%1.png").arg(suffix));
+    }
+    theme->setMode(initial);
+    theme->apply();
     QPointer<keys::flow::SigningFlow> closed = flow;
     flow->reject();
     QApplication::processEvents();
