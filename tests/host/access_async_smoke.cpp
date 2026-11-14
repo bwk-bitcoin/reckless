@@ -16,8 +16,8 @@
 #include "modules/multikey/MusigPlugin.h"
 #include "modules/sp/SpPlugin.h"
 #include "registry_async_errors.h"
+#include "views/modals/AccessSettings.h"
 #include "views/modals/PluginAccessPrompt.h"
-#include "views/modals/appsettings/AccessFlow.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -169,9 +169,8 @@ void closeWaitingOwners(PluginRegistry *registry) {
     temporaryRegistry.rescanDiscoveredPlugins();
     ListingOwner temporaryModule;
     require(temporaryModule.list() != 0, "a temporary owner starts real config discovery");
-    auto *flow = new modal::AccessFlow(registry, QStringLiteral("removal.fixture"));
-    flow->start();
-    delete flow;
+    auto *access = new modal::AccessSettings(registry, QStringLiteral("removal.fixture"), nullptr);
+    delete access;
 }
 
 void staleSaveRefused(const QString &id, const QString &hash) {

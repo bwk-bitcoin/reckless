@@ -7,10 +7,11 @@
 #include "catalog/inputs/Toggle.h"
 #include "host/PluginRegistry.h"
 #include "interfaces/host.h"
+#include "theme/Theme.h"
+#include "views/modals/AccessSettings.h"
 #include "views/modals/AppSettings.h"
-#include "views/modals/RemovePlugin.h"
-#include "views/modals/appsettings/AccessFlow.h"
 #include "views/modals/DisablePlugin.h"
+#include "views/modals/RemovePlugin.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -23,11 +24,14 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPointer>
 #include <QPushButton>
 #include <QScreen>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
@@ -89,9 +93,9 @@ void waitForEnable(PluginRegistry *registry, const QString &id) {
         "asynchronous plugin enable and any compensating disable complete");
 }
 
-void waitForAccess(modal::AccessFlow *flow) {
+void waitForAccess(modal::AccessSettings *flow) {
     auto *busy = flow->findChild<catalog::Spinner *>();
-    require(busy != nullptr, "actual access flow exposes its read/save loading state");
+    require(busy != nullptr, "actual access modal exposes its read/save loading state");
     waitForCompletion([busy] { return busy->isHidden(); },
                       "asynchronous Settings access read or save completes");
 }
@@ -350,9 +354,9 @@ void staleSettingsGrant(modal::AppSettings *settings, PluginRegistry *registry, 
     registry->rescanDiscoveredPlugins();
     waitForRegistry(registry);
     visibleButton(settings, QStringLiteral("Access"))->click();
-    auto *flow = settings->findChild<modal::AccessFlow *>();
-    require(flow != nullptr && flow->isVisible(),
-            "actual Settings access view captures its lifetime");
+    QPointer<modal::AccessSettings> flow = settings->window()->findChild<modal::AccessSettings *>();
+    require(flow != nullptr && flow->isVisible() && flow->isWindow(),
+            "actual Settings access modal captures its lifetime");
     waitForAccess(flow);
     require(stateGrantToggle(flow)->isChecked(), "the old view starts from its Allowed answer");
     require(::app_begin_plugin_removal(rust::String(id.toStdString())).empty() &&
@@ -405,8 +409,9 @@ void staleSettingsGrant(modal::AppSettings *settings, PluginRegistry *registry, 
     waitForAccess(flow);
     require(::app_plugin_history(rust::String(id.toStdString())).empty(),
             "fresh Forget saves against the current epoch");
-    visibleButton(flow, QStringLiteral("Done"))->click();
+    visibleButton(flow, QStringLiteral("Close"))->click();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(flow.isNull(), "Close ends the access modal");
 }
 } // namespace
 
@@ -627,6 +632,104 @@ void pluginRemovalSmoke() {
     qunsetenv("RECKLESS_REMOVAL_SENTINEL");
 }
 
+namespace {
+
+// ws-plaude/silent#128: Access opens a modal over the Settings tab, the tab left as it
+// was under it, scrolled where it was; Escape and Close end it, keeping what was saved,
+// and it closes by itself when its plugin is removed.
+auto accessModal(QWidget *window) -> modal::AccessSettings * {
+    auto *modal = window->findChild<modal::AccessSettings *>();
+    return modal != nullptr && modal->isVisible() ? modal : nullptr;
+}
+
+void shotWindow(QWidget *window, const QString &shots, const QString &name) {
+    if (shots.isEmpty()) {
+        return;
+    }
+    require(QDir().mkpath(shots), "create access modal captures directory");
+    QElapsedTimer settle;
+    settle.start();
+    while (settle.elapsed() < 300) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    // The screen as shown, the modal over the window included.
+    const QRect frame = window->frameGeometry();
+    require(window->screen()
+                ->grabWindow(0, frame.x(), frame.y(), frame.width(), frame.height())
+                .save(QDir(shots).filePath(name)),
+            "capture the whole window with the access modal");
+}
+
+void accessModalOverSettings(QWidget *window, modal::AppSettings *settings,
+                             PluginRegistry *registry, const QString &id, const QByteArray &bytes,
+                             const QString &shots) {
+    allowNativeStorage(id, bytes);
+    registry->rescanDiscoveredPlugins();
+    waitForRegistry(registry);
+    // Short enough to scroll, scrolled to the end: the modal must leave it there.
+    window->resize(1440, 560);
+    QCoreApplication::processEvents();
+    QScrollBar *scroll = nullptr;
+    for (auto *area : settings->findChildren<QScrollArea *>()) {
+        if (area->isVisible() && area->verticalScrollBar()->maximum() > 0) {
+            scroll = area->verticalScrollBar();
+        }
+    }
+    require(scroll != nullptr, "the short Settings tab scrolls");
+    scroll->setValue(scroll->maximum());
+    const int scrolled = scroll->value();
+    auto *access = visibleButton(settings, QStringLiteral("Access"));
+    for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+        Theme::get()->setMode(mode);
+        Theme::get()->apply();
+        access->click();
+        QPointer<modal::AccessSettings> modal = accessModal(window);
+        require(modal != nullptr && modal->isWindow() && modal->parentWidget() == window &&
+                    modal->windowModality() == Qt::WindowModal,
+                "Access opens a window-modal over the Settings tab");
+        require(modal->windowTitle() == QStringLiteral("Removal fixture Access"),
+                "the modal is titled with the plugin's name");
+        waitForAccess(modal);
+        require(settings->isVisible() && access->isVisible() && scroll->value() == scrolled,
+                "the Settings tab stays under the modal as it was, scrolled where it was");
+        require(stateGrantToggle(modal) != nullptr && stateGrantToggle(modal)->isEnabled(),
+                "the modal shows the plugin's grants");
+        shotWindow(window, shots,
+                   mode == ThemeMode::Light ? QStringLiteral("issue-128-access-light.png")
+                                            : QStringLiteral("issue-128-access-dark.png"));
+        if (mode == ThemeMode::Light) {
+            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+            QApplication::sendEvent(modal, &escape);
+        } else {
+            visibleButton(modal, QStringLiteral("Close"))->click();
+        }
+        QCoreApplication::processEvents();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        require(modal.isNull() && accessModal(window) == nullptr,
+                "Escape and Close end the access modal");
+        require(settings->isVisible() && access->isVisible() && scroll->value() == scrolled,
+                "closing returns to the Settings tab as it was");
+    }
+    Theme::get()->setMode(ThemeMode::Light);
+    Theme::get()->apply();
+    // Removed while it is open: the modal closes by itself.
+    access->click();
+    QPointer<modal::AccessSettings> open = accessModal(window);
+    require(open != nullptr, "the access modal opens again");
+    waitForAccess(open);
+    RemovalProbe probe;
+    QObject::connect(registry, &PluginRegistry::pluginStopFinished, &probe,
+                     &RemovalProbe::onFinished, qontrol::UNIQUE);
+    removeAndWait(registry, probe, id);
+    require(probe.removed && probe.error.isEmpty(), "the plugin is removed");
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(open.isNull(), "the access modal closes by itself once its plugin is removed");
+    window->resize(1440, 1000);
+}
+
+} // namespace
+
 void pluginAccessSettingsFailureSmoke(const QString &shots) {
     auto bytes = read(QStringLiteral(RECKLESS_REMOVAL_FIXTURE));
     auto id = QStringLiteral("removal.fixture");
@@ -648,6 +751,7 @@ void pluginAccessSettingsFailureSmoke(const QString &shots) {
     waitForRegistry(registry);
     staleSettingsGrant(settings, registry, id, bytes, false, shots);
     staleSettingsGrant(settings, registry, id, bytes, true, shots);
+    accessModalOverSettings(&window, settings, registry, id, bytes, shots);
 }
 
 void pluginRemovalReadFailureSmoke(const QString &shots) {

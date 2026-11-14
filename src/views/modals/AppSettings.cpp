@@ -1,8 +1,8 @@
 #include "AppSettings.h"
 
+#include "AccessSettings.h"
 #include "DisablePlugin.h"
 #include "RemovePlugin.h"
-#include "appsettings/AccessFlow.h"
 #include "appsettings/SectionFlow.h"
 
 #include "AppController.h"
@@ -858,9 +858,9 @@ void AppSettings::onPluginToggled(bool enabled) {
             }
         }
         themes.sort();
-        auto *modal = new DisablePlugin(id, m_plugin_registry->pluginName(id),
-                                        m_plugin_meta.value(id),
-                                        m_plugin_registry->pluginAccountNames(id), themes);
+        auto *modal =
+            new DisablePlugin(id, m_plugin_registry->pluginName(id), m_plugin_meta.value(id),
+                              m_plugin_registry->pluginAccountNames(id), themes);
         m_disable_modal = modal;
         m_disable_confirmed = false;
         connect(modal, &DisablePlugin::confirmed, this, &AppSettings::onPluginDisableConfirmed,
@@ -885,7 +885,12 @@ void AppSettings::onPluginAccessClicked() {
     }
     m_plugin_notice->setVisible(false);
     m_plugin_result->setVisible(false);
-    openFlow(new AccessFlow(m_plugin_registry, sender()->property(K_PLUGIN_ID).toString()));
+    // A modal over the tab (ws-plaude/silent#128), the tab left as it was under it. Opened
+    // window-modal, not exec(): the tab keeps following the registry while it is open.
+    auto *modal =
+        new AccessSettings(m_plugin_registry, sender()->property(K_PLUGIN_ID).toString(), this);
+    m_access_modal = modal;
+    modal->open();
 }
 
 void AppSettings::onPluginRemoveClicked() {
@@ -965,6 +970,10 @@ void AppSettings::onPluginsChanged() {
         if (m_disable_modal != nullptr) {
             m_disable_modal->setEnabled(false);
             m_disable_modal->reject();
+        }
+        if (m_access_modal != nullptr) {
+            m_access_modal->setEnabled(false);
+            m_access_modal->reject();
         }
         if (m_flow != nullptr) {
             m_flow->setEnabled(false);

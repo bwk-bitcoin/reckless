@@ -1,11 +1,10 @@
-#include "AccessFlow.h"
+#include "AccessSettings.h"
 
 #include "catalog/Button.h"
 #include "catalog/ClearRows.h"
 #include "catalog/SelectRow.h"
 #include "catalog/Variants.h"
 #include "catalog/containers/ModalActions.h"
-#include "catalog/containers/ViewSlots.h"
 #include "catalog/display/Label.h"
 #include "catalog/feedback/Notice.h"
 #include "catalog/feedback/Spinner.h"
@@ -53,33 +52,34 @@ auto grantToggle(PluginGrant grant, const QString &hash, const char *which) -> c
 }
 } // namespace
 
-AccessFlow::AccessFlow(PluginRegistry *registry, QString id)
+AccessSettings::AccessSettings(PluginRegistry *registry, QString id, QWidget *over)
     : m_plugin_registry(registry),
       m_id(std::move(id)) {
+    if (over != nullptr) {
+        setParent(over->window(), windowFlags());
+    }
+    setAttribute(Qt::WA_DeleteOnClose);
     init();
     doConnect();
     view();
 }
 
-void AccessFlow::start() {
-    showAccess();
-}
-
-void AccessFlow::init() {
+void AccessSettings::init() {
     initAccess();
 }
 
-void AccessFlow::doConnect() {
+void AccessSettings::doConnect() {
     connectAccess();
 }
 
-void AccessFlow::view() {
+void AccessSettings::view() {
     m_access = viewAccess();
+    showAccess();
 }
 
 // ===== Access view =====
 
-void AccessFlow::initAccess() {
+void AccessSettings::initAccess() {
     m_access_text = new Label(LabelRole::Body);
     m_access_text->setWordWrap(true);
     m_access_text->setTone(LabelTone::Secondary);
@@ -96,20 +96,22 @@ void AccessFlow::initAccess() {
     m_empty->setTone(LabelTone::Muted);
     m_empty->setWordWrap(true);
     m_access_actions = new catalog::ModalActions;
-    m_access_actions->setBack(catalog::ModalActions::Back::AllSettings);
-    m_done_btn = catalog::btnDone();
-    m_access_actions->addAction(m_done_btn);
+    m_close_btn = catalog::btnClose();
+    m_access_actions->addAction(m_close_btn);
 }
 
-void AccessFlow::connectAccess() {
-    connect(m_reload_btn, &QPushButton::clicked, this, &AccessFlow::onReloadClicked,
+void AccessSettings::connectAccess() {
+    connect(m_reload_btn, &QPushButton::clicked, this, &AccessSettings::onReloadClicked,
             qontrol::UNIQUE);
-    connect(m_done_btn, &QPushButton::clicked, this, &AccessFlow::onBackClicked, qontrol::UNIQUE);
-    connect(m_access_actions, &catalog::ModalActions::backClicked, this, &AccessFlow::onBackClicked,
+    connect(m_close_btn, &QPushButton::clicked, this, &AccessSettings::onCloseClicked,
             qontrol::UNIQUE);
+    if (m_plugin_registry != nullptr) {
+        connect(m_plugin_registry, &PluginRegistry::pluginStopFinished, this,
+                &AccessSettings::onPluginStopFinished, qontrol::UNIQUE);
+    }
 }
 
-auto AccessFlow::viewAccess() -> QWidget * {
+auto AccessSettings::viewAccess() -> QWidget * {
     auto *column = (new qontrol::Column)
                        ->spacing(resolve(Spacing::M))
                        ->push(m_access_text)
@@ -122,25 +124,26 @@ auto AccessFlow::viewAccess() -> QWidget * {
     return column;
 }
 
-void AccessFlow::showAccess() {
+void AccessSettings::showAccess() {
     QString name = m_plugin_registry->pluginName(m_id);
     m_access_text->setText(TR("plugin-access-flow-text").arg(name));
     loadRows();
-    viewSlots()->setHeader(nullptr);
-    viewSlots()->setBody(m_access);
-    viewSlots()->setFooter(m_access_actions);
-    emit viewChanged(TR("plugin-access-flow-title").arg(name), ModalWidth::Wide);
+    setBody(m_access);
+    setFooter(m_access_actions);
+    // The narrowest modal holding the settings body's width with its padding.
+    setWidth(ModalWidth::Wizard);
+    setWindowTitle(TR("plugin-access-flow-title").arg(name));
 }
 
-void AccessFlow::loadRows() {
+void AccessSettings::loadRows() {
     setBusy(true);
     auto *job = new pluginaccess::Job;
-    connect(job, &pluginaccess::Job::historyRead, this, &AccessFlow::onHistoryRead,
+    connect(job, &pluginaccess::Job::historyRead, this, &AccessSettings::onHistoryRead,
             qontrol::UNIQUE);
     job->history(++m_revision, m_id);
 }
 
-void AccessFlow::showRows(const PluginAccessHistory &history) {
+void AccessSettings::showRows(const PluginAccessHistory &history) {
     // clear() also resets the layout spacing.
     catalog::clearRows(m_rows);
     m_rows->spacing(resolve(Spacing::S));
@@ -158,7 +161,7 @@ void AccessFlow::showRows(const PluginAccessHistory &history) {
               std::tuple{entry.keys, GRANT_KEYS, TR("plugin-access-keys")},
               std::tuple{entry.state, GRANT_STATE, TR("plugin-access-state")}}) {
             auto *toggle = grantToggle(grant, hash, which);
-            connect(toggle, &QCheckBox::clicked, this, &AccessFlow::onGrantClicked,
+            connect(toggle, &QCheckBox::clicked, this, &AccessSettings::onGrantClicked,
                     qontrol::UNIQUE);
             auto *caption = new Label(LabelRole::Caption);
             caption->setText(label);
@@ -169,7 +172,8 @@ void AccessFlow::showRows(const PluginAccessHistory &history) {
         }
         auto *forget = catalog::btnForgetAccess();
         forget->setProperty(K_HASH, hash);
-        connect(forget, &QPushButton::clicked, this, &AccessFlow::onForgetClicked, qontrol::UNIQUE);
+        connect(forget, &QPushButton::clicked, this, &AccessSettings::onForgetClicked,
+                qontrol::UNIQUE);
         grants->push(forget);
 
         auto *row = new catalog::SelectRow;
@@ -189,18 +193,18 @@ void AccessFlow::showRows(const PluginAccessHistory &history) {
 }
 
 // Saved against the epoch the rows were read with; the rows wait disabled for the answer.
-void AccessFlow::save(const PluginAccess &entry) {
+void AccessSettings::save(const PluginAccess &entry) {
     m_saving = entry;
     setBusy(true);
     auto *job = new pluginaccess::Job;
     connect(job, &pluginaccess::Job::saved, m_plugin_registry, &PluginRegistry::onPluginAccessSaved,
             qontrol::UNIQUE);
-    connect(job, &pluginaccess::Job::saved, this, &AccessFlow::onSaved, qontrol::UNIQUE);
+    connect(job, &pluginaccess::Job::saved, this, &AccessSettings::onSaved, qontrol::UNIQUE);
     job->save(++m_revision, entry, m_epoch);
 }
 
 // Back to the answers kept for `hash`: setChecked() does not emit clicked.
-void AccessFlow::resetToggles(const QString &hash) {
+void AccessSettings::resetToggles(const QString &hash) {
     auto *row = m_entry_rows.value(hash, nullptr);
     if (row == nullptr) {
         return;
@@ -218,7 +222,7 @@ void AccessFlow::resetToggles(const QString &hash) {
     }
 }
 
-auto AccessFlow::rowSub(const PluginAccess &entry) const -> QString {
+auto AccessSettings::rowSub(const PluginAccess &entry) const -> QString {
     QString hash = toQString(entry.hash);
     QString sub = hash == m_plugin_registry->pluginHash(m_id) ? TR("plugin-access-current")
                                                               : TR("plugin-access-earlier");
@@ -238,14 +242,14 @@ auto AccessFlow::rowSub(const PluginAccess &entry) const -> QString {
 }
 
 // While a read or save runs, Try Again and the rows wait disabled, the spinner shown.
-void AccessFlow::setBusy(bool busy) {
+void AccessSettings::setBusy(bool busy) {
     m_busy->setVisible(busy);
     m_reload_btn->setEnabled(!busy);
     m_rows->setEnabled(!busy);
 }
 
 // The rows stay as read, disabled: only Try Again, reading them anew, enables them.
-void AccessFlow::showFailure(const QString &error) {
+void AccessSettings::showFailure(const QString &error) {
     m_notice->setText(TR("plugin-access-flow-retry").arg(error));
     m_notice->setVisible(true);
     m_rows->setEnabled(false);
@@ -253,11 +257,20 @@ void AccessFlow::showFailure(const QString &error) {
 
 // ===== Slots =====
 
-void AccessFlow::onBackClicked() {
-    emit back();
+void AccessSettings::onCloseClicked() {
+    // Every change was saved as it was made: closing keeps them.
+    reject();
 }
 
-void AccessFlow::onGrantClicked(bool allowed) {
+// Its plugin removed, nothing is left to show: the modal closes by itself.
+void AccessSettings::onPluginStopFinished(const QString &plugin_id, bool removed,
+                                          const QString &error) {
+    if (removed && error.isEmpty() && plugin_id == m_id) {
+        reject();
+    }
+}
+
+void AccessSettings::onGrantClicked(bool allowed) {
     auto *toggle = qobject_cast<QCheckBox *>(sender());
     if (toggle == nullptr) {
         return;
@@ -279,7 +292,7 @@ void AccessFlow::onGrantClicked(bool allowed) {
     save(entry);
 }
 
-void AccessFlow::onForgetClicked() {
+void AccessSettings::onForgetClicked() {
     auto *button = sender();
     if (button == nullptr) {
         return;
@@ -295,12 +308,12 @@ void AccessFlow::onForgetClicked() {
     save(entry);
 }
 
-void AccessFlow::onReloadClicked() {
+void AccessSettings::onReloadClicked() {
     loadRows();
 }
 
 // A failed read keeps the rows read last, disabled; only a successful one takes its epoch.
-void AccessFlow::onHistoryRead(uint64_t revision, const PluginAccessHistory &history) {
+void AccessSettings::onHistoryRead(uint64_t revision, const PluginAccessHistory &history) {
     if (revision != m_revision) {
         return;
     }
@@ -312,7 +325,7 @@ void AccessFlow::onHistoryRead(uint64_t revision, const PluginAccessHistory &his
     showRows(history);
 }
 
-void AccessFlow::onSaved(uint64_t revision, const QString &error) {
+void AccessSettings::onSaved(uint64_t revision, const QString &error) {
     if (revision != m_revision) {
         return;
     }

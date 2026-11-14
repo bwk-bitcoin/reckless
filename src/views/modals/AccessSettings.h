@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <reckless.h>
 
-#include "views/modals/AppSettings.h"
+#include "catalog/containers/Modal.h"
 
 namespace catalog {
 class Button;
@@ -17,25 +17,30 @@ class Spinner;
 } // namespace catalog
 
 class PluginRegistry;
+class QWidget;
 
 namespace modal {
 
-// What an external plugin may use, one row per library version answered: its
-// Accounts and Keys grants, changed at once, and Forget, after which the plugin is
-// asked again on its next use. The answers are read with the plugin's storage epoch
-// when the view opens; a change refused because the plugin was removed since, or any
-// other failed read or save, shows the error and disables the rows until Try Again
-// reads them anew. Reads and saves run off the GUI thread, one at a time: the rows are
-// disabled while one runs, and an answer to an earlier one is ignored.
-class AccessFlow final : public AppSettingsFlow {
+// What an external plugin may use, in a modal over the Settings tab
+// (ws-plaude/silent#128): one row per library version answered, its Accounts and Keys
+// grants changed at once, and Forget, after which the plugin is asked again on its next
+// use. The answers are read with the plugin's storage epoch when the modal opens; a
+// change refused because the plugin was removed since, or any other failed read or
+// save, shows the error and disables the rows until Try Again reads them anew. Reads and
+// saves run off the GUI thread, one at a time: the rows are disabled while one runs, and
+// an answer to an earlier one is ignored. Closing it (Close, Escape, the titlebar) keeps
+// what was saved; it closes by itself once its plugin is removed. It deletes itself once
+// closed.
+class AccessSettings final : public catalog::Modal {
     Q_OBJECT
 
 public:
-    AccessFlow(PluginRegistry *registry, QString id);
-    void start() override;
+    // Window-modal over the window holding `over`.
+    AccessSettings(PluginRegistry *registry, QString id, QWidget *over);
 
 public slots:
-    void onBackClicked();
+    void onCloseClicked();
+    void onPluginStopFinished(const QString &plugin_id, bool removed, const QString &error);
     void onGrantClicked(bool allowed);
     void onForgetClicked();
     void onReloadClicked();
@@ -81,7 +86,7 @@ private:
     qontrol::Column *m_rows = nullptr;
     catalog::Label *m_empty = nullptr;
     catalog::ModalActions *m_access_actions = nullptr;
-    catalog::Button *m_done_btn = nullptr;
+    catalog::Button *m_close_btn = nullptr;
 };
 
 } // namespace modal

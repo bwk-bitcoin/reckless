@@ -286,8 +286,8 @@ set(RECKLESS_APP_SOURCES
     src/views/MenuTab.cpp
     src/views/modals/AppSettings.h
     src/views/modals/AppSettings.cpp
-    src/views/modals/appsettings/AccessFlow.h
-    src/views/modals/appsettings/AccessFlow.cpp
+    src/views/modals/AccessSettings.h
+    src/views/modals/AccessSettings.cpp
     src/views/modals/appsettings/SectionFlow.h
     src/views/modals/appsettings/SectionFlow.cpp
     src/modules/sp/modals/CreateAccount.h

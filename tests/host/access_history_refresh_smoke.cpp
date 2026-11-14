@@ -6,9 +6,9 @@
 #include "catalog/Button.h"
 #include "host/PluginRegistry.h"
 #include "i18n/Tr.h"
+#include "views/modals/AccessSettings.h"
 #include "views/modals/AppSettings.h"
 #include "views/modals/PluginAccessPrompt.h"
-#include "views/modals/appsettings/AccessFlow.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -56,8 +56,9 @@ auto accessButton(modal::AppSettings &settings, const QString &id) -> catalog::B
 
 void forgetLastAnswer(modal::AppSettings &settings, PluginRegistry *registry, const QString &id,
                       const QString &hash, bool close_pending) {
-    QPointer<modal::AccessFlow> flow = settings.findChild<modal::AccessFlow *>();
-    require(flow != nullptr, "the real Settings access flow is open");
+    QPointer<modal::AccessSettings> flow = settings.findChild<modal::AccessSettings *>();
+    require(flow != nullptr && flow->isVisible() && flow->isWindow(),
+            "the real Settings access modal is open over the tab");
     catalog::Button *forget = nullptr;
     catalog::Button *done = nullptr;
     QElapsedTimer timer;
@@ -68,14 +69,14 @@ void forgetLastAnswer(modal::AppSettings &settings, PluginRegistry *registry, co
             if (button->property("accessHash").toString() == hash) {
                 forget = button;
             }
-            if (button->text() == TR("btn-done")) {
+            if (button->text() == TR("btn-close")) {
                 done = button;
             }
         }
         QThread::msleep(1);
     }
     require(forget != nullptr && forget->isEnabled(), "the last history entry loads for Forget");
-    require(done != nullptr && done->isEnabled(), "the flow has an available Done button");
+    require(done != nullptr && done->isEnabled(), "the modal has an available Close button");
     auto history = ::app_plugin_access_history(rust::String(id.toStdString()));
     require(history.is_ok && history.entries.size() == 1,
             "Forget starts with exactly one durable history entry");
@@ -89,7 +90,7 @@ void forgetLastAnswer(modal::AppSettings &settings, PluginRegistry *registry, co
     if (close_pending) {
         done->click();
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        require(flow == nullptr, "Done destroys the flow before the held save can complete");
+        require(flow == nullptr, "Close destroys the modal before the held save can complete");
         require(registry->pluginHasAccessHistory(id) && accessButton(settings, id) != nullptr,
                 "Settings retains Access while the save is still blocked on app.lock");
         lock.release();
@@ -103,7 +104,7 @@ void forgetLastAnswer(modal::AppSettings &settings, PluginRegistry *registry, co
                 "the completed Forget hides the last entry");
         done->click();
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        require(flow == nullptr, "Done destroys the completed access flow");
+        require(flow == nullptr, "Close destroys the completed access modal");
     }
 
     // No rescan or manual refresh: the save completion must update both consumers.
@@ -177,8 +178,8 @@ void firstAnswer(PluginGrant grant, bool stale_epoch) {
     if (button != nullptr) {
         require(button->isEnabled() && !button->isHidden(), "the new Access action is available");
         button->click();
-        require(settings.findChild<modal::AccessFlow *>() != nullptr,
-                "clicking the new Settings Access action opens the real access flow");
+        require(settings.findChild<modal::AccessSettings *>() != nullptr,
+                "clicking the new Settings Access action opens the real access modal");
         forgetLastAnswer(settings, registry, id, hash, grant == PluginGrant::Denied);
     }
 }
@@ -190,7 +191,7 @@ void accessHistoryRefreshSmoke() {
     firstAnswer(PluginGrant::Denied, true);
     std::fprintf(stdout, "First-prompt Settings Access: Allow, Deny and refused save OK\n");
     std::fprintf(stdout,
-                 "Last-entry Forget: Done after save and flow destroyed during held save OK\n");
+                 "Last-entry Forget: Close after save and modal destroyed during held save OK\n");
 }
 
 } // namespace smoke
