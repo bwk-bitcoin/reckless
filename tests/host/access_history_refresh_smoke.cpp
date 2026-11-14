@@ -4,6 +4,7 @@
 #include "PluginBundleFixture.h"
 #include "access_async_smoke.h"
 #include "catalog/Button.h"
+#include "host/HostWidgets.h"
 #include "host/PluginRegistry.h"
 #include "i18n/Tr.h"
 #include "views/modals/AccessSettings.h"
@@ -86,6 +87,18 @@ void forgetLastAnswer(modal::AppSettings &settings, PluginRegistry *registry, co
         lock.hold();
     }
     forget->click();
+    // ws-plaude/silent#131: confirmed first, in the modal over the access modal.
+    HostConfirmModal *confirm = nullptr;
+    for (auto *modal : flow->findChildren<HostConfirmModal *>()) {
+        confirm = modal->isVisible() ? modal : confirm;
+    }
+    require(confirm != nullptr, "Forget asks to confirm first");
+    for (auto *button : confirm->findChildren<catalog::Button *>()) {
+        if (button->isVisible() && button->text() == TR("btn-forget-access")) {
+            button->click();
+            break;
+        }
+    }
     require(!forget->isEnabled(), "Forget disables the row while its save is pending");
     if (close_pending) {
         done->click();

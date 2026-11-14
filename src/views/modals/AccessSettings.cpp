@@ -9,6 +9,7 @@
 #include "catalog/feedback/Notice.h"
 #include "catalog/feedback/Spinner.h"
 #include "catalog/inputs/Toggle.h"
+#include "host/HostWidgets.h"
 #include "host/PluginAccess.h"
 #include "host/PluginRegistry.h"
 #include "i18n/Tr.h"
@@ -301,11 +302,35 @@ void AccessSettings::onForgetClicked() {
     if (!m_entries.contains(hash)) {
         return;
     }
+    // Confirmed first (ws-plaude/silent#131), in the modal Reckless gives plugins
+    // (#127), over this one: Cancel, Escape or closing it changes nothing.
+    m_forget_hash = hash;
+    auto *confirm = new HostConfirmModal(
+        this, {.title = TR("plugin-access-forget-title"),
+               .message = TR("plugin-access-forget-text")
+                              .arg(m_plugin_registry->pluginName(m_id), hash.left(SHORT_HASH)),
+               .confirmLabel = TR("btn-forget-access"),
+               .destructive = true});
+    connect(confirm, &QDialog::accepted, this, &AccessSettings::onForgetConfirmed, qontrol::UNIQUE);
+    connect(confirm, &QDialog::rejected, this, &AccessSettings::onForgetCancelled, qontrol::UNIQUE);
+    confirm->open();
+}
+
+void AccessSettings::onForgetConfirmed() {
+    QString hash = std::exchange(m_forget_hash, QString());
+    // The rows read anew while it was open: the answer it named may be gone.
+    if (!m_entries.contains(hash)) {
+        return;
+    }
     auto entry = m_entries.value(hash);
     entry.account = PluginGrant::Unasked;
     entry.keys = PluginGrant::Unasked;
     entry.state = PluginGrant::Unasked;
     save(entry);
+}
+
+void AccessSettings::onForgetCancelled() {
+    m_forget_hash.clear();
 }
 
 void AccessSettings::onReloadClicked() {

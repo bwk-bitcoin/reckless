@@ -1086,6 +1086,10 @@ plugin-access-flow-text
 => "What %1 may use, for each version of its library you answered. A change applies at once. Forget an answer and Reckless asks again on the plugin's next use."
 => "NONE";;
 plugin-access-flow-title => "%1 Access" => "NONE"
+plugin-access-forget-text
+=> "%1 loses its Accounts, Keys and Saved Data answers for library %2. Reckless asks again on the plugin's next use."
+=> "%1 perde as respostas de Contas, Chaves e Dados guardados para a biblioteca %2. O Reckless pergunta novamente no próximo uso do plugin.";;
+plugin-access-forget-title => "Forget Access?" => "Esquecer o acesso?"
 plugin-access-keys => "Keys" => "NONE"
 plugin-access-keys-sub
 => "Your registered keys: signing requests, xpubs and address checks."

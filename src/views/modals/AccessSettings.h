@@ -43,6 +43,8 @@ public slots:
     void onPluginStopFinished(const QString &plugin_id, bool removed, const QString &error);
     void onGrantClicked(bool allowed);
     void onForgetClicked();
+    void onForgetConfirmed();
+    void onForgetCancelled();
     void onReloadClicked();
     void onHistoryRead(uint64_t revision, const PluginAccessHistory &history);
     void onSaved(uint64_t revision, const QString &error);
@@ -87,6 +89,8 @@ private:
     catalog::Label *m_empty = nullptr;
     catalog::ModalActions *m_access_actions = nullptr;
     catalog::Button *m_close_btn = nullptr;
+    // The library whose answers the open Forget confirmation names.
+    QString m_forget_hash;
 };
 
 } // namespace modal

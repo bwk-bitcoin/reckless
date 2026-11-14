@@ -3,8 +3,10 @@
 #include "MockPlugin.h"
 #include "PluginBundleFixture.h"
 #include "PluginStopProbe.h"
+#include "catalog/Button.h"
 #include "catalog/feedback/Spinner.h"
 #include "catalog/inputs/Toggle.h"
+#include "host/HostWidgets.h"
 #include "host/PluginRegistry.h"
 #include "interfaces/host.h"
 #include "theme/Theme.h"
@@ -329,6 +331,35 @@ auto visibleButton(QWidget *page, const QString &text) -> QPushButton * {
     qFatal("required action is missing: %s", qPrintable(text));
 }
 
+// ws-plaude/silent#131: Forget asks first, in Reckless's confirmation modal over the
+// access modal.
+auto forgetConfirmation(QWidget *access) -> HostConfirmModal * {
+    for (auto *modal : access->findChildren<HostConfirmModal *>()) {
+        if (modal->isVisible()) {
+            return modal;
+        }
+    }
+    return nullptr;
+}
+
+auto confirmationButton(HostConfirmModal *modal, const QString &text) -> QPushButton * {
+    for (auto *button : modal->findChildren<QPushButton *>()) {
+        if (button->isVisible() && button->text() == text) {
+            return button;
+        }
+    }
+    qFatal("plugin removal smoke: no %s in the Forget confirmation", qPrintable(text));
+}
+
+// Forget, confirmed.
+void forgetAnswers(QWidget *access) {
+    visibleButton(access, QStringLiteral("Forget"))->click();
+    auto *confirm = forgetConfirmation(access);
+    require(confirm != nullptr, "Forget asks to confirm before anything is dropped");
+    confirmationButton(confirm, QStringLiteral("Forget"))->click();
+    QCoreApplication::processEvents();
+}
+
 auto stateGrantToggle(QWidget *page) -> QCheckBox * {
     for (auto *toggle : page->findChildren<QCheckBox *>()) {
         if (toggle->isVisible() &&
@@ -366,7 +397,7 @@ void staleSettingsGrant(modal::AppSettings *settings, PluginRegistry *registry, 
             "same-hash reinstall clears neither the epoch nor the stale-view fence");
     if (forget) {
         allowNativeStorage(id, bytes);
-        visibleButton(flow, QStringLiteral("Forget"))->click();
+        forgetAnswers(flow);
     } else {
         mouseClick(stateGrantToggle(flow));
     }
@@ -405,7 +436,7 @@ void staleSettingsGrant(modal::AppSettings *settings, PluginRegistry *registry, 
                                                rust::String(hash.toStdString()));
     require(request.is_ok && request.access.state == PluginGrant::Denied,
             "a fresh Settings action really saves the new Denied answer");
-    visibleButton(flow, QStringLiteral("Forget"))->click();
+    forgetAnswers(flow);
     waitForAccess(flow);
     require(::app_plugin_history(rust::String(id.toStdString())).empty(),
             "fresh Forget saves against the current epoch");
@@ -697,6 +728,43 @@ void accessModalOverSettings(QWidget *window, modal::AppSettings *settings,
         shotWindow(window, shots,
                    mode == ThemeMode::Light ? QStringLiteral("issue-128-access-light.png")
                                             : QStringLiteral("issue-128-access-dark.png"));
+        // ws-plaude/silent#131: Forget asks first; Cancel (light) and Escape (dark) keep
+        // every answer.
+        const auto kept = ::app_plugin_history(rust::String(id.toStdString())).size();
+        require(kept > 0, "the plugin has answers to forget");
+        visibleButton(modal, QStringLiteral("Forget"))->click();
+        QPointer<HostConfirmModal> confirm = forgetConfirmation(modal);
+        require(confirm != nullptr && confirm->isWindow() && confirm->parentWidget() == modal &&
+                    confirm->windowModality() == Qt::WindowModal,
+                "Forget opens a confirmation over the access modal");
+        require(confirm->windowTitle() == QStringLiteral("Forget Access?"),
+                "the confirmation asks to forget the access");
+        bool named = false;
+        for (auto *label : confirm->findChildren<QLabel *>()) {
+            named |= label->text().startsWith(QStringLiteral("Removal fixture loses its Accounts"));
+        }
+        require(named, "the confirmation names the plugin and what Forget drops");
+        auto *drop =
+            qobject_cast<catalog::Button *>(confirmationButton(confirm, QStringLiteral("Forget")));
+        require(drop != nullptr && drop->role() == catalog::ButtonRole::Destructive &&
+                    confirmationButton(confirm, QStringLiteral("Cancel")) != nullptr,
+                "the confirmation offers Cancel and a destructive Forget");
+        shotWindow(window, shots,
+                   mode == ThemeMode::Light ? QStringLiteral("issue-131-forget-light.png")
+                                            : QStringLiteral("issue-131-forget-dark.png"));
+        if (mode == ThemeMode::Light) {
+            confirmationButton(confirm, QStringLiteral("Cancel"))->click();
+        } else {
+            QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+            QApplication::sendEvent(confirm, &escape);
+        }
+        QCoreApplication::processEvents();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        require(confirm.isNull() && modal != nullptr && modal->isVisible(),
+                "Cancel and Escape close the confirmation, the access modal still open");
+        require(::app_plugin_history(rust::String(id.toStdString())).size() == kept &&
+                    stateGrantToggle(modal)->isEnabled(),
+                "Cancel and Escape forget nothing");
         if (mode == ThemeMode::Light) {
             QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
             QApplication::sendEvent(modal, &escape);

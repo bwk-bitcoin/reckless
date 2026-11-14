@@ -1186,6 +1186,11 @@ plugin-access-prompt-note
 
 plugin-access-flow-title => "%1 Access"
 
+plugin-access-forget-title => "Forget Access?"
+
+plugin-access-forget-text
+=> "%1 loses its Accounts, Keys and Saved Data answers for library %2. Reckless asks again on the plugin's next use.";;
+
 plugin-access-flow-text
 => "What %1 may use, for each version of its library you answered. A change applies at once. Forget an answer and Reckless asks again on the plugin's next use.";;
 
