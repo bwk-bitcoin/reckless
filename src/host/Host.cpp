@@ -1365,6 +1365,11 @@ auto HostImpl::createStepTrail(QWidget *parent) -> IStepTrailWidget * {
     return new HostStepTrail(parent);
 }
 
+auto HostImpl::createConfirmModal(QWidget *over, const plugin::Confirmation &request) -> QDialog * {
+    assertGuiThread();
+    return new HostConfirmModal(over, request);
+}
+
 void HostImpl::dispatchFeeWrite() {
     if (m_fee_write_thread != nullptr || m_fee_writes.empty()) {
         return;

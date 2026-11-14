@@ -1,8 +1,12 @@
 #pragma once
 
+#include "catalog/containers/Modal.h"
+#include "interfaces/types.h"
 #include "interfaces/widgets.h"
 
 namespace catalog {
+class Button;
+class Label;
 class ScanProgress;
 class WizardSteps;
 } // namespace catalog
@@ -12,10 +16,12 @@ class BbqrDisplayEngine;
 class QrDisplay;
 } // namespace qr
 
+class QEvent;
 class QVBoxLayout;
 
 // The host's widgets behind interfaces/widgets.h (ws-plaude/silent#121): Reckless's own
-// QR display, scan progress and step trail, wrapped for plugins.
+// QR display, scan progress and step trail, wrapped for plugins, and its confirmation
+// modal (#127).
 
 class HostQrDisplay final : public IQrDisplayWidget {
 public:
@@ -71,4 +77,33 @@ private:
     catalog::WizardSteps *m_trail = nullptr;
     QStringList m_names;
     int m_current = 0;
+};
+
+// Reckless's confirmation, laid out like RemovePlugin and DisablePlugin
+// (ws-plaude/silent#127): the plugin's message over Cancel and its confirm button.
+class HostConfirmModal final : public catalog::Modal {
+    Q_OBJECT
+
+public:
+    HostConfirmModal(QWidget *over, plugin::Confirmation request);
+
+public slots:
+    void onConfirmClicked();
+    void onCancelClicked();
+    // The plugin's tab went (its plugin disabled or removed): nothing is left to
+    // confirm, and the modal closes without answering.
+    void onOverDestroyed();
+
+protected:
+    void init();
+    void doConnect();
+    void view();
+    void changeEvent(QEvent *event) override;
+    void retranslateUi();
+
+private:
+    plugin::Confirmation m_request;
+    catalog::Label *m_message = nullptr;
+    catalog::Button *m_cancel_btn = nullptr;
+    catalog::Button *m_confirm_btn = nullptr;
 };

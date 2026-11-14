@@ -36,9 +36,14 @@
 #include <functional>
 #include <type_traits>
 
-#ifdef RECKLESS_CUSTOM_WIDGET_FIXTURE
+#if defined(RECKLESS_CUSTOM_WIDGET_FIXTURE) || defined(RECKLESS_CONFIRM_MODAL_FIXTURE)
 #include "PluginBundleFixture.h"
 #include <QFile>
+#endif
+#ifdef RECKLESS_CONFIRM_MODAL_FIXTURE
+#include "catalog/Button.h"
+#include "catalog/containers/Modal.h"
+#include <QLabel>
 #endif
 
 namespace smoke {
@@ -226,7 +231,7 @@ void sidebarFollowsTheme() {
     theme->setMode(initial);
 }
 
-#ifdef RECKLESS_CUSTOM_WIDGET_FIXTURE
+#if defined(RECKLESS_CUSTOM_WIDGET_FIXTURE) || defined(RECKLESS_CONFIRM_MODAL_FIXTURE)
 auto fixtureModule(PluginRegistry &registry, const QString &id) -> IModule * {
     for (auto *plugin : registry.plugins()) {
         for (auto *module : plugin->modules()) {
@@ -275,6 +280,9 @@ void openRemainingAccount(MainWindow &window, MenuTab &launcher, PluginRegistry 
     require(window.findChild<AccountWidget *>() == nullptr, "remaining account closes safely");
 }
 
+#endif
+
+#ifdef RECKLESS_CUSTOM_WIDGET_FIXTURE
 void customWidget(MainWindow &window) {
     QFile library(QString::fromUtf8(RECKLESS_CUSTOM_WIDGET_FIXTURE));
     require(library.open(QIODevice::ReadOnly), "read external widget fixture");
@@ -325,6 +333,84 @@ void customWidget(MainWindow &window) {
 }
 #endif
 
+#ifdef RECKLESS_CONFIRM_MODAL_FIXTURE
+// ws-plaude/silent#127: the fixture's Reset asks for Reckless's confirmation modal.
+auto openConfirmModal(MainWindow &window) -> QPointer<catalog::Modal> {
+    auto *reset = window.findChild<QPushButton *>(QStringLiteral("confirm-plugin-reset"));
+    require(reset != nullptr && reset->isVisible(), "the fixture's tab shows its Reset button");
+    click(reset);
+    QPointer<catalog::Modal> modal;
+    waitFor([&window, &modal] {
+        for (auto *candidate : window.findChildren<catalog::Modal *>()) {
+            if (candidate->isVisible()) {
+                modal = candidate;
+            }
+        }
+        return modal != nullptr;
+    });
+    require(modal->parentWidget() == &window && modal->windowModality() == Qt::WindowModal,
+            "the plugin's confirmation opens window-modal over the main window");
+    require(modal->windowTitle() == QStringLiteral("Reset all results"),
+            "the plugin's confirmation carries its title");
+    return modal;
+}
+
+auto modalButton(catalog::Modal *modal, const QString &text) -> catalog::Button * {
+    for (auto *candidate : modal->findChildren<catalog::Button *>()) {
+        if (candidate->text() == text && candidate->isVisible()) {
+            return candidate;
+        }
+    }
+    qFatal("account navigation: no %s button in the confirmation", qPrintable(text));
+}
+
+void confirmModalFixture(MainWindow &window) {
+    QFile library(QString::fromUtf8(RECKLESS_CONFIRM_MODAL_FIXTURE));
+    require(library.open(QIODevice::ReadOnly), "read the confirm modal fixture");
+    require(installBundle(QStringLiteral("confirm.modal.fixture"),
+                          QStringLiteral("Confirm modal fixture"), library.readAll())
+                .is_ok,
+            "install the SDK-only confirm modal fixture");
+    auto *registry = AppController::get()->pluginRegistry();
+    rescanPluginsAndWait(registry);
+    QPointer<MenuTab> launcher = window.findChild<MenuTab *>();
+    require(enablePluginAndWait(registry, QStringLiteral("confirm.modal.fixture")),
+            "load the confirm modal fixture");
+    window.showTab(launcher);
+    launcher->onRefreshLauncherItems();
+    QApplication::processEvents();
+    auto *entry = launcherButton(*launcher, QStringLiteral("confirm-modal-instance"));
+    require(entry != nullptr && entry->isEnabled(), "the launcher lists the fixture");
+    click(entry);
+    QPointer<QLabel> answer = window.findChild<QLabel *>(QStringLiteral("confirm-plugin-answer"));
+    require(answer != nullptr, "the fixture's tab is open");
+
+    auto modal = openConfirmModal(window);
+    click(modalButton(modal, QStringLiteral("Reset all results")));
+    waitFor([&answer] { return answer->text() == QStringLiteral("confirmed"); });
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(modal.isNull(), "the confirmed modal is gone");
+
+    modal = openConfirmModal(window);
+    click(modalButton(modal, QStringLiteral("Cancel")));
+    waitFor([&answer] { return answer->text() == QStringLiteral("cancelled"); });
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(modal.isNull(), "the cancelled modal is gone");
+
+    // Disabled while its confirmation is open: the modal closes with the plugin's tab,
+    // keeping its own copy of the plugin's text once the library is unloaded.
+    modal = openConfirmModal(window);
+    answer->clear();
+    require(stopPlugin(registry, QStringLiteral("confirm.modal.fixture")).isEmpty(),
+            "disable the fixture while its confirmation is open");
+    QApplication::processEvents();
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(modal.isNull() && answer.isNull(),
+            "the confirmation closes with the plugin's tab, without answering it");
+    require(window.isVisible(), "the main window survives the plugin and its modal");
+}
+#endif
+
 } // namespace
 
 void accountNavigationSmoke() {
@@ -346,6 +432,9 @@ void accountNavigationSmoke() {
                 window, QStringLiteral("boundary-policy"), musig);
         }
         unavailablePanels();
+#ifdef RECKLESS_CONFIRM_MODAL_FIXTURE
+        confirmModalFixture(window);
+#endif
 #ifdef RECKLESS_CUSTOM_WIDGET_FIXTURE
         customWidget(window);
         navigation<AccountWidget, StatusBar>(window, QStringLiteral("boundary-sp"), sp);

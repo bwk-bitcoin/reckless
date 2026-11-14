@@ -9,7 +9,8 @@
 // codes and flows look like Reckless's and follow theme changes. Each is a plain
 // QWidget the plugin places in its layouts and owns like any child it creates; create
 // them with Host::createQrDisplay(), createScanProgress() and createStepTrail(), on the
-// GUI thread.
+// GUI thread. Reckless's confirmation modal is a QDialog from
+// Host::createConfirmModal() (ws-plaude/silent#127).
 
 // An animated multi-part QR code with Reckless's "Part m / n" count under it.
 class IQrDisplayWidget : public QWidget {

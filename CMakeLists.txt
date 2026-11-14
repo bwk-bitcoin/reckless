@@ -779,6 +779,17 @@ if(RECKLESS_BUILD_HOST_SMOKE)
             $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(custom_widget_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_COMPILE_DEFINITIONS>)
+        # ws-plaude/silent#127: a plugin asking for Reckless's confirmation modal, built
+        # against the published SDK only.
+        qt_add_library(confirm_modal_fixture MODULE tests/host/ConfirmModalPlugin.cpp)
+        add_dependencies(confirm_modal_fixture RunBeforeBuild)
+        target_include_directories(confirm_modal_fixture BEFORE PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests/interfaces/generated_guard)
+        target_include_directories(confirm_modal_fixture PRIVATE
+            "${RECKLESS_SDK_INCLUDE}"
+            $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_INCLUDE_DIRECTORIES>)
+        target_compile_definitions(confirm_modal_fixture PRIVATE
+            $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_COMPILE_DEFINITIONS>)
     endif()
 
     qt_add_executable(${SMOKE}
@@ -871,6 +882,11 @@ if(RECKLESS_BUILD_HOST_SMOKE)
         add_dependencies(${SMOKE} custom_widget_fixture)
         target_compile_definitions(${SMOKE} PRIVATE
             RECKLESS_CUSTOM_WIDGET_FIXTURE="$<TARGET_FILE:custom_widget_fixture>")
+    endif()
+    if(TARGET confirm_modal_fixture)
+        add_dependencies(${SMOKE} confirm_modal_fixture)
+        target_compile_definitions(${SMOKE} PRIVATE
+            RECKLESS_CONFIRM_MODAL_FIXTURE="$<TARGET_FILE:confirm_modal_fixture>")
     endif()
 
     # The catalogs, so TR() returns real text.

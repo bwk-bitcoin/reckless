@@ -131,6 +131,15 @@ struct Access {
     bool state{};
 };
 
+// A confirmation a plugin asks the user for in Reckless's own modal
+// (Host::createConfirmModal, ws-plaude/silent#127).
+struct Confirmation {
+    QString title;        // the modal's window title
+    QString message;      // plain text, a few lines; wrapped, never read as rich text
+    QString confirmLabel; // the confirm button, next to Reckless's Cancel
+    bool destructive{};   // a destructive action's red button, else the accent one
+};
+
 } // namespace plugin
 
 Q_DECLARE_METATYPE(plugin::Coin)

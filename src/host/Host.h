@@ -53,6 +53,8 @@ public:
     [[nodiscard]] auto createQrDisplay(QWidget *parent) -> IQrDisplayWidget * override;
     [[nodiscard]] auto createScanProgress(QWidget *parent) -> IScanProgressWidget * override;
     [[nodiscard]] auto createStepTrail(QWidget *parent) -> IStepTrailWidget * override;
+    [[nodiscard]] auto createConfirmModal(QWidget *over, const plugin::Confirmation &request)
+        -> QDialog * override;
     // A plugin the user disables or removes takes the fee provider it serves with it
     // (ws-plaude/silent#109): a saved provider of that plugin goes back to none, Manual.
     void forgetFeeProvider(const QString &plugin_id);

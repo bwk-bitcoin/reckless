@@ -9,6 +9,7 @@
 
 #include <interfaces/types.h>
 
+class QDialog;
 class QWidget;
 class IInstance;
 class IQrDisplayWidget;
@@ -208,4 +209,13 @@ public:
         -> IScanProgressWidget * = 0;
     [[nodiscard]] virtual auto createStepTrail(QWidget *parent = nullptr)
         -> IStepTrailWidget * = 0;
+    // Reckless's confirmation modal (ws-plaude/silent#127): `request`'s title, message and
+    // confirm button, with Cancel, window-modal over the window holding `over` (the
+    // plugin's tab). Open it with open() and connect QDialog::accepted (confirmed) and
+    // rejected (Cancel, Escape or the titlebar's close), or take exec()'s result
+    // (QDialog::Accepted when confirmed). It deletes itself once closed, and closes
+    // without answering when `over` is destroyed. GUI thread only.
+    [[nodiscard]] virtual auto createConfirmModal(QWidget *over,
+                                                  const plugin::Confirmation &request)
+        -> QDialog * = 0;
 };
