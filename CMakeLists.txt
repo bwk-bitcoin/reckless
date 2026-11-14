@@ -21,19 +21,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# The embedded app mark must hold the brand SVG unchanged (ws-plaude/silent#111):
-# src/resources/brand/generate_mark.sh regenerates the header and PNGs from it.
-set(RECKLESS_MARK_SVG_FILE ${CMAKE_SOURCE_DIR}/src/resources/brand/reckless_mark.svg)
-set(RECKLESS_MARK_HEADER_FILE ${CMAKE_SOURCE_DIR}/src/resources/icon/reckless_mark.h)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    ${RECKLESS_MARK_SVG_FILE} ${RECKLESS_MARK_HEADER_FILE})
-file(READ ${RECKLESS_MARK_SVG_FILE} RECKLESS_MARK_SVG)
-file(READ ${RECKLESS_MARK_HEADER_FILE} RECKLESS_MARK_HEADER)
-string(FIND "${RECKLESS_MARK_HEADER}" "R\"svg(${RECKLESS_MARK_SVG})svg\";" RECKLESS_MARK_AT)
-if(RECKLESS_MARK_AT EQUAL -1)
-    message(FATAL_ERROR "src/resources/icon/reckless_mark.h does not hold "
-        "src/resources/brand/reckless_mark.svg: run src/resources/brand/generate_mark.sh")
-endif()
+# The embedded app mark and logo must hold the brand SVGs unchanged
+# (ws-plaude/silent#111, #120): src/resources/brand/generate_mark.sh regenerates the
+# headers and PNGs from them.
+foreach(RECKLESS_BRAND_PAIR
+        "reckless_mark.svg;reckless_mark.h"
+        "reckless_wordmark_black.svg;reckless_wordmark_black.h"
+        "reckless_wordmark_white.svg;reckless_wordmark_white.h")
+    list(GET RECKLESS_BRAND_PAIR 0 RECKLESS_BRAND_SVG_NAME)
+    list(GET RECKLESS_BRAND_PAIR 1 RECKLESS_BRAND_HEADER_NAME)
+    set(RECKLESS_BRAND_SVG_FILE ${CMAKE_SOURCE_DIR}/src/resources/brand/${RECKLESS_BRAND_SVG_NAME})
+    set(RECKLESS_BRAND_HEADER_FILE ${CMAKE_SOURCE_DIR}/src/resources/icon/${RECKLESS_BRAND_HEADER_NAME})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${RECKLESS_BRAND_SVG_FILE} ${RECKLESS_BRAND_HEADER_FILE})
+    file(READ ${RECKLESS_BRAND_SVG_FILE} RECKLESS_BRAND_SVG)
+    file(READ ${RECKLESS_BRAND_HEADER_FILE} RECKLESS_BRAND_HEADER)
+    string(FIND "${RECKLESS_BRAND_HEADER}" "R\"svg(${RECKLESS_BRAND_SVG})svg\";" RECKLESS_BRAND_AT)
+    if(RECKLESS_BRAND_AT EQUAL -1)
+        message(FATAL_ERROR "src/resources/icon/${RECKLESS_BRAND_HEADER_NAME} does not hold "
+            "src/resources/brand/${RECKLESS_BRAND_SVG_NAME}: run src/resources/brand/generate_mark.sh")
+    endif()
+endforeach()
 
 # Import Rust static library
 add_library(reckless_rust STATIC IMPORTED)

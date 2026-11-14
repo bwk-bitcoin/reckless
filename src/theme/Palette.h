@@ -101,6 +101,10 @@ const int QR_CARD = 12;
 
 namespace metric {
 
+// The full reckless logo on the welcome screen (ws-plaude/silent#120), its 838.87 x
+// 211.83 proportions kept.
+const int MENU_LOGO_WIDTH = 300;
+const int MENU_LOGO_HEIGHT = 76;
 const int SIDEBAR_WIDTH = 200;
 const int STATUS_BAR_HEIGHT = 30;
 const int CHECKBOX_BOX = 18;

@@ -2,7 +2,7 @@
 // mark with: its aspect ratio kept and centred, rendered at 4x and scaled down.
 //
 // Usage: render_mark <svg> <output prefix> <size>...
-// Writes <output prefix><size>.png for each size.
+// A size is N (an N x N square) or WxH; writes <output prefix><size>.png for each.
 
 #include <QGuiApplication>
 #include <QImage>
@@ -25,20 +25,22 @@ int main(int argc, char **argv) {
     renderer.setAspectRatioMode(Qt::KeepAspectRatio);
     constexpr int supersample = 4;
     for (int i = 3; i < argc; ++i) {
-        const int size = QString::fromLocal8Bit(argv[i]).toInt();
-        if (size <= 0) {
+        const auto text = QString::fromLocal8Bit(argv[i]);
+        const auto sides = text.split(QLatin1Char('x'));
+        const int width = sides.first().toInt();
+        const int height = sides.size() == 2 ? sides.last().toInt() : width;
+        if (width <= 0 || height <= 0 || sides.size() > 2) {
             std::fprintf(stderr, "render_mark: bad size %s\n", argv[i]);
             return 2;
         }
-        QImage big(size * supersample, size * supersample, QImage::Format_ARGB32_Premultiplied);
+        QImage big(width * supersample, height * supersample, QImage::Format_ARGB32_Premultiplied);
         big.fill(Qt::transparent);
         {
             QPainter painter(&big);
             renderer.render(&painter, QRectF(big.rect()));
         }
-        auto image = big.scaled(size, size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        auto path =
-            QString::fromLocal8Bit(argv[2]) + QString::number(size) + QStringLiteral(".png");
+        auto image = big.scaled(width, height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        auto path = QString::fromLocal8Bit(argv[2]) + text + QStringLiteral(".png");
         if (!image.save(path)) {
             std::fprintf(stderr, "render_mark: cannot write %s\n", qPrintable(path));
             return 1;

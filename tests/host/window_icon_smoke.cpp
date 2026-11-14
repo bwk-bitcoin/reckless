@@ -114,6 +114,26 @@ void windowIconSmoke() {
     }
     require(stem, "no R stem 3 to 8 px in from the left: the window icon is not the reckless mark");
 
+    // ws-plaude/silent#120: the full logo on the welcome screen, white letters for a dark
+    // theme and dark ones for a light theme, its blue mark the same in both.
+    for (bool dark : {false, true}) {
+        const QImage logo = icon::recklessWordmark(dark).pixmap(QSize(600, 152), 1.0).toImage();
+        int white = 0;
+        int black = 0;
+        for (int y = 0; y < logo.height(); ++y) {
+            for (int x = logo.width() / 3; x < logo.width(); ++x) {
+                const QRgb pixel = logo.pixel(x, y);
+                if (qAlpha(pixel) < 255) {
+                    continue;
+                }
+                white += qRed(pixel) > 230 && qGreen(pixel) > 230 && qBlue(pixel) > 230 ? 1 : 0;
+                black += qRed(pixel) < 40 && qGreen(pixel) < 40 && qBlue(pixel) < 40 ? 1 : 0;
+            }
+        }
+        require(dark ? (white > 0 && black == 0) : (black > 0 && white == 0),
+                "the logo's letters are white on a dark theme and dark on a light one");
+    }
+
     // The offscreen platform is not Wayland: the icon goes as it is.
     require(!icon::windowIconPremultiplied(), "offscreen asks for a premultiplied window icon");
 

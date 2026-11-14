@@ -26,6 +26,8 @@
 #include "resources/icon/puzzle.h"
 #include "resources/icon/qr_code.h"
 #include "resources/icon/reckless_mark.h"
+#include "resources/icon/reckless_wordmark_black.h"
+#include "resources/icon/reckless_wordmark_white.h"
 #include "resources/icon/refresh_cw.h"
 #include "resources/icon/sd_card.h"
 #include "resources/icon/settings.h"
@@ -254,6 +256,12 @@ auto layout(IconColor color) -> QIcon {
 auto recklessMark() -> QIcon {
     // Drawn in its own colours: the SVG names no currentColor for a tint to replace.
     return renderIcon(embedded_icon::RECKLESS_MARK, defaultStroke(), IconColor::Default);
+}
+
+auto recklessWordmark(bool dark) -> QIcon {
+    return renderIcon(dark ? embedded_icon::RECKLESS_WORDMARK_WHITE
+                           : embedded_icon::RECKLESS_WORDMARK_BLACK,
+                      defaultStroke(), IconColor::Default);
 }
 
 auto spMark(IconColor color) -> QIcon {

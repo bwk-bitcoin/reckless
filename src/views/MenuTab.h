@@ -8,7 +8,8 @@
 
 namespace catalog {
 class Button;
-}
+class Label;
+} // namespace catalog
 
 #include <Qontrol>
 
@@ -43,6 +44,9 @@ protected:
     void view();
     void clearRows();
     void rebuildRows();
+    // The logo for the theme now applied (ws-plaude/silent#120).
+    void refreshLogo();
+    void changeEvent(QEvent *event) override;
 
 private:
     struct LauncherEntry {
@@ -52,6 +56,9 @@ private:
     };
 
     catalog::Button *m_create_btn = nullptr;
+    // The full reckless logo over the accounts: its dark letters on a light theme, its
+    // white ones on a dark theme.
+    catalog::Label *m_logo = nullptr;
     qontrol::Column *m_accounts_column = nullptr;
     QList<QWidget *> m_rows;
     QList<LauncherEntry> m_entries;

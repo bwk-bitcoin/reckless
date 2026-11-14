@@ -43,6 +43,9 @@ auto qr(IconColor color = IconColor::Default) -> QIcon;
 auto layout(IconColor color = IconColor::Default) -> QIcon;
 // The app mark (ws-plaude/silent#111), from src/resources/brand/reckless_mark.svg.
 auto recklessMark() -> QIcon;
+// The full reckless logo (ws-plaude/silent#120): white letters for a dark theme, dark
+// letters for a light one, in its own colours either way.
+auto recklessWordmark(bool dark) -> QIcon;
 // The Silent Payments account type mark.
 auto spMark(IconColor color = IconColor::Default) -> QIcon;
 auto key(IconColor color = IconColor::Default) -> QIcon;

@@ -11,8 +11,10 @@
 #include "interfaces/module.h"
 #include "theme/Icon.h"
 #include "theme/Palette.h"
+#include "theme/Theme.h"
 #include "views/modals/AccountType.h"
 #include "views/modals/ConfirmDelete.h"
+#include <QEvent>
 #include <QGraphicsOpacityEffect>
 #include <Qontrol>
 #include <common.h>
@@ -129,23 +131,16 @@ void MenuTab::onAccountDeletionFinished(IModule *module, const QString &id, cons
 }
 
 void MenuTab::view() {
-    auto *mark = new Label(LabelRole::Title);
-    mark->setPixmap(icon::recklessMark().pixmap(48, 48));
-    mark->setAlignment(Qt::AlignCenter);
-    auto *markRow = (new qontrol::Row)->pushSpacer()->push(mark)->pushSpacer();
-
-    // The mark above already names the app (ws-plaude/silent#120).
-    auto *title = new Label(TR("menu-heading"), LabelRole::Title);
-    title->setAlignment(Qt::AlignCenter);
-
-    auto *titleRow = (new qontrol::Row)->pushSpacer()->push(title)->pushSpacer();
+    // The full logo names the app, with no heading under it (ws-plaude/silent#120).
+    m_logo = new Label(LabelRole::Title);
+    m_logo->setAlignment(Qt::AlignCenter);
+    refreshLogo();
+    auto *logoRow = (new qontrol::Row)->pushSpacer()->push(m_logo)->pushSpacer();
     auto *createRow = (new qontrol::Row)->pushSpacer()->push(m_create_btn)->pushSpacer();
 
     auto *col = (new qontrol::Column)
                     ->pushSpacer()
-                    ->push(markRow)
-                    ->pushSpacer(resolve(Spacing::S))
-                    ->push(titleRow)
+                    ->push(logoRow)
                     ->pushSpacer(resolve(Spacing::XL))
                     ->push(m_accounts_column)
                     ->pushSpacer(resolve(Spacing::M))
@@ -153,6 +148,25 @@ void MenuTab::view() {
                     ->pushSpacer();
 
     setLayout(col->layout());
+}
+
+void MenuTab::refreshLogo() {
+    if (m_logo == nullptr) {
+        return;
+    }
+    // By the background's lightness, so a plugin's palette gets the right one too.
+    const bool dark = Theme::get()->palette().bg.lightnessF() < 0.5;
+    const QSize size(metric::MENU_LOGO_WIDTH, metric::MENU_LOGO_HEIGHT);
+    m_logo->setPixmap(icon::recklessWordmark(dark).pixmap(size, devicePixelRatioF()));
+    m_logo->setFixedSize(size);
+}
+
+void MenuTab::changeEvent(QEvent *event) {
+    // A theme applied restyles every widget: the logo follows it at once.
+    if (event->type() == QEvent::StyleChange || event->type() == QEvent::PaletteChange) {
+        refreshLogo();
+    }
+    QWidget::changeEvent(event);
 }
 
 void MenuTab::clearRows() {

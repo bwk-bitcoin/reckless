@@ -95,3 +95,13 @@ compiles the `.ico` into the Windows executable (`brand/reckless.rc.in`), makes 
 `.icns` the macOS bundle icon (`MACOSX_BUNDLE_ICON_FILE`), and on Linux installs
 `brand/reckless.desktop` with the mark under `share/icons/hicolor` (scalable SVG plus
 the PNGs). The Nix Linux output gets them through `cmake --install`.
+
+## The full logo
+
+`brand/reckless_wordmark_black.svg` and `brand/reckless_wordmark_white.svg` are the full
+reckless logo (ws-plaude/silent#120): dark letters for a light theme, white letters for a
+dark one, on the welcome screen (`MenuTab`, `icon::recklessWordmark`). `generate_mark.sh`
+embeds them as `icon/reckless_wordmark_{black,white}.h` and renders
+`brand/png/reckless_wordmark_{black,white}_<WxH>.png` at 300, 600 and 1200 px wide; CMake
+checks the headers against the SVGs like the mark's. `HEADERS_ONLY=1` writes only the
+headers, with no compiler.
