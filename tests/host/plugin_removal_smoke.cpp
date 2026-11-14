@@ -859,14 +859,14 @@ void pluginRemovalUiSmoke(const QString &shots) {
     }
     // ws-plaude/silent#124: the confirmation is a modal over Settings; Cancel leaves the
     // plugin enabled and its toggle on.
-    DisableModalStep cancelled([&](modal::DisablePlugin *modal) {
+    DisableModalStep disableCancelled([&](modal::DisablePlugin *modal) {
         require(modal->isWindow() && !settings->isAncestorOf(modal) && settings->isVisible() &&
                     modal->windowTitle() == QStringLiteral("Disable Plugin"),
                 "the disable confirmation is a modal over Settings");
         click(modal, QStringLiteral("Cancel"));
     });
     mouseClick(visibleToggle(settings, id));
-    require(cancelled.ran(), "turning the toggle off opens the disable confirmation");
+    require(disableCancelled.ran(), "turning the toggle off opens the disable confirmation");
     QCoreApplication::processEvents();
     require(registry->isPluginEnabled(id) && visibleToggle(settings, id)->isChecked(),
             "Cancel leaves the plugin enabled and its toggle on");
