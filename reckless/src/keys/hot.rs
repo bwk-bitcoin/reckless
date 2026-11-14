@@ -506,6 +506,8 @@ mod tests {
                 alias: "acct".to_string(),
                 descriptor,
                 hmac: None,
+                stored: false,
+                proof: None,
             });
         }
 

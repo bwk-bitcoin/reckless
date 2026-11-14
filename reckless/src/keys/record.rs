@@ -445,6 +445,8 @@ mod tests {
             alias: "descriptor alias".to_string(),
             descriptor: "descriptor string".to_string(),
             hmac: Some("ab".repeat(32)),
+            stored: false,
+            proof: None,
         });
 
         let json = serde_json::to_string(&record).expect("serialize key record");
@@ -469,6 +471,8 @@ mod tests {
                 alias: "a".to_string(),
                 descriptor: "d".to_string(),
                 hmac: None,
+                stored: false,
+                proof: None,
             },
             "an entry stored before the hmac field should load without one"
         );
@@ -480,6 +484,8 @@ mod tests {
             alias: "a".to_string(),
             descriptor: "d".to_string(),
             hmac: None,
+            stored: false,
+            proof: None,
         };
         let json = serde_json::to_string(&entry).expect("serialize entry");
         assert!(
