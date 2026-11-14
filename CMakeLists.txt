@@ -69,6 +69,8 @@ set(RECKLESS_APP_SOURCES
     src/host/CallerHandles.cpp
     src/host/Host.h
     src/host/Host.cpp
+    src/host/HostWidgets.h
+    src/host/HostWidgets.cpp
     src/host/PriceFeedCoordinator.cpp
     src/host/PriceFeedCoordinator.h
     src/host/PluginAccess.h
@@ -807,6 +809,7 @@ if(RECKLESS_BUILD_HOST_SMOKE)
         tests/host/keys_contract_smoke.cpp
         tests/host/qr_cache_smoke.cpp
         tests/host/qr_registration_smoke.cpp
+        tests/host/host_widgets_smoke.cpp
         tests/host/quit_shutdown_smoke.cpp
         tests/host/quit_shutdown_smoke.h
         tests/host/storage_smoke.cpp

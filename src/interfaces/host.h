@@ -11,6 +11,9 @@
 
 class QWidget;
 class IInstance;
+class IQrDisplayWidget;
+class IScanProgressWidget;
+class IStepTrailWidget;
 class IKeys;
 class IModule;
 class IStorage;
@@ -195,4 +198,14 @@ public:
     [[nodiscard]] virtual auto selectedFees() const -> SelectedFees = 0;
     // Updates runtime fees immediately; asynchronous save errors do not roll back the selection.
     virtual void selectFees(const FeePreferences &preferences) = 0;
+
+    // Reckless's own widgets for a plugin's views (interfaces/widgets.h,
+    // ws-plaude/silent#121), drawn in the live theme. GUI thread only. Each is a child of
+    // `parent` when one is given; the caller owns it like any widget it creates.
+    [[nodiscard]] virtual auto createQrDisplay(QWidget *parent = nullptr)
+        -> IQrDisplayWidget * = 0;
+    [[nodiscard]] virtual auto createScanProgress(QWidget *parent = nullptr)
+        -> IScanProgressWidget * = 0;
+    [[nodiscard]] virtual auto createStepTrail(QWidget *parent = nullptr)
+        -> IStepTrailWidget * = 0;
 };

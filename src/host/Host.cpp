@@ -1,4 +1,5 @@
 #include "Host.h"
+#include "HostWidgets.h"
 
 #include "AppController.h"
 #include "MainWindow.h"
@@ -1347,6 +1348,21 @@ void HostImpl::forgetFeeProvider(const QString &plugin_id) {
     if (key.isArray() && !key.array().isEmpty() && key.array().first().toString() == plugin_id) {
         selectFees({.mode = FeeMode::Manual, .source = QString()});
     }
+}
+
+auto HostImpl::createQrDisplay(QWidget *parent) -> IQrDisplayWidget * {
+    assertGuiThread();
+    return new HostQrDisplay(parent);
+}
+
+auto HostImpl::createScanProgress(QWidget *parent) -> IScanProgressWidget * {
+    assertGuiThread();
+    return new HostScanProgress(parent);
+}
+
+auto HostImpl::createStepTrail(QWidget *parent) -> IStepTrailWidget * {
+    assertGuiThread();
+    return new HostStepTrail(parent);
 }
 
 void HostImpl::dispatchFeeWrite() {
