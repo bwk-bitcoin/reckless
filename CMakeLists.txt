@@ -840,6 +840,7 @@ if(RECKLESS_BUILD_HOST_SMOKE)
         tests/host/qr_cache_smoke.cpp
         tests/host/qr_registration_smoke.cpp
         tests/host/host_widgets_smoke.cpp
+        tests/host/wizard_steps_geometry.cpp
         tests/host/quit_shutdown_smoke.cpp
         tests/host/quit_shutdown_smoke.h
         tests/host/storage_smoke.cpp

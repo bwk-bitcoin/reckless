@@ -8,6 +8,7 @@
 #include <QStyle>
 #include <Qontrol>
 #include <algorithm>
+#include <cstdlib>
 
 namespace catalog {
 
@@ -19,6 +20,10 @@ const int CHECK_SIZE = 12;
 const int NUMBER_PITCH = 120;
 const int MAX_NAME_WIDTH = 70;
 const int MAX_TRAIL_WIDTH = 695;
+// The most steps the trail shows in full; more show a window around the current one.
+const int MAX_FULL_STEPS = 6;
+// The span of the ellipsis standing for a hidden run of steps.
+const int GAP_WIDTH = 32;
 
 void sizeName(Label *name, int max_width) {
     name->ensurePolished();
@@ -76,6 +81,7 @@ WizardSteps::WizardSteps(const QStringList &steps, QWidget *parent) : QWidget(pa
         m_dots.append(dot);
         m_names.append(name);
         auto *step = (new qontrol::Row)->spacing(gap)->push(dot)->push(name);
+        m_steps.append(step);
         if (!last) {
             auto *rule = new QWidget(this);
             rule->setProperty("class", "wizard-rule");
@@ -89,6 +95,15 @@ WizardSteps::WizardSteps(const QStringList &steps, QWidget *parent) : QWidget(pa
             step->setFixedWidth(DOT_SIZE + gap + name->width());
         }
         row->push(step);
+        if (!last) {
+            auto *ellipsis = new QLabel(QStringLiteral("\u2026"), this);
+            ellipsis->setProperty("class", "wizard-gap");
+            ellipsis->setAlignment(Qt::AlignCenter);
+            ellipsis->setFixedWidth(GAP_WIDTH);
+            ellipsis->setVisible(false);
+            m_gaps.append(ellipsis);
+            row->push(ellipsis);
+        }
     }
     row->pushSpacer();
     (new qontrol::Column)->margins(0, 0, 0, resolve(Spacing::S))->push(row)->into(this);
@@ -100,7 +115,36 @@ void WizardSteps::setCurrent(int index) {
     refresh();
 }
 
+auto WizardSteps::shown(int index) const -> bool {
+    auto last = int(m_dots.size()) - 1;
+    if (m_dots.size() <= MAX_FULL_STEPS) {
+        return true;
+    }
+    auto current = std::clamp(m_current, 0, last);
+    return index == 0 || index == last || std::abs(index - current) <= 1;
+}
+
 void WizardSteps::refresh() {
+    // Hidden first, then shown: the trail never needs both windows' width at once, which
+    // would grow the window around it for good.
+    for (bool showing : {false, true}) {
+        for (int i = 0; i < m_steps.size(); ++i) {
+            auto visible = shown(i);
+            if (visible == showing) {
+                m_steps.at(i)->setVisible(visible);
+            }
+            if (i < m_gaps.size()) {
+                // Before a hidden run: the ellipsis in place of this step's rule.
+                auto before_run = visible && !shown(i + 1);
+                if (before_run == showing) {
+                    m_gaps.at(i)->setVisible(before_run);
+                }
+                if (!before_run == showing) {
+                    m_rules.at(i)->setVisible(!before_run);
+                }
+            }
+        }
+    }
     for (int i = 0; i < m_dots.size(); ++i) {
         auto *dot = m_dots.at(i);
         auto *name = m_names.at(i);
@@ -138,7 +182,8 @@ auto WizardSteps::qss(const Palette &p) -> QString {
                    "QLabel[class=\"wizard-dot\"][state=\"current\"] { border-color: %2;"
                    "  color: %2; }"
                    "QLabel[class=\"wizard-dot\"][state=\"done\"] { border-color: %2;"
-                   "  background: %2; }")
+                   "  background: %2; }"
+                   "QLabel[class=\"wizard-gap\"] { color: %5; background: transparent; }")
         .arg(p.borderLight.name())
         .arg(p.accent.name())
         .arg(p.border.name())

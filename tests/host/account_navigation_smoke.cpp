@@ -44,6 +44,7 @@
 #ifdef RECKLESS_HOST_WIDGETS_FIXTURE
 #include "catalog/display/WizardSteps.h"
 #include "catalog/feedback/ScanProgress.h"
+#include "interfaces/widgets.h"
 #include "modules/keys/KeysModule.h"
 #include "modules/keys/flow/SigningFlow.h"
 #include "qr/QrDisplay.h"
@@ -52,6 +53,7 @@
 #include <QScreen>
 #include <QWindow>
 #include <memory>
+#include <utility>
 #endif
 #ifdef RECKLESS_CONFIRM_MODAL_FIXTURE
 #include "catalog/Button.h"
@@ -416,6 +418,39 @@ void hostWidgetsFixture(MainWindow &window) {
         }
         shot(window, mode == ThemeMode::Light ? QStringLiteral("issue-121-fixture-light.png")
                                               : QStringLiteral("issue-121-fixture-dark.png"));
+    }
+    // ws-plaude/silent#129: five steps all shown, forty in a window around the current
+    // one, through the plugin's own trail.
+    IStepTrailWidget *trail = nullptr;
+    for (auto *child : page->findChildren<QWidget *>()) {
+        if (auto *candidate = dynamic_cast<IStepTrailWidget *>(child); candidate != nullptr) {
+            trail = candidate;
+        }
+    }
+    require(trail != nullptr, "the fixture shows its step trail");
+    for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+        theme->setMode(mode);
+        theme->apply();
+        const auto suffix =
+            mode == ThemeMode::Light ? QStringLiteral("light") : QStringLiteral("dark");
+        trail->setSteps({QStringLiteral("Device"), QStringLiteral("Request"),
+                         QStringLiteral("Answer"), QStringLiteral("Check"),
+                         QStringLiteral("Done")});
+        trail->setCurrent(2);
+        QApplication::processEvents();
+        shot(window, QStringLiteral("issue-129-5-steps-%1.png").arg(suffix));
+        QStringList forty;
+        for (int i = 0; i < 40; ++i) {
+            forty.append(QStringLiteral("Step %1").arg(i + 1));
+        }
+        trail->setSteps(forty);
+        for (auto [current, name] :
+             {std::pair{0, "first"}, std::pair{19, "middle"}, std::pair{39, "last"}}) {
+            trail->setCurrent(current);
+            QApplication::processEvents();
+            shot(window,
+                 QStringLiteral("issue-129-40-steps-%1-%2.png").arg(QLatin1String(name), suffix));
+        }
     }
     theme->setMode(initial);
     theme->apply();

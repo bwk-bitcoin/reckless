@@ -196,6 +196,7 @@ void musigResetSmoke();
 void qrCacheExchangeSmoke();
 void qrRegistrationSmoke();
 void hostWidgetsSmoke();
+void wizardStepsGeometrySmoke();
 void boundarySmoke();
 void endpointSmoke();
 void navigationSmoke();
@@ -494,6 +495,12 @@ auto main(int argc, char *argv[]) -> int {
         Theme::init();
         smoke::musigResetSmoke();
         std::fprintf(stdout, "MuSig reset smoke: OK\n");
+        return gOk ? 0 : 1;
+    }
+    if (arguments.contains(QStringLiteral("--wizard-steps"))) {
+        Theme::init();
+        smoke::wizardStepsGeometrySmoke();
+        std::fprintf(stdout, "Wizard steps smoke: OK\n");
         return gOk ? 0 : 1;
     }
     if (arguments.contains(QStringLiteral("--host-widgets"))) {

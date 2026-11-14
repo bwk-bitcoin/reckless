@@ -105,13 +105,80 @@ void checkTrail(const QStringList &labels, const QString &context, int width) {
     qInfo() << context << "width" << width << "number centres" << positions;
 }
 
+// ws-plaude/silent#129: more steps than fit show a window around the current one, the
+// first and last kept, each hidden run one ellipsis, inside the header's width.
+void checkWindowed(int count, int width) {
+    QStringList labels;
+    for (int i = 0; i < count; ++i) {
+        labels.append(QStringLiteral("Step %1").arg(i + 1));
+    }
+    QWidget window;
+    auto *trail = new catalog::WizardSteps(labels);
+    (new qontrol::Column)->margins(0)->push(trail)->pushSpacer()->into(&window);
+    window.resize(width, 768);
+    window.show();
+    QList<QLabel *> dots;
+    QList<QLabel *> gaps;
+    for (auto *child : trail->findChildren<QLabel *>()) {
+        if (child->property("class") == "wizard-dot") {
+            dots.append(child);
+        } else if (child->property("class") == "wizard-gap") {
+            gaps.append(child);
+        }
+    }
+    check(dots.size() == count, "windowed: one dot per step");
+    auto context = QStringLiteral("windowed %1 steps at %2").arg(count).arg(width);
+    // Forwards, then back down as a plugin's Back does.
+    QList<int> currents{0, 1, count / 2, count - 2, count - 1, count / 2, 1, 0};
+    for (auto current : currents) {
+        trail->setCurrent(current);
+        settle(window);
+        auto here = context + QStringLiteral(" current %1").arg(current);
+        QList<int> visible;
+        for (int i = 0; i < count; ++i) {
+            if (dots.at(i)->isVisible()) {
+                visible.append(i);
+            }
+        }
+        QList<int> expected;
+        for (int i = 0; i < count; ++i) {
+            if (i == 0 || i == count - 1 || std::abs(i - current) <= 1) {
+                expected.append(i);
+            }
+        }
+        check(visible == expected, here + ": shows the first, last, current and its neighbours");
+        int runs = 0;
+        for (int k = 1; k < visible.size(); ++k) {
+            runs += visible.at(k) - visible.at(k - 1) > 1 ? 1 : 0;
+        }
+        auto shownGaps = std::count_if(gaps.begin(), gaps.end(),
+                                       [](const QLabel *gap) { return gap->isVisible(); });
+        check(shownGaps == runs, here + ": one ellipsis per hidden run");
+        for (auto i : visible) {
+            check(i < current || dots.at(i)->text() == QString::number(i + 1),
+                  here + ": a step keeps its real number");
+            check(dots.at(i)->property("state").toString() == (i < current    ? "done"
+                                                               : i == current ? "current"
+                                                                              : "next"),
+                  here + ": incorrect dot state");
+        }
+        for (int k = 1; k < visible.size(); ++k) {
+            auto left = dots.at(visible.at(k - 1))->mapTo(trail, QPoint()).x();
+            auto right = dots.at(visible.at(k))->mapTo(trail, QPoint()).x();
+            check(right - left >= 120, here + ": shown steps do not overlap");
+        }
+        check(trail->minimumSizeHint().width() <= 695, here + ": minimum width exceeds 695");
+        check(window.width() == width, here + ": trail widened the window");
+    }
+}
+
 } // namespace
 
-auto main(int argc, char **argv) -> int {
-    QApplication app(argc, argv);
-    Theme::init();
+namespace smoke {
+
+// The trail's geometry in every locale and width (host_smoke --wizard-steps).
+void wizardStepsGeometrySmoke() {
     Theme::get()->apply();
-    i18n::I18nManager::get()->init(&app);
     for (auto width : {695, 698, 700, 702, 720, 1024}) {
         for (const auto &locale : {"en", "de", "es", "fr", "it", "pt"}) {
             check(i18n::I18nManager::get()->applyLocale(locale, false), "Failed to load locale");
@@ -133,6 +200,12 @@ auto main(int argc, char **argv) -> int {
                    "maximum label widths", width);
         checkTrail({}, "empty", width);
         checkTrail({"Only one step"}, "single", width);
+        checkWindowed(7, width);
+        checkWindowed(40, width);
+        checkWindowed(60, width);
     }
+    check(i18n::I18nManager::get()->applyLocale("en", false), "Failed to restore locale");
     qInfo() << "WizardSteps geometry checks passed";
 }
+
+} // namespace smoke
