@@ -953,7 +953,9 @@ void HostImpl::setTabTitle(TabId tab, const QString &title) {
         return;
     }
     auto &entry = m_tabs[tab];
-    window->setTabTitle(entry.content, title);
+    // A plugin's QStringLiteral points into its library: QTabBar keeps tab texts as
+    // keys of its size cache after the tab and the library are gone, so it gets a copy.
+    window->setTabTitle(entry.content, QString::fromUtf8(title.toUtf8()));
 }
 
 void HostImpl::closeTab(TabId tab, bool delete_content) {
@@ -996,7 +998,8 @@ Host::SectionId HostImpl::addSettingSection(QWidget *content, IInstance *owner,
                                       .id = section_id,
                                       .content = content,
                                       .owner = owner,
-                                      .title = title.trimmed(),
+                                      // Its own copy, as a tab title's.
+                                      .title = QString::fromUtf8(title.trimmed().toUtf8()),
                                       .module = m_instance_owner.value(owner->id()),
                                   });
     emit m_events.settingSectionsChanged();
