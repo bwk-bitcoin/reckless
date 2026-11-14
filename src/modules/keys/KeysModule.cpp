@@ -774,13 +774,15 @@ void KeysModule::sign(ReqId req_id, const QString &psbt_v2_hex, const QStringLis
         sign->start();
         return;
     }
-    // A QR key whose device advertises the cache capability signs from prepared
-    // sessions: its first request allocates every pending signer's session, over the
-    // routes the plan names.
+    // A QR key whose device advertises the cache capability signs a MuSig2 PSBT from
+    // its prepared sessions: its first request allocates every pending signer's
+    // session, over the routes the plan names. Any other PSBT, or one no prepared
+    // session covers, takes the normal signing request (ws-plaude/silent#118).
     bool cachedMusig =
-        !nonce_stage && std::ranges::any_of(plan.candidates, [&fingerprint](const auto &candidate) {
+        !nonce_stage && plan.musig_inputs &&
+        std::ranges::any_of(plan.candidates, [&fingerprint](const auto &candidate) {
             return candidate.can_sign && candidate.route == KeyRouteKind::Qr &&
-                   candidate.cache_supported &&
+                   candidate.cache_supported && candidate.cache_ready &&
                    toQt(candidate.fingerprint).compare(fingerprint, Qt::CaseInsensitive) == 0;
         });
     runFlow(new flow::SigningFlow(

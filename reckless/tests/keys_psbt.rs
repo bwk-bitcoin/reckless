@@ -370,6 +370,8 @@ fn test_plan_marks_sp_outputs_pending_and_orders_sp_first() {
         plan.sp_outputs_pending,
         "expected sp_outputs_pending, got {plan:?}"
     );
+    // ws-plaude/silent#118: a PSBT with no MuSig2 input never takes the nonce cache route.
+    assert!(!plan.musig_inputs, "a plain PSBT has no MuSig2 input");
 
     assert_eq!(
         plan.candidates[0].fingerprint, sp_fp_hex,

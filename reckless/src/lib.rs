@@ -1377,6 +1377,9 @@ mod ffi {
         pub candidates: Vec<SigningCandidate>,
         /// An output script is still underived, so only the SP key may sign now.
         pub sp_outputs_pending: bool,
+        /// Some input names MuSig2 participants: only then can a key sign from the
+        /// nonce cache (ws-plaude/silent#118).
+        pub musig_inputs: bool,
     }
 
     /// Result of a fingerprint lookup carrying no key/module state.

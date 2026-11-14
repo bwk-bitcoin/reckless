@@ -2637,6 +2637,7 @@ mod tests {
         let plan = manager
             .signing_plan(&prepared)
             .expect("transaction-aware offline plan");
+        assert!(plan.musig_inputs, "a MuSig2 PSBT names its participants");
         let candidate = plan
             .candidates
             .iter()

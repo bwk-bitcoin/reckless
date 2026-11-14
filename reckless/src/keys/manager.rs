@@ -27,7 +27,7 @@ use crate::keys::{
     error::Error,
     hot, ledger_nonces, musig_sessions, network_name,
     psbt::{
-        inspect_bytes, musig_completed_fingerprints, musig_nonces_complete,
+        has_musig_inputs, inspect_bytes, musig_completed_fingerprints, musig_nonces_complete,
         ordinary_signature_complete, parse_v2, PsbtArtifacts,
     },
     record::{DescriptorEntry, DeviceRecord, KeyRecord, RouteKind, SecretEnvelope, XpubEntry},
@@ -122,6 +122,9 @@ pub struct SigningPlan {
     pub unrelated_live: Vec<LiveDevice>,
     pub sp_fingerprint: Option<Fingerprint>,
     pub sp_outputs_pending: bool,
+    /// Some input names MuSig2 participants: only then can a key sign from the nonce
+    /// cache (ws-plaude/silent#118).
+    pub musig_inputs: bool,
 }
 
 /// Names the exact cause instead of a catch-all: empty routes, hot with no secret, or
@@ -717,6 +720,7 @@ impl KeyManager {
             unrelated_live,
             sp_fingerprint: artifacts.sp_fingerprint,
             sp_outputs_pending: artifacts.sp_outputs_pending,
+            musig_inputs: false,
         }
     }
 }
@@ -1129,6 +1133,7 @@ impl KeyManagerImpl for KeyManager {
         let artifacts = inspect_bytes(psbt_bytes, &descriptors, &self.secp)?;
         let mut plan = self.plan_from_artifacts(&artifacts);
         let psbt = parse_v2(psbt_bytes)?;
+        plan.musig_inputs = has_musig_inputs(&psbt)?;
         if !artifacts.sp_outputs_pending {
             let missing_nonces = !musig_nonces_complete(&psbt)?;
             let nonces = musig_completed_fingerprints(&psbt, true)?;

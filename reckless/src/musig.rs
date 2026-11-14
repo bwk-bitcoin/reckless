@@ -1603,6 +1603,7 @@ impl MusigAccount {
                 },
                 candidates: Vec::new(),
                 sp_outputs_pending: false,
+                musig_inputs: false,
             };
         }
         let mut plan =

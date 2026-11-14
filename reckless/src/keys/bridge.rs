@@ -698,6 +698,7 @@ impl KeysModule {
                     error: String::new(),
                     candidates,
                     sp_outputs_pending: plan.sp_outputs_pending,
+                    musig_inputs: plan.musig_inputs,
                 }
             }
             Err(e) => failed_signing_plan(&format!("signing_plan: {e}")),
@@ -2021,6 +2022,7 @@ fn failed_signing_plan(error: &str) -> ffi::SigningPlan {
         error: error.to_string(),
         candidates: Vec::new(),
         sp_outputs_pending: false,
+        musig_inputs: false,
     }
 }
 
