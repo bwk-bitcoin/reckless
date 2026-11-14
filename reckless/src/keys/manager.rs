@@ -624,7 +624,10 @@ impl KeyManager {
         fingerprint: Fingerprint,
         artifacts: &PsbtArtifacts,
     ) -> SigningCandidate {
-        let is_sp = artifacts.sp_fingerprint == Some(fingerprint);
+        // With inputs of several keys, each owing its shares signs first
+        // (ws-plaude/silent#123).
+        let is_sp = artifacts.sp_fingerprint == Some(fingerprint)
+            || artifacts.sp_share_owners.contains(&fingerprint);
         let record = self.records.get(&fingerprint);
         let mut candidate = SigningCandidate {
             fingerprint,
@@ -3039,6 +3042,7 @@ mod tests {
             sp_outputs: true,
             sp_outputs_pending: true,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
 
         (manager, artifacts)
@@ -3057,6 +3061,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::from([a]),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
         let done: Vec<(Fingerprint, bool)> = plan
@@ -3094,6 +3099,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
         assert_eq!(
@@ -3218,6 +3224,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
         let candidate = &plan.candidates[0];
@@ -3251,6 +3258,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
         let candidate = &plan.candidates[0];
@@ -3322,6 +3330,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
 
@@ -3386,6 +3395,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
 
@@ -3419,6 +3429,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
         assert_eq!(
@@ -3449,6 +3460,7 @@ mod tests {
             sp_outputs: false,
             sp_outputs_pending: false,
             musig_done: BTreeSet::new(),
+            sp_share_owners: BTreeSet::new(),
         };
         let plan = manager.plan_from_artifacts(&artifacts);
         assert!(

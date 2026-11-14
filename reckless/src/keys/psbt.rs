@@ -17,12 +17,13 @@ use bwk_sp::{
             PSBT_IN_MUSIG2_PUB_NONCE,
         },
         sp::{
+            sp_global_ecdh_share_v2, sp_input_dleq, sp_input_ecdh_share, sp_input_ecdh_shares,
             sp_input_tweak, sp_v0_output, PSBT_GLOBAL_SP_DLEQ, PSBT_GLOBAL_SP_ECDH_SHARE,
             PSBT_IN_SP_DLEQ, PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_SPEND_BIP32_DERIVATION,
             PSBT_IN_SP_TWEAK, PSBT_OUT_SP_V0_INFO, PSBT_OUT_SP_V0_LABEL,
         },
         taproot::is_partial_tap_tree,
-        Error as PsbtV2Error, PsbtV2,
+        Error as PsbtV2Error, PsbtV2, TxModifiable,
     },
 };
 
@@ -52,6 +53,10 @@ pub struct PsbtArtifacts {
     pub sp_outputs_pending: bool,
     /// Fingerprints whose share for the current MuSig2 round is already in the PSBT.
     pub musig_done: BTreeSet<Fingerprint>,
+    /// While outputs are pending on inputs of several keys (ws-plaude/silent#123), the
+    /// keys whose inputs still miss their BIP-375 ECDH share: each is asked for its
+    /// shares first, the outputs following once every share is in.
+    pub sp_share_owners: BTreeSet<Fingerprint>,
 }
 
 pub fn parse_v2(bytes: &[u8]) -> Result<PsbtV2, Error> {
@@ -380,15 +385,73 @@ fn resolve_sp_fingerprint(
 /// keys and the recipient's scan key, which the PSBT carries), for instance any
 /// wallet paying a silent payment address, or an account spending its sub-account
 /// coins to its silent payment change. It needs no sp() descriptor of its own
-/// (ws-plaude/silent#123). Inputs of several keys need each to contribute its share,
-/// which is not supported yet.
+/// (ws-plaude/silent#123). Inputs of several keys resolve to no single key: each owner
+/// gives the shares of its own inputs (`share_owners`), and the outputs are derived
+/// once every share is in.
 fn resolve_by_input_owner(psbt: &PsbtV2) -> Result<Option<Fingerprint>, Error> {
     let owners = scan(psbt)?.required;
     let mut owners = owners.into_iter();
-    let (Some(owner), None) = (owners.next(), owners.next()) else {
-        return Err(Error::SpOutputsUnresolvable);
-    };
-    Ok(Some(owner))
+    match (owners.next(), owners.next()) {
+        (Some(owner), None) => Ok(Some(owner)),
+        (Some(_), Some(_)) => Ok(None),
+        (None, _) => Err(Error::SpOutputsUnresolvable),
+    }
+}
+
+/// The keys of the eligible inputs (BIP-352) whose ECDH share is still missing for
+/// some recipient scan key, by the fingerprints of their key origins.
+fn share_owners(psbt: &PsbtV2) -> Result<BTreeSet<Fingerprint>, Error> {
+    let scan_keys = bip375::scan_keys(psbt).map_err(|e| Error::PsbtParse(e.to_string()))?;
+    let mut owners = BTreeSet::new();
+    for input in &psbt.inputs {
+        if bip375::eligible_input_pubkey(input)
+            .map_err(|e| Error::PsbtParse(e.to_string()))?
+            .is_none()
+        {
+            continue;
+        }
+        let mut missing = false;
+        for scan_key in &scan_keys {
+            missing |= sp_global_ecdh_share_v2(psbt, *scan_key)
+                .map_err(|e| Error::PsbtParse(e.to_string()))?
+                .is_none()
+                && sp_input_ecdh_share(&input.psbt, *scan_key)
+                    .map_err(|e| Error::PsbtParse(e.to_string()))?
+                    .is_none();
+        }
+        if missing {
+            owners.extend(input.psbt.bip32_derivation.values().map(|(fp, _)| *fp));
+            owners.extend(input.psbt.tap_key_origins.values().map(|(_, (fp, _))| *fp));
+        }
+    }
+    Ok(owners)
+}
+
+/// Whether every recipient scan key has its ECDH shares: a global one, or one on
+/// every eligible input. The pending outputs can then be derived.
+pub fn sp_shares_complete(psbt: &PsbtV2) -> Result<bool, Error> {
+    let scan_keys = bip375::scan_keys(psbt).map_err(|e| Error::PsbtParse(e.to_string()))?;
+    for scan_key in scan_keys {
+        if sp_global_ecdh_share_v2(psbt, scan_key)
+            .map_err(|e| Error::PsbtParse(e.to_string()))?
+            .is_some()
+        {
+            continue;
+        }
+        for input in &psbt.inputs {
+            let eligible = bip375::eligible_input_pubkey(input)
+                .map_err(|e| Error::PsbtParse(e.to_string()))?
+                .is_some();
+            if eligible
+                && sp_input_ecdh_share(&input.psbt, scan_key)
+                    .map_err(|e| Error::PsbtParse(e.to_string()))?
+                    .is_none()
+            {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
 }
 
 fn signing_capabilities(
@@ -463,9 +526,23 @@ pub fn inspect(
         required.insert(fingerprint);
     }
 
+    let sp_share_owners = if sp_outputs_pending && sp_fingerprint.is_none() {
+        let owners = share_owners(psbt)?;
+        // No key owes a share, yet no output is derived: nobody can go on.
+        if owners.is_empty() {
+            return Err(Error::SpOutputsUnresolvable);
+        }
+        owners
+    } else {
+        BTreeSet::new()
+    };
     let mut required_capabilities = signing_capabilities(psbt, sp_fingerprint)?;
+    for fingerprint in &sp_share_owners {
+        *required_capabilities.entry(*fingerprint).or_default() |= CAPABILITY_SILENT_PAYMENTS;
+    }
     required_capabilities.retain(|fingerprint, _| required.contains(fingerprint));
     Ok(PsbtArtifacts {
+        sp_share_owners,
         required_capabilities,
         required,
         sp_fingerprint,
@@ -745,6 +822,54 @@ pub fn merge_sp_signed(original: &mut PsbtV2, signed: &PsbtV2) -> Result<usize, 
     Ok(touched)
 }
 
+/// The answer of one key of several to a PSBT paying a silent payment address
+/// (ws-plaude/silent#123): the outputs are still to be derived, so it only adds the
+/// BIP-375 ECDH shares of that key's inputs, each with its DLEQ proof, to the same
+/// transaction. Every new share's proof is checked against its input's key. Once
+/// every share is in, the outputs are derived here and the transaction frozen, so the
+/// keys can sign. Returns how many inputs gained a share.
+pub fn merge_sp_shares(original: &mut PsbtV2, signed: &PsbtV2) -> Result<usize, Error> {
+    check_same_transaction(original, signed)?;
+    let invalid = |e: bwk_sp::account::AccountError| Error::SpSignedInvalid(e.to_string());
+    bip375::validate_share_maps(signed).map_err(invalid)?;
+    bip375::validate_input_share_pairs(signed).map_err(invalid)?;
+    let mut touched = 0;
+    for (input, signed_input) in original.inputs.iter_mut().zip(&signed.inputs) {
+        let shares = sp_input_ecdh_shares(&signed_input.psbt)
+            .map_err(|e| Error::PsbtParse(e.to_string()))?;
+        let mut gained = false;
+        for share in shares {
+            if sp_input_ecdh_share(&input.psbt, share.scan_key)
+                .map_err(|e| Error::PsbtParse(e.to_string()))?
+                .is_some()
+            {
+                continue;
+            }
+            let public = bip375::eligible_input_pubkey(signed_input)
+                .map_err(invalid)?
+                .ok_or_else(|| Error::SpSignedInvalid("a share on an ineligible input".into()))?;
+            let proof = sp_input_dleq(&signed_input.psbt, share.scan_key)
+                .map_err(|e| Error::PsbtParse(e.to_string()))?
+                .ok_or_else(|| Error::SpSignedInvalid("a share without its proof".into()))?;
+            bip375::verify_proof(public, share.scan_key, share.share, proof).map_err(invalid)?;
+            gained = true;
+        }
+        if gained {
+            copy_unknown(
+                &mut input.psbt.unknown,
+                &signed_input.psbt.unknown,
+                &[PSBT_IN_SP_ECDH_SHARE, PSBT_IN_SP_DLEQ],
+            );
+            touched += 1;
+        }
+    }
+    if sp_shares_complete(original)? {
+        bip375::complete_output_scripts(original).map_err(invalid)?;
+        original.tx_modifiable = Some(TxModifiable::none());
+    }
+    Ok(touched)
+}
+
 /// The fields that make the transaction, compared one by one since `original` has
 /// no txid yet: only an SP output's script may be absent from `original`.
 fn check_same_transaction(original: &PsbtV2, signed: &PsbtV2) -> Result<(), Error> {
@@ -971,7 +1096,12 @@ pub fn merge_signatures_bytes(original_v2: &[u8], signed: &[u8]) -> Result<Vec<u
     let touched = if scan(&original)?.sp_outputs_pending {
         // A v0 PSBT cannot carry the scripts, shares and proofs the signer derived.
         let signed_v2 = PsbtV2::deserialize(signed).map_err(|_| Error::InvalidSignedPsbt)?;
-        merge_sp_signed(&mut original, &signed_v2)?
+        if scan(&signed_v2)?.sp_outputs_pending {
+            // One key of several gave its shares, the outputs waiting on the others'.
+            merge_sp_shares(&mut original, &signed_v2)?
+        } else {
+            merge_sp_signed(&mut original, &signed_v2)?
+        }
     } else {
         let signed_psbt = match Psbt::deserialize(signed) {
             Ok(psbt) => psbt,
@@ -1491,27 +1621,66 @@ mod tests {
         assert_eq!(artifacts.sp_fingerprint, Some(fp));
     }
 
+    /// ws-plaude/silent#123: inputs of two keys paying a silent payment address resolve
+    /// to no single signer; each key owes its inputs' shares, then only the one whose
+    /// share is missing.
     #[test]
-    fn a_pending_output_with_two_input_owners_is_unresolvable() {
+    fn a_pending_output_with_two_input_owners_asks_each_for_its_shares() {
         let secp = secp();
-        let (descriptor, fp) = sp_descriptor_with_origin();
-        let mut input = blank_input();
-        input
-            .psbt
-            .bip32_derivation
-            .insert(public_key(&secp, 0xa1), key_source(fp));
-        input
-            .psbt
-            .bip32_derivation
-            .insert(public_key(&secp, 0xa2), key_source(fingerprint(0x02)));
+        let owned = |byte: u8, vout: u32, fp: Fingerprint| {
+            let key = public_key(&secp, byte);
+            let mut input = blank_input();
+            input.previous_output.vout = vout;
+            input.psbt.bip32_derivation.insert(key, key_source(fp));
+            input.psbt.witness_utxo = Some(bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(100_000),
+                script_pubkey: bitcoin::ScriptBuf::new_p2wpkh(
+                    &bitcoin::CompressedPublicKey(key).wpubkey_hash(),
+                ),
+            });
+            input
+        };
+        let (first, second) = (fingerprint(0x01), fingerprint(0x02));
         let mut psbt = empty_psbt();
-        psbt.inputs.push(input);
-        psbt.outputs.push(blank_output(None));
+        psbt.inputs.push(owned(0xa1, 0, first));
+        psbt.inputs.push(owned(0xa2, 1, second));
+        let mut output = blank_output(None);
+        set_sp_v0_output(
+            &mut output.psbt,
+            public_key(&secp, 0xd1),
+            public_key(&secp, 0xd2),
+            None,
+        );
+        psbt.outputs.push(output);
 
-        assert!(matches!(
-            inspect(&psbt, &[descriptor], &secp),
-            Err(Error::SpOutputsUnresolvable)
-        ));
+        let artifacts = inspect(&psbt, &[], &secp).expect("two owners resolve to their shares");
+        assert_eq!(artifacts.sp_fingerprint, None);
+        assert_eq!(artifacts.sp_share_owners, BTreeSet::from([first, second]));
+        for fp in [first, second] {
+            assert_ne!(
+                artifacts
+                    .required_capabilities
+                    .get(&fp)
+                    .copied()
+                    .unwrap_or(0)
+                    & CAPABILITY_SILENT_PAYMENTS,
+                0,
+                "a key owing shares needs the silent payments capability"
+            );
+        }
+
+        // The first key's share is in: only the second key owes one now.
+        let scan = public_key(&secp, 0xd1);
+        let share = public_key(&secp, 0xe1);
+        bwk_sp::bwk_tx::bwk_psbt::sp::set_sp_input_ecdh_share(
+            &mut psbt.inputs[0].psbt,
+            scan,
+            share,
+        );
+        bwk_sp::bwk_tx::bwk_psbt::sp::set_sp_input_dleq(&mut psbt.inputs[0].psbt, scan, [0; 64]);
+        let artifacts = inspect(&psbt, &[], &secp).expect("the second key still owes its share");
+        assert_eq!(artifacts.sp_share_owners, BTreeSet::from([second]));
+        assert!(!sp_shares_complete(&psbt).expect("shares read"));
     }
 
     #[test]
@@ -1801,10 +1970,12 @@ mod tests {
 
     #[test]
     fn refuses_an_sp_answer_that_leaves_outputs_scriptless() {
+        // An answer that leaves the outputs scriptless can only add shares
+        // (ws-plaude/silent#123): with none, it is refused as nothing signed.
         let original_bytes = kern_original().serialize().unwrap();
         assert!(matches!(
             merge_signatures_bytes(&original_bytes, &original_bytes),
-            Err(Error::SpSignedInvalid(_))
+            Err(Error::NothingSigned)
         ));
     }
 

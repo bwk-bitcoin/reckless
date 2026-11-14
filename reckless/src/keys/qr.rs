@@ -722,7 +722,9 @@ fn validate_signed(
 fn signatures_reply(sent: &PsbtV2, entries: &[response::SignatureEntry]) -> Result<Vec<u8>, Error> {
     let mut merged = merge_signatures_v2(sent.clone(), entries)
         .map_err(|e| Error::QrMusigHost(e.to_string()))?;
-    if psbt::sp_outputs_pending(sent)? {
+    // The outputs follow once every share is in; a key of several gives only its own
+    // inputs' shares, the others' coming later (ws-plaude/silent#123).
+    if psbt::sp_outputs_pending(sent)? && psbt::sp_shares_complete(&merged)? {
         bip375::complete_output_scripts(&mut merged)
             .map_err(|e| Error::SpSignedInvalid(e.to_string()))?;
         merged.tx_modifiable = Some(TxModifiable::none());

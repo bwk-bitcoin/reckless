@@ -31,7 +31,7 @@ use crate::keys::{
     crypto::{self, Password},
     error::Error,
     musig_sessions,
-    psbt::parse_v2,
+    psbt::{self, parse_v2},
     record::{KeyRecord, RouteKind, SecretEnvelope},
 };
 
@@ -190,18 +190,35 @@ pub fn sign_hot(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Only a record holding the sp() descriptor may run `SpSigner::sign`: for any
-    // other key it errors out from inside `complete_output_scripts` on a PSBT the
-    // sp() key hasn't derived outputs on yet, hiding the intended SpOutputsPending.
+    // `SpSigner::sign` runs for a record holding the sp() descriptor, and for any key
+    // while a PSBT has silent payment outputs to derive: its inputs' keys give the
+    // BIP-375 shares, with no sp() descriptor needed (ws-plaude/silent#123).
     let has_sp_descriptor = descriptors.iter().any(Descriptor::is_sp);
-    let sp_signed_any = if has_sp_descriptor {
+    let sp_pending = psbt::sp_outputs_pending(&psbt)?;
+    let sp_signed_any = if has_sp_descriptor || sp_pending {
         let signed_before = tap_key_sig_count(&psbt);
         let sp_signer = SpSigner::from_mnemonic(mnemonic.as_str(), network, sp_account()?)
             .map_err(|e| Error::SpSign(e.to_string()))?;
-        sp_signer
-            .sign(&mut psbt)
-            .map_err(|e| Error::SpSign(e.to_string()))?;
-        tap_key_sig_count(&psbt) > signed_before
+        let mut attempt = psbt.clone();
+        match sp_signer.sign(&mut attempt) {
+            Ok(()) => {
+                psbt = attempt;
+                tap_key_sig_count(&psbt) > signed_before
+            }
+            // Inputs of several keys: this key wrote its own inputs' shares, the
+            // outputs waiting on the other keys' (`SpSigner::sign` stops at deriving
+            // them). Its answer is those shares alone; it signs once the outputs exist.
+            Err(e) if sp_pending && !psbt::sp_shares_complete(&attempt)? => {
+                let shares = psbt::merge_sp_shares(&mut psbt, &attempt)?;
+                if shares == 0 {
+                    return Err(Error::SpSign(e.to_string()));
+                }
+                return psbt
+                    .serialize()
+                    .map_err(|e| Error::PsbtSerialize(e.to_string()));
+            }
+            Err(e) => return Err(Error::SpSign(e.to_string())),
+        }
     } else {
         false
     };
