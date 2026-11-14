@@ -776,7 +776,7 @@ fn a_recorded_registration_answer_shapes_the_requests_to_that_key() {
         &hex::encode(&proof),
     );
     assert!(saved.is_ok, "record the proof: {}", saved.error);
-    let body = verification(&mut *module);
+    let body = verification(&mut module);
     assert!(
         body.descriptor.is_some(),
         "a proof goes with the descriptor body"
@@ -785,7 +785,7 @@ fn a_recorded_registration_answer_shapes_the_requests_to_that_key() {
 
     let saved = module.set_descriptor_registration(TEST_FINGERPRINT_HEX, POLICY, true, "");
     assert!(saved.is_ok, "record the device kept it: {}", saved.error);
-    let body = verification(&mut *module);
+    let body = verification(&mut module);
     assert!(
         body.descriptor.is_none() && body.proof.is_none(),
         "a kept wallet is named by its alias alone"
