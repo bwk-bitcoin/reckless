@@ -1,8 +1,8 @@
 #include "AppSettings.h"
 
+#include "RemovePlugin.h"
 #include "appsettings/AccessFlow.h"
 #include "appsettings/DisableFlow.h"
-#include "appsettings/RemoveFlow.h"
 #include "appsettings/SectionFlow.h"
 
 #include "AppController.h"
@@ -712,7 +712,6 @@ void AppSettings::openFlow(AppSettingsFlow *flow) {
 }
 
 void AppSettings::closeFlow() {
-    m_removing_id.clear();
     m_disabling_id.clear();
     if (m_flow == nullptr) {
         return;
@@ -880,8 +879,26 @@ void AppSettings::onPluginRemoveClicked() {
         !m_plugin_registry->pluginRemovalReadError().isEmpty()) {
         return;
     }
-    m_removing_id = sender()->property(K_PLUGIN_ID).toString();
-    openFlow(new RemoveFlow(m_plugin_registry->pluginName(m_removing_id)));
+    auto id = sender()->property(K_PLUGIN_ID).toString();
+    auto *modal = new RemovePlugin(id, m_plugin_registry->pluginName(id));
+    m_remove_modal = modal;
+    connect(modal, &RemovePlugin::confirmed, this, &AppSettings::onPluginRemoveConfirmed,
+            qontrol::UNIQUE);
+    AppController::execModal(modal);
+}
+
+void AppSettings::onPluginRemoveConfirmed(const QString &plugin_id) {
+    if (m_plugin_registry == nullptr || !m_plugin_registry->pluginRemovalReadError().isEmpty()) {
+        onPluginsChanged();
+        return;
+    }
+    if (m_theme_plugin.value(m_selected_theme) == plugin_id) {
+        m_stopping_theme_plugins.insert(plugin_id);
+    }
+    m_plugin_notice->setVisible(false);
+    m_plugin_result->setText(TR("settings-plugin-removing").arg(plugin_id));
+    m_plugin_result->setVisible(true);
+    m_plugin_registry->removePlugin(plugin_id);
 }
 
 void AppSettings::onPluginDisableRetryClicked() {
@@ -926,6 +943,11 @@ void AppSettings::onPluginsChanged() {
     m_plugin_drop->setEnabled(error.isEmpty() && !reading);
     setAcceptDrops(error.isEmpty() && !reading);
     if (!error.isEmpty()) {
+        // An open removal confirmation is withdrawn: its journal cannot be read.
+        if (m_remove_modal != nullptr) {
+            m_remove_modal->setEnabled(false);
+            m_remove_modal->reject();
+        }
         if (m_flow != nullptr) {
             m_flow->setEnabled(false);
             showMain();
@@ -1081,7 +1103,6 @@ void AppSettings::onFlowViewChanged(const QString &title, ModalWidth width) {
 }
 
 void AppSettings::onFlowBack() {
-    m_removing_id.clear();
     // A Back from disabling leaves the plugin enabled: its toggle shows it again.
     onPluginsChanged();
     showMain();
@@ -1090,25 +1111,10 @@ void AppSettings::onFlowBack() {
 
 void AppSettings::onFlowConfirmed() {
     if (m_plugin_registry == nullptr || !m_plugin_registry->pluginRemovalReadError().isEmpty()) {
-        m_removing_id.clear();
         m_disabling_id.clear();
         showMain();
         closeFlow();
         onPluginsChanged();
-        return;
-    }
-    if (!m_removing_id.isEmpty()) {
-        auto id = m_removing_id;
-        if (m_theme_plugin.value(m_selected_theme) == id) {
-            m_stopping_theme_plugins.insert(id);
-        }
-        m_removing_id.clear();
-        showMain();
-        closeFlow();
-        m_plugin_notice->setVisible(false);
-        m_plugin_result->setText(TR("settings-plugin-removing").arg(id));
-        m_plugin_result->setVisible(true);
-        m_plugin_registry->removePlugin(id);
         return;
     }
     QString id = m_disabling_id;

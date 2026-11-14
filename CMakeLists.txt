@@ -69,8 +69,6 @@ set(SILENT_APP_SOURCES
     src/host/ServiceAssembly.cpp
     src/host/UnsupportedServices.h
     src/host/UnsupportedServices.cpp
-    src/views/modals/appsettings/RemoveFlow.h
-    src/views/modals/appsettings/RemoveFlow.cpp
     src/host/StorageHandle.h
     src/host/StorageHandle.cpp
     src/interfaces/host.h
@@ -326,6 +324,8 @@ set(SILENT_APP_SOURCES
     src/modules/sp/SpSigning.cpp
     src/views/modals/ConfirmDelete.h
     src/views/modals/ConfirmDelete.cpp
+    src/views/modals/RemovePlugin.h
+    src/views/modals/RemovePlugin.cpp
     src/views/modals/PluginAccessPrompt.h
     src/views/modals/PluginAccessPrompt.cpp
     src/state/DeviceUnlock.h

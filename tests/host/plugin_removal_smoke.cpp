@@ -8,11 +8,12 @@
 #include "host/PluginRegistry.h"
 #include "interfaces/host.h"
 #include "views/modals/AppSettings.h"
+#include "views/modals/RemovePlugin.h"
 #include "views/modals/appsettings/AccessFlow.h"
 #include "views/modals/appsettings/DisableFlow.h"
-#include "views/modals/appsettings/RemoveFlow.h"
 
 #include <QAbstractButton>
+#include <QApplication>
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
@@ -26,10 +27,13 @@
 #include <QMouseEvent>
 #include <QPointer>
 #include <QPushButton>
+#include <QScreen>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QTimer>
 #include <algorithm>
 #include <common.h>
+#include <functional>
 #include <memory>
 #include <silent.h>
 #include <string>
@@ -173,6 +177,47 @@ signals:
     void releaseWorker();
 };
 
+// The removal confirmation while it runs over the window, if it does.
+auto removeModal() -> modal::RemovePlugin * {
+    auto *modal = qobject_cast<modal::RemovePlugin *>(QApplication::activeModalWidget());
+    return modal != nullptr && modal->isVisible() ? modal : nullptr;
+}
+
+// Runs a step on the removal confirmation once its exec() shows it. The step closes
+// it, by a click or a withdrawal, so the click that opened it returns.
+class RemoveModalStep final : public QObject {
+    Q_OBJECT
+
+public:
+    explicit RemoveModalStep(std::function<void(modal::RemovePlugin *)> step)
+        : m_step(std::move(step)) {
+        connect(&m_timer, &QTimer::timeout, this, &RemoveModalStep::onTick, qontrol::UNIQUE);
+        m_timer.start(10);
+    }
+
+    [[nodiscard]] auto ran() const -> bool {
+        return m_ran;
+    }
+
+public slots:
+
+    void onTick() {
+        auto *modal = removeModal();
+        if (modal == nullptr) {
+            return;
+        }
+        m_timer.stop();
+        m_ran = true;
+        m_step(modal);
+        require(removeModal() == nullptr, "the step closes the removal confirmation");
+    }
+
+private:
+    std::function<void(modal::RemovePlugin *)> m_step;
+    QTimer m_timer;
+    bool m_ran = false;
+};
+
 auto storageRequest(quint64 session, const QByteArray &request) -> QJsonObject {
     auto result = ::storage_request(session, rust::String(request.toStdString()));
     return QJsonDocument::fromJson(QByteArray(result.data(), result.size())).object();
@@ -210,10 +255,8 @@ void checkPendingReadFailure(PluginRegistry *registry, modal::AppSettings *setti
     }
     require(namedFailure, "the error is shown as a failure, not no pending removals");
     require(!settings->acceptDrops(), "unreadable state disables bundle drops");
-    for (auto *flow : settings->findChildren<modal::RemoveFlow *>()) {
-        require(!flow->isVisible() && !flow->isEnabled(),
-                "an open destructive confirmation is withdrawn when its journal cannot be read");
-    }
+    require(removeModal() == nullptr,
+            "an open destructive confirmation is withdrawn when its journal cannot be read");
     int blockedButtons = 0;
     for (auto *button : settings->findChildren<QAbstractButton *>()) {
         if (button->property("pluginId").toString() == id && button->isVisible()) {
@@ -604,34 +647,30 @@ void pluginRemovalReadFailureSmoke(const QString &shots) {
                      &RemovalProbe::onFinished, qontrol::UNIQUE);
     for (const auto &fault : {QStringLiteral("locked"), QStringLiteral("corrupt"),
                               QStringLiteral("unreadable"), QStringLiteral("unwritable-lock")}) {
-        visibleButton(settings, QStringLiteral("Remove"))->click();
-        auto confirmations = settings->findChildren<modal::RemoveFlow *>();
-        QPointer<modal::RemoveFlow> confirmation;
-        for (auto *candidate : confirmations) {
-            if (candidate->isVisible()) {
-                confirmation = candidate;
+        QPointer<modal::RemovePlugin> confirmation;
+        RemoveModalStep withdrawn([&](modal::RemovePlugin *modal) {
+            confirmation = modal;
+            if (fault == QStringLiteral("locked")) {
+                ::state_lock();
+            } else if (fault == QStringLiteral("corrupt")) {
+                QFile state(statePath);
+                require(state.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+                            state.write("corrupt journal") > 0,
+                        "install corrupt journal fixture");
+            } else {
+                require(QFile::setPermissions(
+                            fault == QStringLiteral("unreadable") ? statePath : lockPath,
+                            fault == QStringLiteral("unreadable") ? QFile::Permissions()
+                                                                  : QFile::ReadOwner),
+                        "install actual inaccessible journal or unwritable lock fixture");
             }
-        }
-        require(confirmation != nullptr,
-                "read failure also protects a confirmation that was already open");
-        if (fault == QStringLiteral("locked")) {
-            ::state_lock();
-        } else if (fault == QStringLiteral("corrupt")) {
-            QFile state(statePath);
-            require(state.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
-                        state.write("corrupt journal") > 0,
-                    "install corrupt journal fixture");
-        } else {
-            require(
-                QFile::setPermissions(fault == QStringLiteral("unreadable") ? statePath : lockPath,
-                                      fault == QStringLiteral("unreadable") ? QFile::Permissions()
-                                                                            : QFile::ReadOwner),
-                "install actual inaccessible journal or unwritable lock fixture");
-        }
-        checkPendingReadFailure(registry, settings, id, knownPhase, bytes);
-        require(confirmation == nullptr ||
-                    (!confirmation->isVisible() && !confirmation->isEnabled()),
-                "the actual previously open confirmation is gone or withdrawn and disabled");
+            checkPendingReadFailure(registry, settings, id, knownPhase, bytes);
+            require(confirmation == nullptr ||
+                        (!confirmation->isVisible() && !confirmation->isEnabled()),
+                    "the actual previously open confirmation is gone or withdrawn and disabled");
+        });
+        visibleButton(settings, QStringLiteral("Remove"))->click();
+        require(withdrawn.ran(), "read failure also protects a confirmation that was already open");
         auto error = registry->pluginRemovalReadError();
         removeAndWait(registry, probe, id);
         require(!probe.removed && probe.error == error,
@@ -727,21 +766,34 @@ void pluginRemovalUiSmoke(const QString &shots) {
     require(removeButton() != nullptr && removeButton()->isVisible(),
             "external plugin row offers visible Remove");
     capture(QStringLiteral("issue71-settings-wip.png"));
+    RemoveModalStep cancelled([&](modal::RemovePlugin *modal) {
+        require(modal->isWindow() && !settings->isAncestorOf(modal) && settings->isVisible(),
+                "Remove opens the destructive confirmation as a modal over Settings");
+        bool named = false;
+        bool warning = false;
+        for (auto *label : modal->findChildren<QLabel *>()) {
+            named |= label->text() == QStringLiteral("Remove Removal fixture?");
+            warning |=
+                label->text().contains(QStringLiteral("all of its saved state and accounts"));
+        }
+        require(named && warning,
+                "confirmation names the plugin and warns about deletion of all state/accounts");
+        if (!shots.isEmpty() && window.screen() != nullptr) {
+            // On a real display the window grab holds the modal over it.
+            QElapsedTimer exposed;
+            exposed.start();
+            while (!exposed.hasExpired(200)) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            }
+            auto shot = window.screen()->grabWindow(window.winId());
+            require(!shot.isNull() && shot.save(QDir(shots).filePath(
+                                          QStringLiteral("issue108-confirmation-wip.png"))),
+                    "save the whole window with the removal confirmation over it");
+        }
+        modal->reject();
+    });
     removeButton()->click();
-    QCoreApplication::processEvents();
-    auto *flow = settings->findChild<modal::RemoveFlow *>();
-    require(flow != nullptr && flow->isVisible(),
-            "Remove opens the actual destructive confirmation flow");
-    bool named = false;
-    bool warning = false;
-    for (auto *label : flow->findChildren<QLabel *>()) {
-        named |= label->text() == QStringLiteral("Remove Removal fixture?");
-        warning |= label->text().contains(QStringLiteral("all of its saved state and accounts"));
-    }
-    require(named && warning,
-            "confirmation names the plugin and warns about deletion of all state/accounts");
-    capture(QStringLiteral("issue71-confirmation-wip.png"));
-    click(flow, QStringLiteral("Back"));
+    require(cancelled.ran(), "Remove opens the destructive confirmation");
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     require(read(appState) == original,
             "confirmation cancellation leaves app-state ciphertext byte-identical");
@@ -821,12 +873,11 @@ void pluginRemovalUiSmoke(const QString &shots) {
     require(!registry->isPluginEnabled(id) && removeButton()->isEnabled(),
             "Remove is enabled once the plugin is disabled");
     capture(QStringLiteral("issue80-disabled-wip.png"));
-    removeButton()->click();
-    QCoreApplication::processEvents();
-    flow = settings->findChild<modal::RemoveFlow *>();
-    require(flow != nullptr, "confirmation can be reopened after cancellation");
     PluginStopProbe completion(registry, id);
-    click(flow, QStringLiteral("Remove"));
+    RemoveModalStep confirmed(
+        [&click](modal::RemovePlugin *modal) { click(modal, QStringLiteral("Remove")); });
+    removeButton()->click();
+    require(confirmed.ran(), "confirmation can be reopened after cancellation");
     auto error = completion.wait();
     require(error.isEmpty(), "real Settings removal completes successfully");
     waitForStop(registry, id);

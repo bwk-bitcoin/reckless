@@ -41,11 +41,13 @@ class IThemeProvider;
 namespace modal {
 
 class AppSettingsFlow;
+class RemovePlugin;
 
 // The global Settings, the page of the Settings tab right of Keys
 // (ws-plaude/silent#46): General, Plugin Manager and Extension Settings on the main
 // view; disabling a plugin, a plugin's access and a module's settings section are
-// flows shown in its place, each with its way back.
+// flows shown in its place, each with its way back. Removing a plugin is confirmed in
+// a modal over the tab (ws-plaude/silent#108).
 class AppSettings : public QWidget {
     Q_OBJECT
 
@@ -63,6 +65,7 @@ public slots:
     void onPluginToggled(bool enabled);
     void onPluginAccessClicked();
     void onPluginRemoveClicked();
+    void onPluginRemoveConfirmed(const QString &plugin_id);
     void onPluginDisableRetryClicked();
     void onPluginStopFinished(const QString &plugin_id, bool removed, const QString &error);
     void onPluginsChanged();
@@ -172,7 +175,8 @@ private:
     HostEvents *m_host_events = nullptr;
     QHash<QString, QString> m_plugin_meta;
     QString m_disabling_id;
-    QString m_removing_id;
+    // The removal confirmation while it runs over the tab.
+    QPointer<RemovePlugin> m_remove_modal;
     QSet<QString> m_stopping_theme_plugins;
     QString m_unloading_id;
 
