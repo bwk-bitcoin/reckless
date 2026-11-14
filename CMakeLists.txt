@@ -779,6 +779,17 @@ if(RECKLESS_BUILD_HOST_SMOKE)
             $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(custom_widget_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_COMPILE_DEFINITIONS>)
+        # ws-plaude/silent#121 and #125: a plugin showing Reckless's QR display, scan
+        # progress and step trail, built against the published SDK only.
+        qt_add_library(host_widgets_fixture MODULE tests/host/HostWidgetsPlugin.cpp)
+        add_dependencies(host_widgets_fixture RunBeforeBuild)
+        target_include_directories(host_widgets_fixture BEFORE PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests/interfaces/generated_guard)
+        target_include_directories(host_widgets_fixture PRIVATE
+            "${RECKLESS_SDK_INCLUDE}"
+            $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_INCLUDE_DIRECTORIES>)
+        target_compile_definitions(host_widgets_fixture PRIVATE
+            $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_COMPILE_DEFINITIONS>)
         # ws-plaude/silent#127: a plugin asking for Reckless's confirmation modal, built
         # against the published SDK only.
         qt_add_library(confirm_modal_fixture MODULE tests/host/ConfirmModalPlugin.cpp)
@@ -882,6 +893,11 @@ if(RECKLESS_BUILD_HOST_SMOKE)
         add_dependencies(${SMOKE} custom_widget_fixture)
         target_compile_definitions(${SMOKE} PRIVATE
             RECKLESS_CUSTOM_WIDGET_FIXTURE="$<TARGET_FILE:custom_widget_fixture>")
+    endif()
+    if(TARGET host_widgets_fixture)
+        add_dependencies(${SMOKE} host_widgets_fixture)
+        target_compile_definitions(${SMOKE} PRIVATE
+            RECKLESS_HOST_WIDGETS_FIXTURE="$<TARGET_FILE:host_widgets_fixture>")
     endif()
     if(TARGET confirm_modal_fixture)
         add_dependencies(${SMOKE} confirm_modal_fixture)

@@ -36,9 +36,22 @@
 #include <functional>
 #include <type_traits>
 
-#if defined(RECKLESS_CUSTOM_WIDGET_FIXTURE) || defined(RECKLESS_CONFIRM_MODAL_FIXTURE)
+#if defined(RECKLESS_CUSTOM_WIDGET_FIXTURE) || defined(RECKLESS_CONFIRM_MODAL_FIXTURE) ||          \
+    defined(RECKLESS_HOST_WIDGETS_FIXTURE)
 #include "PluginBundleFixture.h"
 #include <QFile>
+#endif
+#ifdef RECKLESS_HOST_WIDGETS_FIXTURE
+#include "catalog/display/WizardSteps.h"
+#include "catalog/feedback/ScanProgress.h"
+#include "modules/keys/KeysModule.h"
+#include "modules/keys/flow/SigningFlow.h"
+#include "qr/QrDisplay.h"
+#include <QDir>
+#include <QLabel>
+#include <QScreen>
+#include <QWindow>
+#include <memory>
 #endif
 #ifdef RECKLESS_CONFIRM_MODAL_FIXTURE
 #include "catalog/Button.h"
@@ -231,7 +244,8 @@ void sidebarFollowsTheme() {
     theme->setMode(initial);
 }
 
-#if defined(RECKLESS_CUSTOM_WIDGET_FIXTURE) || defined(RECKLESS_CONFIRM_MODAL_FIXTURE)
+#if defined(RECKLESS_CUSTOM_WIDGET_FIXTURE) || defined(RECKLESS_CONFIRM_MODAL_FIXTURE) ||          \
+    defined(RECKLESS_HOST_WIDGETS_FIXTURE)
 auto fixtureModule(PluginRegistry &registry, const QString &id) -> IModule * {
     for (auto *plugin : registry.plugins()) {
         for (auto *module : plugin->modules()) {
@@ -333,6 +347,141 @@ void customWidget(MainWindow &window) {
 }
 #endif
 
+#ifdef RECKLESS_HOST_WIDGETS_FIXTURE
+// A click as the window system delivers it: through the widget's window, where Qt
+// drops it when a modal window blocks that window.
+void windowClick(QWidget *widget) {
+    auto *window = widget->window()->windowHandle();
+    require(window != nullptr, "the clicked widget is on screen");
+    const QPointF local = widget->mapTo(widget->window(), QPointF(widget->rect().center()));
+    const QPointF global = widget->mapToGlobal(QPointF(widget->rect().center()));
+    QMouseEvent press(QEvent::MouseButtonPress, local, local, global, Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, local, local, global, Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(window, &press);
+    QCoreApplication::sendEvent(window, &release);
+    QApplication::processEvents();
+}
+
+// The window as the screen shows it, any window over it included.
+void shot(MainWindow &window, const QString &name) {
+    const auto dir = qEnvironmentVariable("RECKLESS_FIXTURE_SHOTS");
+    if (dir.isEmpty()) {
+        return;
+    }
+    QApplication::processEvents();
+    const QRect frame = window.frameGeometry();
+    auto image =
+        window.screen()->grabWindow(0, frame.x(), frame.y(), frame.width(), frame.height());
+    require(image.save(QDir(dir).filePath(name)), "the fixture shot saves");
+}
+
+// ws-plaude/silent#121: the fixture's tab shows Reckless's own widgets, in the live theme.
+// ws-plaude/silent#125: its Count button takes a click while a keys window is open.
+void hostWidgetsFixture(MainWindow &window) {
+    QFile library(QString::fromUtf8(RECKLESS_HOST_WIDGETS_FIXTURE));
+    require(library.open(QIODevice::ReadOnly), "read the host widgets fixture");
+    require(installBundle(QStringLiteral("host.widgets.fixture"),
+                          QStringLiteral("Host widgets fixture"), library.readAll())
+                .is_ok,
+            "install the SDK-only host widgets fixture");
+    auto *registry = AppController::get()->pluginRegistry();
+    rescanPluginsAndWait(registry);
+    QPointer<MenuTab> launcher = window.findChild<MenuTab *>();
+    require(enablePluginAndWait(registry, QStringLiteral("host.widgets.fixture")),
+            "load the host widgets fixture");
+    window.showTab(launcher);
+    launcher->onRefreshLauncherItems();
+    QApplication::processEvents();
+    auto *entry = launcherButton(*launcher, QStringLiteral("host-widgets-instance"));
+    require(entry != nullptr && entry->isEnabled(), "the launcher lists the fixture");
+    click(entry);
+    auto *page = window.findChild<QWidget *>(QStringLiteral("host-widgets-page"));
+    require(page != nullptr && page->isVisible(), "the fixture's tab is open");
+    require(page->findChild<qr::QrDisplay *>() != nullptr &&
+                page->findChild<catalog::ScanProgress *>() != nullptr &&
+                page->findChild<catalog::WizardSteps *>() != nullptr,
+            "the plugin's tab shows Reckless's QR display, scan progress and step trail");
+    auto *theme = Theme::get();
+    const auto initial = theme->mode();
+    for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+        theme->setMode(mode);
+        theme->apply();
+        // The QR display draws its parts and cycles, in the new theme.
+        QElapsedTimer settle;
+        settle.start();
+        while (settle.elapsed() < 1200) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+        shot(window, mode == ThemeMode::Light ? QStringLiteral("issue-121-fixture-light.png")
+                                              : QStringLiteral("issue-121-fixture-dark.png"));
+    }
+    theme->setMode(initial);
+    theme->apply();
+
+    // A keys window open over the app, as a plugin's keys call opens it.
+    auto keys = std::make_unique<keys::KeysModule>();
+    keys->setNetwork(Network::Regtest);
+    (void)keys->rust()->remove_key("73c5da0a", true);
+    require(keys->rust()->add_key("73c5da0a", "QR device").is_ok &&
+                keys->rust()->add_route("73c5da0a", KeyRouteKind::Qr).is_ok,
+            "the QR key is added");
+    keys->checkDescriptorRegistered(
+        61, QStringLiteral("73c5da0a"),
+        QStringLiteral(
+            "tr([73c5da0a/86h/1h/0h]tpubDCChhoz5Qdrkn7Z7KXawq6Ad6r3A4MUkCoVTqeWxfTkA6bHNJ3CH"
+            "UEtALQdkNeixNz4446PcAmw4WKcj3mV2vb29H7sg9EPzbyCU1y2merw/<0;1>/*)"));
+    keys::flow::SigningFlow *flow = nullptr;
+    waitFor([&flow] {
+        for (auto *widget : QApplication::topLevelWidgets()) {
+            if (auto *open = qobject_cast<keys::flow::SigningFlow *>(widget);
+                open != nullptr && open->isVisible()) {
+                flow = open;
+            }
+        }
+        return flow != nullptr;
+    });
+    auto *count = window.findChild<QPushButton *>(QStringLiteral("host-widgets-count"));
+    auto *clicks = window.findChild<QLabel *>(QStringLiteral("host-widgets-clicks"));
+    require(count != nullptr && clicks != nullptr, "the fixture shows its Count button");
+    // The check sees a blocking window: made application modal, the click never lands.
+    flow->setWindowModality(Qt::ApplicationModal);
+    flow->hide();
+    flow->show();
+    flow->move(window.x() + window.width() - flow->width() - 24, window.y() + 120);
+    QApplication::processEvents();
+    windowClick(count);
+    windowClick(count);
+    require(clicks->text() == QStringLiteral("0"),
+            "a modal keys window blocks the plugin's tab: the check would see the bug");
+    shot(window, QStringLiteral("issue-125-fixture-modal-blocked.png"));
+    flow->hide();
+    flow->setWindowModality(Qt::NonModal);
+    flow->show();
+    // Beside the Count button, so the shot shows both.
+    flow->move(window.x() + window.width() - flow->width() - 24, window.y() + 120);
+    QApplication::processEvents();
+    windowClick(count);
+    windowClick(count);
+    require(flow->isVisible() && clicks->text() == QStringLiteral("2"),
+            "the plugin's button takes clicks while the keys window is open");
+    shot(window, QStringLiteral("issue-125-fixture-click.png"));
+    QPointer<keys::flow::SigningFlow> closed = flow;
+    flow->reject();
+    QApplication::processEvents();
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(closed.isNull(), "the keys window closes");
+    keys.reset();
+
+    QPointer<QWidget> view = page;
+    require(stopPlugin(registry, QStringLiteral("host.widgets.fixture")).isEmpty(),
+            "disable the host widgets fixture");
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    require(view.isNull(), "the fixture's tab goes with it");
+}
+#endif
+
 #ifdef RECKLESS_CONFIRM_MODAL_FIXTURE
 // ws-plaude/silent#127: the fixture's Reset asks for Reckless's confirmation modal.
 auto openConfirmModal(MainWindow &window) -> QPointer<catalog::Modal> {
@@ -385,6 +534,29 @@ void confirmModalFixture(MainWindow &window) {
     QPointer<QLabel> answer = window.findChild<QLabel *>(QStringLiteral("confirm-plugin-answer"));
     require(answer != nullptr, "the fixture's tab is open");
 
+#ifdef RECKLESS_HOST_WIDGETS_FIXTURE
+    // Shots of the plugin's confirmation, light and dark.
+    const auto initial_mode = Theme::get()->mode();
+    for (auto mode : {ThemeMode::Light, ThemeMode::Dark}) {
+        Theme::get()->setMode(mode);
+        Theme::get()->apply();
+        QApplication::processEvents();
+        auto open = openConfirmModal(window);
+        QElapsedTimer settle;
+        settle.start();
+        while (settle.elapsed() < 500) {
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+        }
+        shot(window, mode == ThemeMode::Light ? QStringLiteral("issue-127-confirm-light.png")
+                                              : QStringLiteral("issue-127-confirm-dark.png"));
+        click(modalButton(open, QStringLiteral("Cancel")));
+        waitFor([&answer] { return answer->text() == QStringLiteral("cancelled"); });
+        answer->clear();
+        QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    }
+    Theme::get()->setMode(initial_mode);
+    Theme::get()->apply();
+#endif
     auto modal = openConfirmModal(window);
     click(modalButton(modal, QStringLiteral("Reset all results")));
     waitFor([&answer] { return answer->text() == QStringLiteral("confirmed"); });
@@ -432,6 +604,9 @@ void accountNavigationSmoke() {
                 window, QStringLiteral("boundary-policy"), musig);
         }
         unavailablePanels();
+#ifdef RECKLESS_HOST_WIDGETS_FIXTURE
+        hostWidgetsFixture(window);
+#endif
 #ifdef RECKLESS_CONFIRM_MODAL_FIXTURE
         confirmModalFixture(window);
 #endif
