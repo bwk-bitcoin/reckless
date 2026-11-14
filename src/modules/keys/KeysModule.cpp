@@ -390,6 +390,10 @@ void KeysBus::deliverCancelled(ReqId req_id) {
     emit cancelled(req_id);
 }
 
+void KeysBus::deliverExchange(ReqId req_id, const plugin::KeyExchange &exchange) {
+    emit IKeys::exchange(req_id, exchange);
+}
+
 void KeysBus::deliverSpDescriptor(ReqId req_id, const QString &descriptor,
                                   const QString &fingerprint) {
     emit spDescriptorReady(req_id, descriptor, fingerprint);
@@ -734,6 +738,8 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
     connect(flow, &flow::SigningFlow::registrationChecked, m_bus.get(),
             &KeysBus::deliverRegistrationChecked, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::failed, m_bus.get(), &KeysBus::deliverError, qontrol::UNIQUE);
+    connect(flow, &flow::SigningFlow::exchanged, m_bus.get(), &KeysBus::deliverExchange,
+            qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::cancelled, m_bus.get(), &KeysBus::deliverCancelled,
             qontrol::UNIQUE);
     if (m_open_flow != nullptr) {

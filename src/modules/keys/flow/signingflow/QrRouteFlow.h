@@ -51,6 +51,8 @@ public slots:
     void onQrXpubs(const QString &fingerprint, const QList<qr::QrXpub> &xpubs,
                    const qr::QrDevice &device);
     void onQrError(qr::QrError kind, const QString &message, quint8 device_code);
+    void onRequestShown(const QByteArray &bytes);
+    void onReplyRead(const QByteArray &bytes, bool accepted, const QString &note);
     void onQrSettingsClicked();
     void onRefusedCloseClicked();
     void onQrFrame(const qr::QrFrame &frame);

@@ -123,6 +123,7 @@ private slots:
     void onError(std::optional<ReqId> req_id, const QString &message, plugin::SignError kind,
                  quint8 device_code);
     void onCancelled(ReqId req_id);
+    void onExchange(ReqId req_id, const plugin::KeyExchange &exchange);
 
 protected:
     [[nodiscard]] auto readKeys(plugin::Network network) const -> KeyListResult override;

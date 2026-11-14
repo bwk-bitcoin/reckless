@@ -64,6 +64,9 @@ enum class SignError : std::uint32_t {
 // ws-plaude/silent#133). Pending leaves the step to the current index: done before it.
 enum class StepState : std::uint32_t { Pending = 0, Passed = 1, Failed = 2, Skipped = 3 };
 
+// Which way a keys call's message went (IKeys::exchange, ws-plaude/silent#134).
+enum class ExchangeDirection : std::uint32_t { Request = 0, Reply = 1 };
+
 // The device's bipqr codes a DeviceRefused error carries (ENCODING.md): 0x01 to 0x10,
 // 0xFF for a vendor error. Only the ones Reckless itself acts on are named.
 inline constexpr std::uint8_t DEVICE_USER_DECLINED = 0x01;
@@ -142,6 +145,10 @@ template <> struct WireValues<RetirementStatus> {
 template <> struct WireValues<StepState> {
     static constexpr std::array VALUES{StepState::Pending, StepState::Passed, StepState::Failed,
                                        StepState::Skipped};
+};
+
+template <> struct WireValues<ExchangeDirection> {
+    static constexpr std::array VALUES{ExchangeDirection::Request, ExchangeDirection::Reply};
 };
 
 template <> struct WireValues<SignError> {

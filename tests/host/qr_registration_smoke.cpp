@@ -6,7 +6,13 @@
 // check there too, never a "disconnected" error about a device that has no connection.
 // ws-plaude/silent#126: a device's refusal, over QR codes or USB, reaches the caller
 // through the keys window as DeviceRefused with the device's own code.
+// ws-plaude/silent#134: the caller of a keys call gets each bipqr request shown and
+// each reply read, refused ones included; no other caller does.
+#include "AppController.h"
+#include "MockPlugin.h"
 #include "catalog/Button.h"
+#include "host/CallerHandles.h"
+#include "host/Host.h"
 #include "interfaces/host.h"
 #include "interfaces/instance.h"
 #include "interfaces/signer.h"
@@ -24,6 +30,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <algorithm>
 #include <functional>
 
 #include <common.h>
@@ -353,6 +360,106 @@ void usbRefusal() {
     pump(50);
 }
 
+// The bipqr exchanges a keys caller receives.
+class ExchangeSpy final : public QObject {
+    Q_OBJECT
+
+public:
+    QList<ReqId> ids;
+    QList<plugin::KeyExchange> seen;
+
+public slots:
+
+    void onExchange(ReqId req_id, const plugin::KeyExchange &exchange) {
+        ids.append(req_id);
+        seen.append(exchange);
+    }
+};
+
+// A registration through a caller's handle, the device answering with bipqr's
+// register_descriptor_response_registered vector, or refusing it: the caller gets the
+// request, a reply for another request (refused) and the device's reply, in order.
+void qrExchanges(bool device_refuses) {
+    auto module = std::make_unique<keys::KeysModule>();
+    module->setNetwork(Network::Regtest);
+    (void)module->rust()->remove_key(FINGERPRINT, true);
+    require(module->rust()->add_key(FINGERPRINT, "QR device").is_ok &&
+                module->rust()->add_route(FINGERPRINT, KeyRouteKind::Qr).is_ok,
+            "the QR key is added");
+    auto *host = dynamic_cast<HostImpl *>(Host::get());
+    require(host != nullptr, "the real host");
+    // The callers are a registered built-in module, as a plugin's would be.
+    static IModule *callerModule = nullptr;
+    if (callerModule == nullptr) {
+        if (AppController::get() == nullptr) {
+            AppController::init();
+        }
+        auto plugin = std::make_unique<MockPlugin>();
+        callerModule = plugin->module();
+        AppController::get()->registerBuiltinPlugin(std::move(plugin));
+    }
+    host::KeysHandle caller(host, callerModule, module->bus());
+    host::KeysHandle other(host, callerModule, module->bus());
+    ExchangeSpy mine;
+    ExchangeSpy theirs;
+    QObject::connect(&caller, &IKeys::exchange, &mine, &ExchangeSpy::onExchange, qontrol::UNIQUE);
+    QObject::connect(&other, &IKeys::exchange, &theirs, &ExchangeSpy::onExchange, qontrol::UNIQUE);
+    BusSpy spy;
+    QObject::connect(module->bus(), &keys::KeysBus::descriptorRegistered, &spy,
+                     &BusSpy::onRegistered, qontrol::UNIQUE);
+    QObject::connect(module->bus(), &keys::KeysBus::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
+    auto req = caller.newRequest();
+    caller.registerDescriptor(req, plugin::Network::Regtest, QString::fromLatin1(FINGERPRINT),
+                              QString::fromLatin1(POLICY));
+    auto *flow = waitForFlow();
+    require(flow != nullptr, "the registration opens its QR window");
+    auto *engine = flow->findChild<qr::QrEngine *>();
+    require(engine != nullptr, "the QR window decodes the device's replies");
+    pump(50);
+    require(mine.seen.size() == 1, "the caller gets the request shown");
+    const auto &shown = mine.seen.at(0);
+    require(shown.direction == plugin::ExchangeDirection::Request &&
+                shown.route == plugin::KeyRouteKind::Qr && shown.accepted &&
+                shown.bytes.startsWith("BIPXXX") && shown.bytes.size() > 10 &&
+                static_cast<quint8>(shown.bytes.at(7)) == 0x03 &&
+                shown.bytes.mid(8, 2) == QByteArray("\x00\x01", 2),
+            "the request is the whole bipqr Register Descriptor message, REQUEST_ID 1");
+
+    const auto answer =
+        device_refuses
+            ? errorResponse(0x03, 0x0001, plugin::DEVICE_USER_DECLINED, "registration was declined")
+            : QByteArray::fromHex("42495058585801830001046d61696e0101010108aaaaaaaaaaaaaaaa");
+    auto stray = answer;
+    stray[9] = 0x02;
+    engine->response({.payload = stray});
+    pump(100);
+    require(mine.seen.size() == 2 &&
+                mine.seen.at(1).direction == plugin::ExchangeDirection::Reply &&
+                mine.seen.at(1).bytes == stray && !mine.seen.at(1).accepted &&
+                !mine.seen.at(1).note.isEmpty(),
+            "a reply to another request comes as refused, with why");
+    engine->response({.payload = answer});
+    pump(200);
+    require(mine.seen.size() == 3 &&
+                mine.seen.at(2).direction == plugin::ExchangeDirection::Reply &&
+                mine.seen.at(2).bytes == answer && mine.seen.at(2).accepted,
+            "the device's reply comes as read, a refusal as much as an answer");
+    require(device_refuses ? spy.errors == 1 && spy.lastCode == plugin::DEVICE_USER_DECLINED
+                           : spy.registered == 1,
+            "the call answers as before");
+    require(std::ranges::all_of(mine.ids, [req](ReqId id) { return id == req; }),
+            "every exchange carries the caller's request id");
+    require(theirs.seen.isEmpty(), "another caller gets none of them");
+    if (!device_refuses) {
+        return;
+    }
+    // The refused window waits for Close.
+    if (auto *open = waitForFlow(); open != nullptr) {
+        open->reject();
+        pump(200);
+    }
+}
+
 // Reckless's own failures keep their kinds, with no device code.
 void ownFailures() {
     auto module = std::make_unique<keys::KeysModule>();
@@ -423,6 +530,8 @@ void qrRegistrationSmoke() {
     qrRefusal(0xFF, "device is locked");
     usbRefusal();
     ownFailures();
+    qrExchanges(false);
+    qrExchanges(true);
 }
 
 } // namespace smoke

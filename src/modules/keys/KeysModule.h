@@ -131,6 +131,7 @@ public slots:
     void deliverError(std::optional<ReqId> req_id, const QString &message,
                       plugin::SignError kind = plugin::SignError::Other, quint8 device_code = 0);
     void deliverCancelled(ReqId req_id);
+    void deliverExchange(ReqId req_id, const plugin::KeyExchange &exchange);
     void deliverSpDescriptor(ReqId req_id, const QString &descriptor, const QString &fingerprint);
     void deliverXpub(ReqId req_id, const QString &xpub, const QString &fingerprint,
                      const QString &path);

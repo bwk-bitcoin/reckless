@@ -1191,6 +1191,14 @@ The kinds (ws-plaude/silent#126):
 
 `device_code` is 0 unless the kind is `DeviceRefused`.
 
+`exchange(req_id, plugin::KeyExchange)` gives the caller each bipqr message of its call
+with a QR device, as it happens (ws-plaude/silent#134): every request Reckless showed in
+its keys QR window and every reply it read, in order, as the whole message bytes before
+BBQR framing. A reply Reckless refused (another request's `REQUEST_ID`, a malformed or
+wrong kind of answer) has `accepted` false and `note` saying why; a device's own error
+reply decodes, so it is accepted and its refusal also comes through `error`. Only the
+caller of `req_id` gets them, until the call answers. A USB route has no bipqr messages.
+
 `keys(network)` lists the registered keys as `KeyEntry` rows. Before asking
 `verifyAddress()`, a caller checks `can_show_address`: true when the key has a USB or QR
 route, a device with a screen that can show the address. A hot key, an SD card only key

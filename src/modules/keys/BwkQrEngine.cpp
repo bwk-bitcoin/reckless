@@ -167,9 +167,10 @@ void BwkQrEngine::issue(const QrMessageResult &message) {
         return;
     }
     m_waiting = true;
-    emit request(
-        qr::QrRequest{.payload = QByteArray(reinterpret_cast<const char *>(message.payload.data()),
-                                            static_cast<qsizetype>(message.payload.size()))});
+    QByteArray bytes(reinterpret_cast<const char *>(message.payload.data()),
+                     static_cast<qsizetype>(message.payload.size()));
+    emit requestShown(bytes);
+    emit request(qr::QrRequest{.payload = bytes});
 }
 
 void BwkQrEngine::response(const qr::QrResponse &response) {
@@ -178,6 +179,12 @@ void BwkQrEngine::response(const qr::QrResponse &response) {
     }
     auto decoded = m_module->rust()->qr_decode_response(rust::Slice<const std::uint8_t>(
         reinterpret_cast<const std::uint8_t *>(response.payload.data()), response.payload.size()));
+    // A device's own refusal decodes: the reply was read, its refusal follows as an
+    // error. Any other failed decode is Reckless refusing the reply.
+    bool read = decoded->is_ok() || decoded->error_kind() == QrErrorKind::DeviceRefused ||
+                decoded->error_kind() == QrErrorKind::MusigSession;
+    emit replyRead(response.payload, read,
+                   read ? QString() : KeysModule::toQt(decoded->get_error()));
     if (!decoded->is_ok()) {
         // A reply that is not this request's answer leaves it outstanding: the scan
         // goes on. A lost MuSig2 session, or the device's own refusal of the request

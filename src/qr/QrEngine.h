@@ -65,6 +65,10 @@ signals:
     // `device_code` is the device's bipqr error code when it refused the request
     // (DeviceRefused, or MusigSession for its 0x0D), else 0 (ws-plaude/silent#126).
     void error(qr::QrError kind, const QString &message, quint8 device_code = 0);
+    // Each request shown and each reply read, as their whole message bytes
+    // (ws-plaude/silent#134): a reply refused is not `accepted`, `note` saying why.
+    void requestShown(const QByteArray &bytes);
+    void replyRead(const QByteArray &bytes, bool accepted, const QString &note);
 
 public slots:
     virtual void response(const qr::QrResponse &response) = 0;

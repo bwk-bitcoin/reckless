@@ -184,6 +184,10 @@ void QrRouteFlow::connectCamera() {
             qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::xpubs, this, &QrRouteFlow::onQrXpubs, qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::error, this, &QrRouteFlow::onQrError, qontrol::UNIQUE);
+    connect(m_qr_engine, &qr::QrEngine::requestShown, this, &QrRouteFlow::onRequestShown,
+            qontrol::UNIQUE);
+    connect(m_qr_engine, &qr::QrEngine::replyRead, this, &QrRouteFlow::onReplyRead,
+            qontrol::UNIQUE);
 }
 
 void QrRouteFlow::showCamera() {
@@ -347,6 +351,20 @@ void QrRouteFlow::onQrXpubs(const QString &fingerprint, const QList<qr::QrXpub> 
         return;
     }
     emit xpubFetched(xpubs.first().xpub);
+}
+
+void QrRouteFlow::onRequestShown(const QByteArray &bytes) {
+    emit exchanged({.direction = plugin::ExchangeDirection::Request,
+                    .route = plugin::KeyRouteKind::Qr,
+                    .bytes = bytes});
+}
+
+void QrRouteFlow::onReplyRead(const QByteArray &bytes, bool accepted, const QString &note) {
+    emit exchanged({.direction = plugin::ExchangeDirection::Reply,
+                    .route = plugin::KeyRouteKind::Qr,
+                    .bytes = bytes,
+                    .accepted = accepted,
+                    .note = note});
 }
 
 void QrRouteFlow::onQrError(qr::QrError kind, const QString &message, quint8 device_code) {

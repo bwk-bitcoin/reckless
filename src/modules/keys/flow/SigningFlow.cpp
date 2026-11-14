@@ -519,6 +519,7 @@ void SigningFlow::startRoute() {
             &SigningFlow::onRegistrationChecked, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::refused, this, &SigningFlow::onRefused, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::failed, this, &SigningFlow::onFailed, qontrol::UNIQUE);
+    connect(m_flow, &SigningRouteFlow::exchanged, this, &SigningFlow::onExchanged, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::cancelled, this, &QDialog::reject, qontrol::UNIQUE);
     setPage(m_flow);
     m_flow->start();
@@ -686,6 +687,13 @@ void SigningFlow::onRegistrationChecked(bool registered) {
     m_answered = true;
     emit registrationChecked(m_request.req_id, registered);
     accept();
+}
+
+void SigningFlow::onExchanged(const plugin::KeyExchange &exchange) {
+    // Only while the request is open: once it answered, its caller stops listening.
+    if (!m_answered) {
+        emit exchanged(m_request.req_id, exchange);
+    }
 }
 
 void SigningFlow::onRefused(const QString &reason, quint8 device_code) {

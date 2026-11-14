@@ -134,6 +134,8 @@ signals:
                 quint8 device_code = 0);
     // Closed before an answer, or after showing why there is none.
     void cancelled(ReqId req_id);
+    // Each bipqr message of the request's device exchange (ws-plaude/silent#134).
+    void exchanged(ReqId req_id, const plugin::KeyExchange &exchange);
 
 public slots:
     void onRequestCancelled(ReqId req_id);
@@ -151,6 +153,7 @@ public slots:
     void onDescriptorRegistered(bool stored, const QString &proof_hex);
     void onRegistrationChecked(bool registered);
     void onRefused(const QString &reason, quint8 device_code);
+    void onExchanged(const plugin::KeyExchange &exchange);
     void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other,
                   quint8 device_code = 0);
 
@@ -243,6 +246,8 @@ signals:
                 quint8 device_code = 0);
     // Left with no picker to go back to: SigningFlow closes as cancelled.
     void cancelled();
+    // A bipqr message of this route's exchange with the device (ws-plaude/silent#134).
+    void exchanged(const plugin::KeyExchange &exchange);
 
 protected:
     [[nodiscard]] auto viewSlots() const -> catalog::ViewSlots *;

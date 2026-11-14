@@ -35,6 +35,7 @@ KeysHandle::KeysHandle(HostImpl *host, IModule *module, IKeys *target)
             qontrol::UNIQUE);
     connect(target, &IKeys::error, this, &KeysHandle::onError, qontrol::UNIQUE);
     connect(target, &IKeys::cancelled, this, &KeysHandle::onCancelled, qontrol::UNIQUE);
+    connect(target, &IKeys::exchange, this, &KeysHandle::onExchange, qontrol::UNIQUE);
 }
 
 KeysHandle::~KeysHandle() {
@@ -619,6 +620,13 @@ void KeysHandle::onError(std::optional<ReqId> req_id, const QString &message,
         req_id.has_value() ? finish(*req_id) : m_host->allowed(m_module, Grant::Keys, false);
     if (guard != nullptr && forMe) {
         emit error(req_id, message, kind, device_code);
+    }
+}
+
+// Only this caller's open request; the request stays open (ws-plaude/silent#134).
+void KeysHandle::onExchange(ReqId req_id, const plugin::KeyExchange &exchange) {
+    if (m_requests.contains(req_id) && m_host->allowed(m_module, Grant::Keys, false)) {
+        emit IKeys::exchange(req_id, exchange);
     }
 }
 

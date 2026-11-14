@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QList>
 #include <QMetaType>
 #include <QString>
@@ -83,6 +84,20 @@ struct SigningRequest {
     QString sessionId;
 };
 
+// One message of a keys call with a signing device (IKeys::exchange,
+// ws-plaude/silent#134): a bipqr request Reckless showed, or a reply it read, as the
+// whole message bytes before BBQR framing.
+struct KeyExchange {
+    ExchangeDirection direction = ExchangeDirection::Request;
+    KeyRouteKind route = KeyRouteKind::Qr;
+    QByteArray bytes;
+    // A reply Reckless refused (another request's REQUEST_ID, a malformed answer, the
+    // wrong kind) is false, `note` saying why. A device's own error reply decodes, so
+    // it is accepted, its refusal coming through IKeys::error() as well.
+    bool accepted = true;
+    QString note;
+};
+
 struct SigningResult {
     QString psbtV2Hex;
     SigningProgress progress = SigningProgress::Partial;
@@ -149,5 +164,6 @@ Q_DECLARE_METATYPE(std::optional<plugin::ChainTip>)
 Q_DECLARE_METATYPE(std::optional<ReqId>)
 Q_DECLARE_METATYPE(plugin::SignError)
 Q_DECLARE_METATYPE(plugin::SigningResult)
+Q_DECLARE_METATYPE(plugin::KeyExchange)
 Q_DECLARE_METATYPE(plugin::RetirementStatus)
 Q_DECLARE_METATYPE(plugin::SpendError)

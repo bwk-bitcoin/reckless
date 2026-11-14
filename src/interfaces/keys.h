@@ -207,6 +207,12 @@ signals:
     // The user closed the flow, or it already showed why there is no answer: the
     // caller shows nothing.
     void cancelled(ReqId req_id);
+    // Every message of the call's exchange with the signing device, as it happens
+    // (ws-plaude/silent#134, appended): each bipqr request Reckless showed in its keys
+    // QR window and each reply it read, refused ones included, in order. Only for QR
+    // routes: a USB device has no bipqr messages. Only the caller of `req_id` gets
+    // them; they stop once the call answers.
+    void exchange(ReqId req_id, plugin::KeyExchange exchange);
 
 protected:
     // Provider hook. Only keys() publishes the validated result to consumers.
