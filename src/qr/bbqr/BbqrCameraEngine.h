@@ -2,7 +2,7 @@
 
 #include "qr/QrCameraEngine.h"
 
-#include <silent.h>
+#include <reckless.h>
 
 namespace qr {
 

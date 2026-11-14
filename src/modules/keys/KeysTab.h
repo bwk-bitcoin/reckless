@@ -10,7 +10,7 @@
 
 #include <Qontrol>
 #include <interfaces/types.h>
-#include <silent.h>
+#include <reckless.h>
 
 #include "KeysModule.h"
 

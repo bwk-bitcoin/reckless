@@ -1,6 +1,6 @@
-# Silent Plugin System
+# Reckless Plugin System
 
-Silent is extensible through plugins. External logic (new account kinds, data
+Reckless is extensible through plugins. External logic (new account kinds, data
 feeds, extra tabs, settings sections, themes) can be imported as a single ZIP bundle
 and enabled at runtime without rebuilding the app.
 
@@ -85,16 +85,16 @@ aggregated-graph instance has no data capability implemented, pushes a tab, and
 Modules reach the app two ways; the module/instance/capability contract is identical
 either way.
 
-- **Built-in**: shipped in mainline Silent, **statically linked** into the binary
+- **Built-in**: shipped in mainline Reckless, **statically linked** into the binary
   (e.g. the Silent Payments module). Trusted, always enabled. Registered via
   `Q_IMPORT_PLUGIN`.
 - **External (a plugin)**: an imported bundle encrypted in the application's state
-  under `~/.silent/plugins/`. One plugin **contains one or more modules**. Disabled by
+  under `~/.reckless/plugins/`. One plugin **contains one or more modules**. Disabled by
   default; the user enables the plugin, which brings up all of its modules.
 
 ## Distribution unit: one ZIP bundle
 
-Distribute one ZIP file. `.silent` is a conventional filename suffix, not a format
+Distribute one ZIP file. `.reckless` is a conventional filename suffix, not a format
 requirement. The importer detects ZIP contents; the same bytes work with a renamed
 or extensionless filename. Drop the bundle on Settings to import it. Directories,
 loose native libraries and standalone JSON files are rejected even when matching
@@ -106,8 +106,8 @@ The ZIP has a fixed root manifest and declared payload paths:
 ```text
 manifest.json
 payload/libmyplugin.so
-i18n/silent_en.lang          # optional
-i18n/silent_fr.lang          # optional
+i18n/reckless_en.lang          # optional
+i18n/reckless_fr.lang          # optional
 ```
 
 Only declared files are allowed. Do not include directory records, source files,
@@ -130,7 +130,7 @@ built with Qt 6.8 and baseline x86-64 requirements:
     "kind": "native",
     "library": "payload/libmyplugin.so",
     "compatibility": {
-      "iid": "dev.silent.IPlugin/1.0",
+      "iid": "dev.reckless.IPlugin/1.0",
       "target_os": "linux",
       "target_arch": "x86_64",
       "qt_major": 6,
@@ -138,7 +138,7 @@ built with Qt 6.8 and baseline x86-64 requirements:
       "arch_requirements": 1
     }
   },
-  "translations": ["i18n/silent_en.lang", "i18n/silent_fr.lang"]
+  "translations": ["i18n/reckless_en.lang", "i18n/reckless_fr.lang"]
 }
 ```
 
@@ -168,18 +168,18 @@ does not permit an unbounded decoded stream. Manifest text fields are limited
 to 4096 bytes and cannot be empty, padded or contain control characters.
 
 The installed format remains encrypted bundle version 1 under an opaque filename
-in `~/.silent/plugins/`, sealed with the existing application state key. Compatible
+in `~/.reckless/plugins/`, sealed with the existing application state key. Compatible
 old installed bundles remain readable. Import replaces only the plugin bundle,
 not its #60 private logical storage or per-library-hash grants. A changed library
 hash gets its own grant decisions. An invalid replacement leaves the installed
 bundle unchanged. If a plugin is already running, the new library is used after
 disabling and enabling it; import itself never loads code.
 
-For a manual package, `zip -X -D myplugin.silent manifest.json payload/libmyplugin.so
-i18n/silent_en.lang` omits directory records. Prefer the producer's CMake bundle
+For a manual package, `zip -X -D myplugin.reckless manifest.json payload/libmyplugin.so
+i18n/reckless_en.lang` omits directory records. Prefer the producer's CMake bundle
 target, which also derives compatibility from the actual built library.
 
-With `SILENT_BUILD_HOST_SMOKE=ON`, the real importer/registry consumer accepts one
+With `RECKLESS_BUILD_HOST_SMOKE=ON`, the real importer/registry consumer accepts one
 producer bundle per run. Give it an isolated HOME and run offscreen:
 
 ```sh
@@ -190,11 +190,11 @@ HOME=<empty-test-home> QT_QPA_PLATFORM=offscreen build/host_smoke \
 It checks metadata before enable, the actual loaded library and feed capabilities,
 translations, renamed/extensionless reimport, enabled/disabled replacement and
 invalid replacement. The example's separate legacy-state/storage consumer runs with
-`SILENT_HOST_SMOKE=<absolute-host-smoke> SILENT_EXAMPLE_PLUGIN=<absolute-example-bundle>
-cargo test --manifest-path silent/Cargo.toml --test storage_example -- --ignored`.
+`RECKLESS_HOST_SMOKE=<absolute-host-smoke> RECKLESS_EXAMPLE_PLUGIN=<absolute-example-bundle>
+cargo test --manifest-path reckless/Cargo.toml --test storage_example -- --ignored`.
 
 The legacy installed-format gate has a separate driver:
-`SILENT_HOST_SMOKE=<absolute-host-smoke> cargo test --manifest-path silent/Cargo.toml
+`RECKLESS_HOST_SMOKE=<absolute-host-smoke> cargo test --manifest-path reckless/Cargo.toml
 --test plugin_legacy_abi -- --ignored`. It seeds encrypted version 1 bundles for
 ABIs 2 through 12, then verifies registry refusal, expected/found
 diagnostics, retained metadata and absence of initializer/constructor side effects.
@@ -202,13 +202,13 @@ The `--plugin-abi` host smoke uses ABI 1 as its accepted control and verifies th
 refused imports preserve its installed bytes. ABIs 2 through 11 use frozen declarations from
 `tests/host/legacy/ModuleV2.h`, not the current root header; ABI 12 is the current header
 under the root IID of the previous snapshot. Each `plugin_abi<N>_fixture` declares
-`dev.silent.IPlugin/<N>.0`. The compiled-fixture Rust
-tests expect `SILENT_ABI_FIXTURE_PATH` to point to `libplugin_abi1_fixture.so`.
+`dev.reckless.IPlugin/<N>.0`. The compiled-fixture Rust
+tests expect `RECKLESS_ABI_FIXTURE_PATH` to point to `libplugin_abi1_fixture.so`.
 
 ### Out-of-tree Plugin Repo Pattern
 
 Plugin projects live in their own repositories and build against a pinned snapshot
-of Silent's public SDK. The example, fee and fiat producers vendor this small
+of Reckless's public SDK. The example, fee and fiat producers vendor this small
 closure rather than an application checkout or generated Rust/CXX headers.
 
 Recommended layout:
@@ -220,7 +220,7 @@ my-plugin-repo/
     MyPlugin.cpp
     myplugin.json            # build-time source metadata, packaged into manifest.json
     i18n/
-      silent_en.lang
+      reckless_en.lang
   scripts/
     bundle.py
     verify-sdk.py
@@ -258,7 +258,7 @@ An out-of-tree plugin repo follows this baseline:
   snapshot too. Compile them only for export-symbol discovery, not into the plugin.
 - i18n: author `.lang` sources; do not treat JSON as the source of truth. When JSON
   is needed it is generated at build / pre-compile time. See [I18N.md](I18N.md).
-- Build: provide a reproducible Nix build target whose naming aligns with Silent's.
+- Build: provide a reproducible Nix build target whose naming aligns with Reckless's.
 
 The host **reads the installed manifest metadata before the library is ever loaded.** This
 read-before-load ordering is the load-time boundary: a disabled plugin is
@@ -273,7 +273,7 @@ truthful or safe, and do not replace the public ABI contract or the second
 ## Lifecycle: Discover, Enable, Activate
 
 1. **Discover.** On startup the host scans the encrypted installed bundles under
-   `~/.silent/plugins/`, reads their metadata and lists every plugin in global Settings. Newly imported
+   `~/.reckless/plugins/`, reads their metadata and lists every plugin in global Settings. Newly imported
    plugins are **disabled by default**. Discovery is metadata-only (no `dlopen`),
    so it is cheap and side-effect free. A **Rescan** button in global Settings
    re-runs it on demand. Dropping a ZIP bundle on Settings imports it and refreshes
@@ -293,7 +293,7 @@ truthful or safe, and do not replace the public ABI contract or the second
 ### Instance lifecycle
 
 The **module owns its instances and their IDs.** It is free to persist them however
-it likes (the SP module, for example, keeps `~/.silent/<id>/config.json`); the host
+it likes (the SP module, for example, keeps `~/.reckless/<id>/config.json`); the host
 keeps no instance state. The module exposes:
 
 - `list()`: asks for the instances this module **can start**, delivered as
@@ -351,7 +351,7 @@ The module's factory validates every upstream `BackendIdentity` and keeps opaque
 bytes unchanged in versioned whole-file documents. `flush_batch` loads, changes and
 atomically replaces one complete logical store file under the storage engine's lock.
 Opaque row bytes are base64 strings, not expanded JSON integer arrays.
-The Rust config callbacks cannot overwrite Silent's separate config file.
+The Rust config callbacks cannot overwrite Reckless's separate config file.
 
 Trusted built-in Rust workers have fixed caller contexts for those two roots. They
 reuse #60 authorization, encryption, path checks, interprocess tree exclusion and
@@ -395,7 +395,7 @@ An instance is brought up by one of:
   the host asks every enabled module to `list()` again and the launcher shows the new
   entry. The new instance is not started; the user opens it from the launcher.
   The launcher lists the account types in its Account Type picker, one row each with
-  the icon its module names in `meta()` under `icon` (`silent`, `users`), a puzzle
+  the icon its module names in `meta()` under `icon` (`reckless`, `users`), a puzzle
   piece when it names none. A type is a module's "<type>.create" entry and its
   "<type>.restore" one, named after the create entry (`PluginRegistry::creatorLaunchers()`).
   Picking a type that has both offers Create or Restore, each starting its entry; a type
@@ -535,7 +535,7 @@ errors tied to no request, go to every caller allowed to use accounts (or keys).
 
 The host hashes an external plugin's library before `QPluginLoader::load()`, so a plugin
 update has a new hash. Built-in modules may use everything. An external plugin needs
-separate grants, kept in `~/.silent/app.json` per library hash: **Accounts** (`IAccount`,
+separate grants, kept in `~/.reckless/app.json` per library hash: **Accounts** (`IAccount`,
 on every account), **Keys** (`IKeys`) and **Saved Data** (`storage()`). On its first
 call needing a grant it has no
 answer for, the host asks the user (Allow / Deny) and keeps the answer; a denied grant
@@ -616,9 +616,9 @@ the op does not take, an unknown op or a malformed message answers `invalid_requ
   claiming a different installed ID is refused before module activation; changing
   metadata later cannot change its identity, grants or storage root. The same
   caller identity is used for Account and Keys access.
-- **On disk.** The storage lives under `.silent/<plugin_id>/` in the configured data
+- **On disk.** The storage lives under `.reckless/<plugin_id>/` in the configured data
   directory, sealed with BIP138 to the app state's unlock key like the rest of
-  `~/.silent/` (ws-plaude/silent#37): the index `tree.bip138` (paths, kinds, file sizes
+  `~/.reckless/` (ws-plaude/silent#37): the index `tree.bip138` (paths, kinds, file sizes
   and blob ids) and one `<random id>.blob` per file holding its data. The plugin id is
   visible; file names, directories and contents are not, and a blob name tells nothing
   of the file it holds. A plugin whose id names a directory the host keeps
@@ -680,7 +680,7 @@ the op does not take, an unknown op or a malformed message answers `invalid_requ
   envelope is retained unchanged. Removing the new file afterwards never imports the
   old blob again.
 
-Plugins run in Silent's process: a hostile plugin can bypass the handles. The access
+Plugins run in Reckless's process: a hostile plugin can bypass the handles. The access
 check gates well-behaved plugins, it is not a security boundary.
 
 ## Threading Model
@@ -935,7 +935,7 @@ the shell does not create or obtain a concrete Keys widget. Removing the instanc
 destroys its page; starting it again creates a fresh one. These are in-process UI
 contracts, not proof of sandbox isolation.
 
-With `SILENT_BUILD_HOST_SMOKE=ON`, run `build/host_smoke --keys-contract` under
+With `RECKLESS_BUILD_HOST_SMOKE=ON`, run `build/host_smoke --keys-contract` under
 `QT_QPA_PLATFORM=offscreen` and a fresh HOME. An optional second argument names an
 existing screenshot directory. It checks public non-HWI capability combinations,
 page publication failures, placement, Settings visibility and instance recreation.
@@ -1111,7 +1111,7 @@ Price changes are display-only. In Send, only an explicit fiat input edit conver
 fiat to BTC. Refreshing a rate never changes a BTC payment, MAX, a fee, or a locked
 or restored PSBT. Unavailable prices hide fiat displays and fiat entry.
 
-Mainline Silent ships **no feeds**. Fee rate and conversion rate arrive as plugins;
+Mainline Reckless ships **no feeds**. Fee rate and conversion rate arrive as plugins;
 UI that consumes them must degrade gracefully when none is present.
 
 ### Signing devices are a separate capability
@@ -1235,12 +1235,12 @@ apart from the public `IAccount` other accounts use, which they leave unchanged:
 |-----------------|---------------------------------------------------------------------|-------------------------------------------|
 | `types.h`       | Payload structs, `backend::Network`, `backend::RequestId`           |                                           |
 | `service.h`     | `IService`: byte (`raw`) and Qt JSON (`value`) extensions, `error()` | none, base class only                     |
-| `account.h`     | `IAccountBackend`: identity, receiving, backup and restore          | `dev.silent.backend.IAccountBackend/1.0`  |
-| `blockchain.h`  | `IBlockchain`: scanning, coins, owned outputs, history, broadcast   | `dev.silent.backend.IBlockchain/1.0`      |
-| `transaction.h` | `ITransaction`: crafting, unsigned PSBTs, coin selection            | `dev.silent.backend.ITransaction/1.0`     |
-| `labels.h`      | `ILabels`                                                           | `dev.silent.backend.ILabels/1.0`          |
-| `settings.h`    | `IBackendSettings`: network and endpoints                           | `dev.silent.backend.IBackendSettings/1.0` |
-| `provider.h`    | `IServiceProvider`: optional `IModule` facet supplying the others   | `dev.silent.backend.IServiceProvider/1.0` |
+| `account.h`     | `IAccountBackend`: identity, receiving, backup and restore          | `dev.reckless.backend.IAccountBackend/1.0`  |
+| `blockchain.h`  | `IBlockchain`: scanning, coins, owned outputs, history, broadcast   | `dev.reckless.backend.IBlockchain/1.0`      |
+| `transaction.h` | `ITransaction`: crafting, unsigned PSBTs, coin selection            | `dev.reckless.backend.ITransaction/1.0`     |
+| `labels.h`      | `ILabels`                                                           | `dev.reckless.backend.ILabels/1.0`          |
+| `settings.h`    | `IBackendSettings`: network and endpoints                           | `dev.reckless.backend.IBackendSettings/1.0` |
+| `provider.h`    | `IServiceProvider`: optional `IModule` facet supplying the others   | `dev.reckless.backend.IServiceProvider/1.0` |
 
 Getters read local state under short locks: no network I/O, persistence or worker join.
 Commands are slots taking a `RequestId` scoped to the receiving object. They return at once
@@ -1456,11 +1456,11 @@ account's `account::ServiceContext`, which the account controller owns:
 
 | Service            | Operation                        | Payload        | Answer                                                         |
 |--------------------|----------------------------------|----------------|----------------------------------------------------------------|
-| `IBlockchain`      | `silent.transactionExtras`       | txid           | `{version, lockTime, chainTip?, scripts}` of a fetched transaction, `scripts` by output index for outputs paying no address |
-| `IBackendSettings` | `silent.endpointCapabilities`    | endpoint id    | the BlindBit server's `{tweaksOnly, tweaksFullBasic, tweaksFullWithDustFilter, tweaksCutThroughWithDustFilter}` |
-| `IBackendSettings` | `silent.endpointsBusy`           | none           | whether an endpoint operation runs; also sent as a `valueEvent()` of that name when it changes |
-| `IBackendSettings` | `silent.endpointPresentation`    | none           | per endpoint id: `{label, placeholder, connect, disconnect}` texts in the current language, `transport` (SSL and certificate toggles), `capabilities` (`silent.endpointCapabilities` under its row) |
-| `IAccountBackend`  | `silent.addressKindTitles`       | none           | per address kind id: the title of its list of addresses awaiting payment, in the current language |
+| `IBlockchain`      | `reckless.transactionExtras`       | txid           | `{version, lockTime, chainTip?, scripts}` of a fetched transaction, `scripts` by output index for outputs paying no address |
+| `IBackendSettings` | `reckless.endpointCapabilities`    | endpoint id    | the BlindBit server's `{tweaksOnly, tweaksFullBasic, tweaksFullWithDustFilter, tweaksCutThroughWithDustFilter}` |
+| `IBackendSettings` | `reckless.endpointsBusy`           | none           | whether an endpoint operation runs; also sent as a `valueEvent()` of that name when it changes |
+| `IBackendSettings` | `reckless.endpointPresentation`    | none           | per endpoint id: `{label, placeholder, connect, disconnect}` texts in the current language, `transport` (SSL and certificate toggles), `capabilities` (`reckless.endpointCapabilities` under its row) |
+| `IAccountBackend`  | `reckless.addressKindTitles`       | none           | per address kind id: the title of its list of addresses awaiting payment, in the current language |
 
 `finalize()` returns no reason: a built-in provider whose `finalize()` builds nothing logs why
 and reports it as `error()` with request id 0, during the call. The kinds' names are
@@ -1468,11 +1468,11 @@ published again when the language changes.
 
 `host_smoke --backend-services` assembles both providers over Regtest fixture accounts and
 checks a history published after its coin through the same getters for a polling and a
-notified consumer, and `silent.endpointsBusy` as a `value()` answer and as the
-`valueEvent()` around an endpoint operation. `silent/tests/account_services.rs` checks the
+notified consumer, and `reckless.endpointsBusy` as a `value()` answer and as the
+`valueEvent()` around an endpoint operation. `reckless/tests/account_services.rs` checks the
 Rust rules: no selection while crafting or finalizing, independent templates finalized side
 by side, change adoption, labels kept in RAM, broadcast outcomes and endpoint settings.
-`silent/tests/validate_psbt.rs` takes the bytes of an SP `finalize()` through the signing
+`reckless/tests/validate_psbt.rs` takes the bytes of an SP `finalize()` through the signing
 flow: validation, the hot key's signature and the account's finalization.
 
 ### The shared account views
@@ -1480,7 +1480,7 @@ flow: validation, the hot key's signature and the account's finalization.
 The account panels (`src/account/views/`: History, Coins, transaction details, Receive, Send
 and Settings) take an `account::Services`, one pointer per interface, and use nothing else of
 the account: no Rust account, controller or worker, nor any header that reaches the generated
-`silent.h`. They show their modals with `qontrol::Controller::execModal()`. The views name no
+`reckless.h`. They show their modals with `qontrol::Controller::execModal()`. The views name no
 backend: what differs between providers comes from the provider (address kinds and their
 titles, endpoints and their presentation), and the amount and fee rules from
 `account/Money.h`.
@@ -1488,7 +1488,7 @@ titles, endpoints and their presentation), and the amount and fee rules from
 - History, Coins and the transaction details read `IBlockchain` and refresh on its change
   signals. The details show at once what the account already fetched of the transaction,
   loading otherwise, then fetch it again; the version and lock time come from
-  `silent.transactionExtras` when the provider answers it.
+  `reckless.transactionExtras` when the provider answers it.
 - Receive lists `addressKinds()`, titled by their names: a reusable kind shows its address
   from `addresses()`, the others are generated with `newAddress()`.
 - Settings lists the endpoints of `IBackendSettings::settings()`, shown as the provider
@@ -1601,7 +1601,7 @@ With a plugin chosen, the account syncs from that plugin's blockchain alone:
   every `coinsChanged()` and `stateChanged()` it hands the Rust account what the service
   reports (`MusigAccount::set_chain_view()`, bridge type `ChainView`): `ownedOutputs()`,
   `usedIndexes()`, `state().tip` and the watch's gap limit. Qt only forwards them; the
-  wallet rules are Rust's (`silent/src/chain_view.rs`). Electrum chosen again, the account
+  wallet rules are Rust's (`reckless/src/chain_view.rs`). Electrum chosen again, the account
   goes back to its scanner (`clear_chain_view()`).
 - Rust refuses the whole report when it names another descriptor than the account's, a
   branch other than receive or change, an outpoint twice, or an output whose script is not
@@ -1665,7 +1665,7 @@ controllers' shared base inside their modules: the account's load and shutdown t
 `account::AccountModule` watches, its workers, and its endpoint connections (the BlindBit
 scanner, the Electrum probe and reconnect, endpoint changes, settings tests) that the
 status details drive and read. It carries no coin, history, details or label. Neither the
-shell nor the views use it, and `silent/tests/account_boundary.rs` keeps it that way.
+shell nor the views use it, and `reckless/tests/account_boundary.rs` keeps it that way.
 
 ### Backup and restore
 
@@ -1713,8 +1713,8 @@ saved.
   `.restore` ids as creators. Its restore target is `account::restoreTarget()`; once restored,
   the module refreshes the launcher, which lists the account.
 
-The built-in backups (`silent/src/account_backup.rs`) are a BIP139 wallet backup document
-(`silent/src/bip139.rs`) encrypted with BIP138 (`silent/src/backup.rs`, the `bip138` crate)
+The built-in backups (`reckless/src/account_backup.rs`) are a BIP139 wallet backup document
+(`reckless/src/bip139.rs`) encrypted with BIP138 (`reckless/src/backup.rs`, the `bip138` crate)
 through its ll layer, its derivation paths in the clear part and its payload padded. A
 Multikey account is encrypted to its policy's keys as BIP138 picks them, any one of their
 xpubs opening it. An SP account is encrypted to its scan secret alone, the 32 bytes taken as
@@ -1747,12 +1747,12 @@ A restore reads, from the file's contents and in this order: BIP138(BIP139),
 BIP138(descriptor), a plain BIP139 document, a plain descriptor, and restores what each
 carries: a descriptor alone restores the account scanning from the network's default start,
 on the servers the network's last account used; a BIP139 document from another wallet keeps
-the BIP329 labels Silent has (`addr`, `output`, `tx`). Anything else is refused as `Unknown`,
+the BIP329 labels Reckless has (`addr`, `output`, `tx`). Anything else is refused as `Unknown`,
 the error naming the formats read. An encrypted backup none of the keys given opens is
 `Locked`; a damaged one `Malformed`; an invalid xpub or mnemonic `InvalidXpub` or
 `InvalidMnemonic`; a decrypted one holding neither a document nor a descriptor
-`UnsupportedContent`, a descriptor no Silent account takes `InvalidDescriptor`; another
-kind of account or a network Silent has not `Unsupported`. A restore never replaces an
+`UnsupportedContent`, a descriptor no Reckless account takes `InvalidDescriptor`; another
+kind of account or a network Reckless has not `Unsupported`. A restore never replaces an
 account: one of the same name refuses it (`Exists`). It creates the account as account
 creation does, then puts the indexes and labels in it; when that fails, the account it created
 is removed, so nothing partial is listed. A backup records the scan start bwk persisted for
@@ -1770,12 +1770,12 @@ review) while another fake device holding no key of the account fails; an invali
 xpub that cannot decrypt it and an invalid mnemonic are refused. Each is then opened with
 its key (the SP one's mnemonic, a Multikey xpub pasted) through another kind's restore
 target, over an existing account, and once the account is gone, which then opens.
-`silent/tests/account_backup.rs` checks both kinds' round trips and the BIP139 fields they
+`reckless/tests/account_backup.rs` checks both kinds' round trips and the BIP139 fields they
 write, an SP backup opening with the scan secret (its key's mnemonic, its sp() descriptor)
 and never with the spend public key the SP address shows, the spend path's xpub, a
 sub-account xpub or another key, a restore from each of the four formats, a file in none of them refused naming them,
 existing accounts, another kind, and a restore failing once the account is created, which
-leaves no account. `silent/tests/account_services.rs` restores a Multikey backup made while
+leaves no account. `reckless/tests/account_services.rs` restores a Multikey backup made while
 a PSBT was saved and active: the restored account holds neither.
 
 ## Inter-Account Operation: Send To / Spend From Siblings
@@ -1950,7 +1950,7 @@ not cancel an independent transaction service operation.
 
 ### Conformance checks
 
-`silent/tests/external_spend.rs` composes independently exported templates, rejects
+`reckless/tests/external_spend.rs` composes independently exported templates, rejects
 global-map conflicts and incompatible typed locks, signs real funded BIP32/Multikey
 inputs with hot keys, and exercises MuSig rounds, SP proofs, SP input/output spending
 and a reorg. It checks malformed nonce points and an invalid first partial before
@@ -1975,30 +1975,30 @@ teardown belong to the test driver.
 Run the combined test against an already-built host smoke executable:
 
 ```sh
-SILENT_HOST_SMOKE="$PWD/build/host_smoke" cargo test --manifest-path silent/Cargo.toml \
+RECKLESS_HOST_SMOKE="$PWD/build/host_smoke" cargo test --manifest-path reckless/Cargo.toml \
   --test external_spend -- --include-ignored
 ```
 
 Bitcoin Core, electrs and the existing BlindBit test harness are required. No device
-is used. Without `SILENT_HOST_SMOKE`, the Rust public-interface tests still run but
+is used. Without `RECKLESS_HOST_SMOKE`, the Rust public-interface tests still run but
 the Qt consumer is not launched. Deferred device mocks explicitly reject coordination;
 they are not evidence of a supported funded signing combination.
 
 ## ABI & Linking Rules (Plugin Authors Must Read)
 
-The current plugin IID is `dev.silent.IPlugin/1.0`, the module IID is
-`dev.silent.IModule/1.0`, the signer IID is `dev.silent.ISigner/1.0`, the account IID
-is `dev.silent.IAccount/1.0`, the keys IID is `dev.silent.IKeys/1.0`, the transaction
-service IID is `dev.silent.ITransactions/1.0`, the theme provider IID is
-`dev.silent.IThemeProvider/1.0` and the feed IID is `dev.silent.IFeed/1.0`. The account
+The current plugin IID is `dev.reckless.IPlugin/1.0`, the module IID is
+`dev.reckless.IModule/1.0`, the signer IID is `dev.reckless.ISigner/1.0`, the account IID
+is `dev.reckless.IAccount/1.0`, the keys IID is `dev.reckless.IKeys/1.0`, the transaction
+service IID is `dev.reckless.ITransactions/1.0`, the theme provider IID is
+`dev.reckless.IThemeProvider/1.0` and the feed IID is `dev.reckless.IFeed/1.0`. The account
 UI services carry their own IIDs (see Account UI Services). Public Keys and spending
 enums are SDK-owned, not generated Rust types. Rebuild plugins against this checkout
-and use `SILENT_IPlugin_IID` in plugin metadata. Include both `src` only for public
+and use `RECKLESS_IPlugin_IID` in plugin metadata. Include both `src` only for public
 interfaces; generated `lib/include` and CXX headers are not needed. Only the exact
 root IID is accepted: a plugin declaring any other root IID, such as the 2.0 to 12.0
 of earlier snapshots, is refused rather than called through incompatible vtables.
 
-Silent is in prototype development: the interfaces change freely and no interface IID
+Reckless is in prototype development: the interfaces change freely and no interface IID
 is raised until this stage ends.
 
 `interfaces/enums.h` defines the shared `plugin::Network`, `plugin::KeyRouteKind`
@@ -2027,13 +2027,13 @@ The independent check needs Qt Core and a C++20 compiler, no Rust build:
 `cmake -S tests/interfaces -B <build-dir>`, then build and run CTest in that directory.
 Its include guards deliberately fail if public headers include generated Rust/CXX headers.
 
-Silent statically links Qt, and the host binary acts as the **single Qt provider**:
+Reckless statically links Qt, and the host binary acts as the **single Qt provider**:
 plugins link **no Qt of their own** and resolve Qt symbols against the host at load
 time. This keeps one Qt in the process so signals, meta-types, and singletons stay
 unified. Consequences:
 
 - **Toolchain lock.** A plugin must be built against the **same Qt version and a
-  compatible compiler ABI** as the host. Before loading code, Silent inspects native
+  compatible compiler ABI** as the host. Before loading code, Reckless inspects native
   ELF, PE or Mach-O metadata sections from the same bytes it hashes and loads.
   Admission requires the current root plugin IID, Qt metadata format 1, the host's
   Qt major and no newer Qt minor, supported CPU requirements, and on Windows a
@@ -2111,11 +2111,11 @@ arbitrary native entry code will truthfully return that metadata or execute safe
 
 ## Plugin Translations (i18n)
 
-Modules reuse Silent's existing `.lang` translation system (see
+Modules reuse Reckless's existing `.lang` translation system (see
 [I18N.md](I18N.md)): same catalog format, same author scripts.
 
 - **Delivery.** Ship `.lang` catalogs alongside the library at
-  `~/.silent/plugins/<id>/i18n/silent_<locale>.lang`. On enable, the host loads the
+  `~/.reckless/plugins/<id>/i18n/reckless_<locale>.lang`. On enable, the host loads the
   current locale's catalog; on language change it reloads, so plugin text switches
   **live** like host text.
 - **Namespacing.** Plugin keys are automatically prefixed with the plugin id, so a

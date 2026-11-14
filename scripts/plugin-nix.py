@@ -32,15 +32,15 @@ def main():
     parser.add_argument("options", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     host = pathlib.Path(__file__).resolve().parent.parent
-    with tempfile.TemporaryDirectory(prefix="silent-plugin-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="reckless-plugin-") as temporary:
         root = pathlib.Path(temporary)
-        snapshot(host, root / "silent")
+        snapshot(host, root / "reckless")
         snapshot(pathlib.Path.cwd(), root / "plugin")
         return subprocess.call([
             os.environ.get("NIX", "nix"),
             "--extra-experimental-features", "nix-command flakes",
             args.command, f"path:{root / 'plugin'}#{args.attribute}",
-            "--override-input", "silent", f"path:{root / 'silent'}",
+            "--override-input", "reckless", f"path:{root / 'reckless'}",
             "--no-write-lock-file", *args.options,
         ])
 

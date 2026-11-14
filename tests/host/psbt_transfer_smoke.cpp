@@ -29,7 +29,7 @@
 #include <common.h>
 #include <functional>
 #include <memory>
-#include <silent.h>
+#include <reckless.h>
 
 namespace smoke {
 namespace {

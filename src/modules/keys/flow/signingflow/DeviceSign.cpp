@@ -14,7 +14,7 @@
 #include <utility>
 
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 
 namespace keys::flow {
 
@@ -115,7 +115,7 @@ void DeviceSign::onPrepared() {
     if (!m_prepared->is_ok) {
         fail(UsbError::Failed, KeysModule::toQt(m_prepared->error),
              m_prepared->musig_session ? plugin::SignError::MusigSession
-                                      : plugin::SignError::Other);
+                                       : plugin::SignError::Other);
         return;
     }
     if (!m_prepared->psbt_v2_hex.empty()) {
@@ -146,9 +146,8 @@ void DeviceSign::fetchNonces() {
         fail(UsbError::Disconnected, TR("keys-nonces-connect"));
         return;
     }
-    auto *fetch =
-        new LedgerNonces(m_module, m_device, m_instance_id, m_fingerprint, m_descriptor, 1, this,
-                          m_psbt_v2_hex);
+    auto *fetch = new LedgerNonces(m_module, m_device, m_instance_id, m_fingerprint, m_descriptor,
+                                   1, this, m_psbt_v2_hex);
     connect(fetch, &LedgerNonces::finished, this, &DeviceSign::onNoncesFetched, qontrol::UNIQUE);
     fetch->start();
 }
@@ -178,14 +177,13 @@ void DeviceSign::onDeviceSigned(ReqId req_id, const QString &psbt_base64) {
     m_req = 0;
     m_result = std::make_shared<SignResult>();
     auto result = m_result;
-    auto *thread = QThread::create([result, ledger = m_ledger_musig,
-                                    fingerprint = m_fingerprint.toStdString(),
-                                    descriptor = m_descriptor.toStdString(),
-                                    original = m_psbt_v2_hex.toStdString(),
-                                    signedPsbt = psbt_base64.toStdString()] {
-        *result = ledger ? ::ledger_nonce_merge(fingerprint, descriptor, original, signedPsbt)
-                         : ::usb_merge_signed(original, signedPsbt);
-    });
+    auto *thread = QThread::create(
+        [result, ledger = m_ledger_musig, fingerprint = m_fingerprint.toStdString(),
+         descriptor = m_descriptor.toStdString(), original = m_psbt_v2_hex.toStdString(),
+         signedPsbt = psbt_base64.toStdString()] {
+            *result = ledger ? ::ledger_nonce_merge(fingerprint, descriptor, original, signedPsbt)
+                             : ::usb_merge_signed(original, signedPsbt);
+        });
     connect(thread, &QThread::finished, this, &DeviceSign::onMerged, qontrol::UNIQUE);
     connect(thread, &QThread::finished, thread, &QObject::deleteLater, qontrol::UNIQUE);
     thread->start();
@@ -204,9 +202,8 @@ void DeviceSign::onMerged() {
     if (m_replenish && !m_module.isNull() && !m_device.isNull() &&
         m_device->state() == plugin::SignerState::Ready) {
         // The replacement outlives this request; its failure cannot lose the signature.
-        auto *replacement =
-            new LedgerNonces(m_module, m_device, m_instance_id, m_fingerprint,
-                              m_descriptor, 1, m_module);
+        auto *replacement = new LedgerNonces(m_module, m_device, m_instance_id, m_fingerprint,
+                                             m_descriptor, 1, m_module);
         replacement->start();
     }
     emit signedPsbt(KeysModule::toQt(merged.psbt_v2_hex));

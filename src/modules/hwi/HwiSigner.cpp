@@ -12,7 +12,7 @@
 #include <algorithm>
 
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 
 namespace {
 constexpr quint32 CAPABILITY_SILENT_PAYMENTS = 1U << 2;

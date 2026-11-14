@@ -42,4 +42,4 @@ signals:
 
 } // namespace backend
 
-Q_DECLARE_INTERFACE(backend::ITransaction, "dev.silent.backend.ITransaction/1.0")
+Q_DECLARE_INTERFACE(backend::ITransaction, "dev.reckless.backend.ITransaction/1.0")

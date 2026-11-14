@@ -35,7 +35,7 @@
 #include <common.h>
 #include <functional>
 #include <memory>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 
 namespace smoke {
@@ -371,14 +371,14 @@ void staleSettingsGrant(modal::AppSettings *settings, PluginRegistry *registry, 
 } // namespace
 
 void pluginRemovalSmoke() {
-    auto unlockPath = QDir::homePath() + QStringLiteral("/.silent/unlock.key");
+    auto unlockPath = QDir::homePath() + QStringLiteral("/.reckless/unlock.key");
     auto unlockBytes = read(unlockPath);
     require(!unlockBytes.isEmpty(), "actual password-wrapped application unlock key exists");
     QTemporaryDir directory;
     require(directory.isValid(), "isolated native sentinel directory");
     auto sentinel = directory.filePath(QStringLiteral("native-events"));
-    qputenv("SILENT_REMOVAL_SENTINEL", QFile::encodeName(sentinel));
-    auto bytes = read(QStringLiteral(SILENT_REMOVAL_FIXTURE));
+    qputenv("RECKLESS_REMOVAL_SENTINEL", QFile::encodeName(sentinel));
+    auto bytes = read(QStringLiteral(RECKLESS_REMOVAL_FIXTURE));
     require(!bytes.isEmpty(), "actual native fixture bytes");
     auto id = QStringLiteral("removal.fixture");
     AppController::get()->registerBuiltinPlugin(std::make_unique<RemovalBuiltin>());
@@ -423,7 +423,7 @@ void pluginRemovalSmoke() {
     require(registry->setEnabled(id, true), "enable real native worker");
     waitForEnable(registry, id);
     require(registry->isPluginEnabled(id), "real native worker finishes enabling");
-    auto privatePath = QDir::homePath() + QStringLiteral("/.silent/removal.fixture/tree.bip138");
+    auto privatePath = QDir::homePath() + QStringLiteral("/.reckless/removal.fixture/tree.bip138");
     auto privateBytes = read(privatePath);
     require(!privateBytes.isEmpty(), "native fixture has actual encrypted private data");
     IModule *nativeModule = nullptr;
@@ -435,7 +435,7 @@ void pluginRemovalSmoke() {
     require(nativeModule != nullptr, "native module owns the delayed worker");
     QObject::connect(&probe, SIGNAL(releaseWorker()), nativeModule, SLOT(releaseWorker()),
                      qontrol::UNIQUE);
-    qputenv("SILENT_REMOVAL_REFUSE", "1");
+    qputenv("RECKLESS_REMOVAL_REFUSE", "1");
     removeAndWait(registry, probe, id);
     require(probe.error.contains(QStringLiteral("deliberate native refusal")),
             "native shutdown failure is explicit");
@@ -456,7 +456,7 @@ void pluginRemovalSmoke() {
             "for shutdown persistence");
     require(!installBundle(id, QStringLiteral("replacement"), bytes).is_ok,
             "pending removal cannot be bypassed by reinstall");
-    qunsetenv("SILENT_REMOVAL_REFUSE");
+    qunsetenv("RECKLESS_REMOVAL_REFUSE");
     probe.finished = false;
     registry->removePlugin(id);
     QElapsedTimer timer;
@@ -466,7 +466,7 @@ void pluginRemovalSmoke() {
     }
     require(!probe.finished, "native work remains pending after runtime registrations are gone");
     require(!read(sentinel).contains("unload"), "library remains mapped during native delay");
-    auto writeFailure = qEnvironmentVariableIsSet("SILENT_EXPECT_NATIVE_WRITE_FAILURE");
+    auto writeFailure = qEnvironmentVariableIsSet("RECKLESS_EXPECT_NATIVE_WRITE_FAILURE");
     auto privatePermissions = QFileInfo(QFileInfo(privatePath).path()).permissions();
     if (writeFailure) {
         require(QFile::setPermissions(QFileInfo(privatePath).path(),
@@ -487,7 +487,7 @@ void pluginRemovalSmoke() {
                 "failed final persistence leaves the original complete private tree");
         removeAndWait(registry, probe, id);
     }
-    if (qEnvironmentVariableIsSet("SILENT_EXPECT_UNLOAD_FAILURE")) {
+    if (qEnvironmentVariableIsSet("RECKLESS_EXPECT_UNLOAD_FAILURE")) {
         require(probe.error.contains(QStringLiteral("Unload failed")),
                 "actual dlclose failure is explicit");
         require(!read(sentinel).contains("unload"),
@@ -534,7 +534,7 @@ void pluginRemovalSmoke() {
         "reinstall starts without old account data");
     registry->rescanDiscoveredPlugins();
     waitForRegistry(registry);
-    auto bundlesDirectory = QDir::homePath() + QStringLiteral("/.silent/plugins");
+    auto bundlesDirectory = QDir::homePath() + QStringLiteral("/.reckless/plugins");
     auto permissions = QFileInfo(bundlesDirectory).permissions();
     require(QFile::setPermissions(bundlesDirectory, QFile::ReadOwner | QFile::ExeOwner),
             "make installed bundle directory unwritable");
@@ -549,7 +549,7 @@ void pluginRemovalSmoke() {
     removeAndWait(registry, probe, id);
     require(probe.error.isEmpty(), "final disabled cleanup succeeds");
 
-    auto oldLibrary = read(QStringLiteral(SILENT_ABI11_FIXTURE_PATH));
+    auto oldLibrary = read(QStringLiteral(RECKLESS_ABI11_FIXTURE_PATH));
     auto compatibility = libraryCompatibility(oldLibrary);
     auto oldId = QStringLiteral("incompatible.fixture");
     auto payload = QStringLiteral("payload/libold.so");
@@ -564,11 +564,11 @@ void pluginRemovalSmoke() {
     oldBundle.close();
     // Admit with the old host expectation to model an encrypted install surviving an upgrade.
     auto legacy = ::plugin_install(rust::String(oldBundlePath.toStdString()),
-                                   rust::String("dev.silent.IPlugin/11.0"), QT_VERSION_MAJOR,
+                                   rust::String("dev.reckless.IPlugin/11.0"), QT_VERSION_MAJOR,
                                    QT_VERSION_MINOR, hostArchRequirements());
     require(legacy.is_ok, "old host admits old installation without executing it");
     auto oldSentinel = directory.filePath(QStringLiteral("old-constructor"));
-    qputenv("SILENT_ABI_SENTINEL", QFile::encodeName(oldSentinel));
+    qputenv("RECKLESS_ABI_SENTINEL", QFile::encodeName(oldSentinel));
     registry->rescanDiscoveredPlugins();
     waitForRegistry(registry);
     require(registry->setEnabled(oldId, true), "incompatible library enable check is admitted");
@@ -581,14 +581,14 @@ void pluginRemovalSmoke() {
     require(probe.error.isEmpty(), "incompatible installed plugin removes through metadata");
     require(!QFile::exists(oldSentinel),
             "incompatible inspection, load refusal and removal never run its constructor");
-    qunsetenv("SILENT_ABI_SENTINEL");
+    qunsetenv("RECKLESS_ABI_SENTINEL");
     require(read(unlockPath) == unlockBytes,
             "enabled, disabled, incompatible and retried removal preserve actual unlock-key bytes");
-    qunsetenv("SILENT_REMOVAL_SENTINEL");
+    qunsetenv("RECKLESS_REMOVAL_SENTINEL");
 }
 
 void pluginAccessSettingsFailureSmoke(const QString &shots) {
-    auto bytes = read(QStringLiteral(SILENT_REMOVAL_FIXTURE));
+    auto bytes = read(QStringLiteral(RECKLESS_REMOVAL_FIXTURE));
     auto id = QStringLiteral("removal.fixture");
     require(installBundle(id, QStringLiteral("Removal fixture"), bytes).is_ok,
             "access failure fixture installs without loading native code");
@@ -611,7 +611,7 @@ void pluginAccessSettingsFailureSmoke(const QString &shots) {
 }
 
 void pluginRemovalReadFailureSmoke(const QString &shots) {
-    auto bytes = read(QStringLiteral(SILENT_REMOVAL_FIXTURE));
+    auto bytes = read(QStringLiteral(RECKLESS_REMOVAL_FIXTURE));
     auto id = QStringLiteral("removal.fixture");
     require(installBundle(id, QStringLiteral("Removal fixture"), bytes).is_ok,
             "read-failure fixture installs");
@@ -633,8 +633,8 @@ void pluginRemovalReadFailureSmoke(const QString &shots) {
     window.showTab(settings);
     QCoreApplication::processEvents();
     waitForRegistry(registry);
-    auto statePath = QDir::homePath() + QStringLiteral("/.silent/app.bip138");
-    auto lockPath = QDir::homePath() + QStringLiteral("/.silent/app.lock");
+    auto statePath = QDir::homePath() + QStringLiteral("/.reckless/app.bip138");
+    auto lockPath = QDir::homePath() + QStringLiteral("/.reckless/app.lock");
     auto original = read(statePath);
     auto statePermissions = QFileInfo(statePath).permissions();
     auto lockPermissions = QFileInfo(lockPath).permissions();
@@ -717,7 +717,7 @@ void pluginRemovalReadFailureSmoke(const QString &shots) {
 }
 
 void pluginRemovalUiSmoke(const QString &shots) {
-    auto bytes = read(QStringLiteral(SILENT_REMOVAL_FIXTURE));
+    auto bytes = read(QStringLiteral(RECKLESS_REMOVAL_FIXTURE));
     auto id = QStringLiteral("removal.fixture");
     require(installBundle(id, QStringLiteral("Removal fixture"), bytes).is_ok,
             "UI fixture installs");
@@ -734,7 +734,7 @@ void pluginRemovalUiSmoke(const QString &shots) {
     QCoreApplication::processEvents();
     waitForRegistry(registry);
     ::app_set_active_theme(rust::String("light"));
-    auto appState = QDir::homePath() + QStringLiteral("/.silent/app.bip138");
+    auto appState = QDir::homePath() + QStringLiteral("/.reckless/app.bip138");
     auto original = read(appState);
     require(!original.isEmpty(), "cancellation checks nonempty encrypted application state");
     auto capture = [&window, &shots](const QString &name) {
@@ -817,7 +817,7 @@ void pluginRemovalUiSmoke(const QString &shots) {
             emit native.releaseWorker();
         }
     }
-    qputenv("SILENT_REMOVAL_REFUSE", "1");
+    qputenv("RECKLESS_REMOVAL_REFUSE", "1");
     mouseClick(visibleToggle(settings, id));
     auto *disableFlow = settings->findChild<modal::DisableFlow *>();
     require(disableFlow != nullptr, "real disable confirmation opens");
@@ -826,7 +826,7 @@ void pluginRemovalUiSmoke(const QString &shots) {
     require(disabledFailure.wait().contains(QStringLiteral("deliberate native refusal")),
             "failed disable shows the actual native error");
     waitForStop(registry, id);
-    qunsetenv("SILENT_REMOVAL_REFUSE");
+    qunsetenv("RECKLESS_REMOVAL_REFUSE");
     require(registry->pluginDisableRetryable(id) && !removalPending(id),
             "failed disable has a non-destructive retry, not a removal journal");
     capture(QStringLiteral("issue71-disable-failed-wip.png"));

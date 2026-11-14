@@ -8,7 +8,7 @@
 #include "qr/QrTypes.h"
 #include "theme/Palette.h"
 
-#include <silent.h>
+#include <reckless.h>
 
 #include <Qontrol>
 #include <common.h>

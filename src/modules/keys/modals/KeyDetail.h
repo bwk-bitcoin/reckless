@@ -15,7 +15,7 @@
 #include "theme/Palette.h"
 
 #include <interfaces/types.h>
-#include <silent.h>
+#include <reckless.h>
 
 class ISigner;
 

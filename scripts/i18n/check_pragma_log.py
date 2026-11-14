@@ -28,7 +28,7 @@ def load_catalog(ts_file: Path) -> dict[str, bool]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", required=True, help="Compiler log file to parse")
-    parser.add_argument("--en-ts", default="i18n/silent_en.ts", help="English TS file")
+    parser.add_argument("--en-ts", default="i18n/reckless_en.ts", help="English TS file")
     args = parser.parse_args()
 
     log_path = Path(args.log)

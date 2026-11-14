@@ -11,7 +11,7 @@
 #include <QStringList>
 #include <Qontrol>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 
 class MusigAccountController;
 class QEvent;

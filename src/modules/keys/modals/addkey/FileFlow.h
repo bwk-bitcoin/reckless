@@ -8,7 +8,7 @@
 
 #include "modules/keys/modals/AddKey.h"
 
-#include <silent.h>
+#include <reckless.h>
 
 class QDragEnterEvent;
 class QDropEvent;

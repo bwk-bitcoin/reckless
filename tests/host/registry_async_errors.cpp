@@ -19,7 +19,7 @@
 #include <common.h>
 #include <cstdint>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 
 // Inspect transitions without injecting filesystem failures into shared app state.
 #define private public

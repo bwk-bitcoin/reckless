@@ -37,4 +37,4 @@ signals:
 
 } // namespace backend
 
-Q_DECLARE_INTERFACE(backend::IBackendSettings, "dev.silent.backend.IBackendSettings/1.0")
+Q_DECLARE_INTERFACE(backend::IBackendSettings, "dev.reckless.backend.IBackendSettings/1.0")

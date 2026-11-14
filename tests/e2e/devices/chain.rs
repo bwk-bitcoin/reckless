@@ -1,5 +1,5 @@
 //! Regtest chain for the device GUI end to end (`tests/e2e/devices/run.sh`): bitcoind
-//! and electrs (blindbitd's setup, as silent's tests use), driven by one command per
+//! and electrs (blindbitd's setup, as reckless's tests use), driven by one command per
 //! stdin line, one answer per line. The first line is `READY <electrum url>`.
 //!
 //!   mine N            -> OK <height>
@@ -15,7 +15,7 @@
 //!   relay unmute      -> OK unmuted: relays again
 //!   quit
 //!
-//! Built as the `e2e_chain` example of the silent crate, for its dev-dependencies.
+//! Built as the `e2e_chain` example of the reckless crate, for its dev-dependencies.
 
 use std::io::{BufRead, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};

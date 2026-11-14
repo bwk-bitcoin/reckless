@@ -7,7 +7,7 @@
 #include <QString>
 #include <common.h>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 
 namespace {

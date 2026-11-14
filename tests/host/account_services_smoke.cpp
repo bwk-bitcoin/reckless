@@ -63,7 +63,7 @@
 #include <common.h>
 #include <memory>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 #include <utility>
 
 #define private public
@@ -950,7 +950,7 @@ void createdAccountBirthday(MainWindow &window, account::AccountModule *module, 
 
 // A Multikey account restored from a BIP139 backup with a block height and a timestamp, the
 // chain plugin its backend, hands the plugin a watch carrying both, and its Settings rescan
-// field starts at that height. With SILENT_RESCAN_SHOT set, the whole window showing that
+// field starts at that height. With RECKLESS_RESCAN_SHOT set, the whole window showing that
 // Settings is saved there.
 void restoredAccountBirthday(MainWindow &window, account::AccountModule *module, IModule *chain,
                              MusigAccountWidget *opened, int watches) {
@@ -979,7 +979,7 @@ void restoredAccountBirthday(MainWindow &window, account::AccountModule *module,
     require(extras->m_rescan_input->input()->text() == QString::number(RESTORED_BIRTHDAY_HEIGHT) &&
                 extras->m_rescan_btn->isEnabled(),
             "the rescan field starts at the birthday height, Rescan offered");
-    auto shot = qEnvironmentVariable("SILENT_RESCAN_SHOT");
+    auto shot = qEnvironmentVariable("RECKLESS_RESCAN_SHOT");
     if (!shot.isEmpty()) {
         captureSettings(window, widget, shot);
     }
@@ -1333,7 +1333,7 @@ void chainSpendSmoke() {
     controller->registerBuiltinPlugin(std::move(multikey));
     auto *registry = controller->pluginRegistry();
     waitFor([registry] { return !registry->pluginStateLoading(); }, "the plugin state loads");
-    enableFixture(registry, CHAIN, SILENT_SERVICE_CHAIN_FIXTURE);
+    enableFixture(registry, CHAIN, RECKLESS_SERVICE_CHAIN_FIXTURE);
     auto *chainModule = fixtureModule(registry, CHAIN);
     // Nothing listens there: a probe would fail, never connect.
     auto config = ::new_config(rust::String(MULTIKEY.toStdString()), Network::Regtest,
@@ -1430,8 +1430,8 @@ void accountServicesSmoke() {
     controller->registerBuiltinPlugin(std::move(builtinPlugin));
     auto *registry = controller->pluginRegistry();
     waitFor([registry] { return !registry->pluginStateLoading(); }, "the plugin state loads");
-    enableFixture(registry, FULL, SILENT_SERVICE_FULL_FIXTURE);
-    enableFixture(registry, CHAIN, SILENT_SERVICE_CHAIN_FIXTURE);
+    enableFixture(registry, FULL, RECKLESS_SERVICE_FULL_FIXTURE);
+    enableFixture(registry, CHAIN, RECKLESS_SERVICE_CHAIN_FIXTURE);
     auto *full = fixtureModule(registry, FULL);
     auto *chain = fixtureModule(registry, CHAIN);
     auto *host = dynamic_cast<HostImpl *>(Host::get());
@@ -1457,7 +1457,7 @@ void blockchainBackendSmoke() {
     auto *registry = controller->pluginRegistry();
     waitFor([registry] { return !registry->pluginStateLoading(); }, "the plugin state loads");
     // Supplies a blockchain, but does not advertise that it watches descriptors.
-    enableFixture(registry, FULL, SILENT_SERVICE_FULL_FIXTURE);
+    enableFixture(registry, FULL, RECKLESS_SERVICE_FULL_FIXTURE);
     auto *full = fixtureModule(registry, FULL);
     auto config = ::new_config(rust::String(MULTIKEY.toStdString()), Network::Regtest,
                                rust::String(MULTIKEY_DESCRIPTOR), rust::String(""),
@@ -1477,7 +1477,7 @@ void blockchainBackendSmoke() {
                                   "no blockchain and no funds: no fallback to Electrum");
     require(outstanding(full) == 0, "a plugin not advertising descriptor watching is not used");
 
-    enableFixture(registry, CHAIN, SILENT_SERVICE_CHAIN_FIXTURE);
+    enableFixture(registry, CHAIN, RECKLESS_SERVICE_CHAIN_FIXTURE);
     auto *chain = fixtureModule(registry, CHAIN);
     waitFor([widget, chain] { return assembledBlockchain(widget)->parent() == chain; },
             "installing the chosen backend assembles the services over its blockchain");

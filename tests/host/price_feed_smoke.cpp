@@ -50,7 +50,7 @@
 #include <thread>
 #include <utility>
 
-#ifdef SILENT_PRICE_FEED_FIXTURE
+#ifdef RECKLESS_PRICE_FEED_FIXTURE
 #include "host/PluginLibrary.h"
 #include <QFile>
 #include <cerrno>
@@ -981,7 +981,7 @@ void priceSourceGeometry(HostImpl *host, const QString &first_id, const QString 
     host->selectPrice(selected.source, selected.currency);
 }
 
-#ifdef SILENT_PRICE_FEED_FIXTURE
+#ifdef RECKLESS_PRICE_FEED_FIXTURE
 auto literalPage(IFeed *feed, std::uintptr_t page_size) -> void * {
     auto address = static_cast<std::uintptr_t>(feed->raw(QByteArrayLiteral("literal-address")));
     // mincore needs the actual plugin storage address to prove dlclose unmapped it.
@@ -990,7 +990,7 @@ auto literalPage(IFeed *feed, std::uintptr_t page_size) -> void * {
 }
 
 void libraryUnload(HostImpl *host, PriceModule *module) {
-    QFile file(QString::fromUtf8(SILENT_PRICE_FEED_FIXTURE));
+    QFile file(QString::fromUtf8(RECKLESS_PRICE_FEED_FIXTURE));
     require(file.open(QIODevice::ReadOnly), "test price library opens");
     auto bytes = file.readAll();
     PluginLibrary library;
@@ -1352,7 +1352,7 @@ auto priceFeedSmoke() -> bool {
     singleFeeProviderSettings(host, &plugin.module, true, true);
     feeRecommendations(host, &plugin.module);
     accountWidgetLifetime(host, &plugin.module);
-#ifdef SILENT_PRICE_FEED_FIXTURE
+#ifdef RECKLESS_PRICE_FEED_FIXTURE
     libraryUnload(host, &plugin.module);
 #endif
     host->selectPrice({}, {});

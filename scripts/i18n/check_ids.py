@@ -73,7 +73,7 @@ def iter_source_files(root: Path) -> list[Path]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src", default="src", help="Source directory to scan")
-    parser.add_argument("--en-ts", default="i18n/silent_en.ts", help="English TS catalog")
+    parser.add_argument("--en-ts", default="i18n/reckless_en.ts", help="English TS catalog")
     parser.add_argument(
         "--strict-tr",
         action="store_true",

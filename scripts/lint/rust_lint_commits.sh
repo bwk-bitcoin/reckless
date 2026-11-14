@@ -45,16 +45,16 @@ for commit in "${commits[@]}"; do
         continue
     fi
 
-    if ! git -C "$worktree_root" diff --quiet "$parent" "$commit" -- ':(glob)silent/**/*.rs' 'silent/Cargo.toml' 'silent/Cargo.lock'; then
+    if ! git -C "$worktree_root" diff --quiet "$parent" "$commit" -- ':(glob)reckless/**/*.rs' 'reckless/Cargo.toml' 'reckless/Cargo.lock'; then
         echo "lint rust commit ${commit}"
         git -C "$worktree_root" checkout --detach "$commit" >/dev/null
-        cargo fmt --manifest-path "$worktree_root/silent/Cargo.toml" -- --check
-        cargo clippy --manifest-path "$worktree_root/silent/Cargo.toml" -- -D warnings
+        cargo fmt --manifest-path "$worktree_root/reckless/Cargo.toml" -- --check
+        cargo clippy --manifest-path "$worktree_root/reckless/Cargo.toml" -- -D warnings
     fi
 done
 
 if [[ $dirty -eq 1 ]]; then
     echo "lint rust working tree (uncommitted changes)"
-    cargo fmt --manifest-path "$repo_root/silent/Cargo.toml" -- --check
-    cargo clippy --manifest-path "$repo_root/silent/Cargo.toml" -- -D warnings
+    cargo fmt --manifest-path "$repo_root/reckless/Cargo.toml" -- --check
+    cargo clippy --manifest-path "$repo_root/reckless/Cargo.toml" -- -D warnings
 fi

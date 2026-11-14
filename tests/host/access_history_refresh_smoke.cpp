@@ -20,7 +20,7 @@
 #include <QThread>
 #include <QVariant>
 #include <cstdio>
-#include <silent.h>
+#include <reckless.h>
 
 namespace smoke {
 namespace {
@@ -131,7 +131,7 @@ void firstAnswer(PluginGrant grant, bool stale_epoch) {
         suffix = QStringLiteral("refused");
     }
     auto id = QStringLiteral("history.refresh.") + suffix;
-    QFile fixture(QStringLiteral(SILENT_REMOVAL_FIXTURE));
+    QFile fixture(QStringLiteral(RECKLESS_REMOVAL_FIXTURE));
     require(fixture.open(QIODevice::ReadOnly), "the native bundle fixture opens");
     auto bytes = fixture.readAll();
     bytes.append(id.toUtf8());

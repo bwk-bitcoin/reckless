@@ -8,21 +8,21 @@ namespace {
 
 #ifdef __has_cpp_attribute
 #if __has_cpp_attribute(gnu::used)
-#define SILENT_USED [[gnu::used]]
+#define RECKLESS_USED [[gnu::used]]
 #endif
 #endif
 
-#ifndef SILENT_USED
+#ifndef RECKLESS_USED
 #if defined(__GNUC__) || defined(__clang__)
-#define SILENT_USED __attribute__((used))
+#define RECKLESS_USED __attribute__((used))
 #else
-#define SILENT_USED
+#define RECKLESS_USED
 #endif
 #endif
 
 // Keep concrete Qt/qontrol ABI symbols alive so --export-dynamic can publish
 // the host-supported plugin surface even with -O2/--gc-sections.
-SILENT_USED const void *const ANCHORS[] = {
+RECKLESS_USED const void *const ANCHORS[] = {
     static_cast<const void *>(&QObject::staticMetaObject),
     static_cast<const void *>(&QGuiApplication::staticMetaObject),
     static_cast<const void *>(&QWidget::staticMetaObject),
@@ -36,6 +36,6 @@ SILENT_USED const void *const ANCHORS[] = {
     static_cast<const void *>(&qontrol::widgets::ToggleSwitch::staticMetaObject),
 };
 
-#undef SILENT_USED
+#undef RECKLESS_USED
 
 } // namespace

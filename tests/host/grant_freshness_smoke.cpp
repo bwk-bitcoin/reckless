@@ -157,9 +157,9 @@ void GrantFreshnessDriver::promptConflict() {
                 m_request.access.keys == PluginGrant::Unasked,
             "the Keys-only prompt captures Account Allowed and Keys Unasked");
     if (m_step == Step::PendingSaveConflict) {
-        m_fsync_arm = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "silentTestAppStateFsyncArm"));
-        m_fsync_held = reinterpret_cast<Held>(dlsym(RTLD_DEFAULT, "silentTestFsyncHeld"));
-        m_fsync_release = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "silentTestFsyncRelease"));
+        m_fsync_arm = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "recklessTestAppStateFsyncArm"));
+        m_fsync_held = reinterpret_cast<Held>(dlsym(RTLD_DEFAULT, "recklessTestFsyncHeld"));
+        m_fsync_release = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "recklessTestFsyncRelease"));
         require(m_fsync_arm != nullptr && m_fsync_held != nullptr && m_fsync_release != nullptr,
                 "--grant-pending-conflict requires LD_PRELOAD=libfsync_hold_shim.so");
     }

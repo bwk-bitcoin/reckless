@@ -11,7 +11,7 @@ class PluginRegistry;
 
 namespace smoke {
 
-// Holds the real interprocess app-state lock, as another Silent process would.
+// Holds the real interprocess app-state lock, as another Reckless process would.
 class AppStateLock final {
 public:
     void hold();

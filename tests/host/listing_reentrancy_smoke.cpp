@@ -8,7 +8,7 @@
 #include <QMap>
 #include <QThread>
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 
 namespace smoke {
 namespace {

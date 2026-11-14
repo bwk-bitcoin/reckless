@@ -5,7 +5,7 @@
 // Keep fixture-only metatypes and literals local so dlclose actually unmaps them.
 class Q_DECL_HIDDEN PriceFeedPlugin final : public IFeed, public IPlugin {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID SILENT_IPlugin_IID)
+    Q_PLUGIN_METADATA(IID RECKLESS_IPlugin_IID)
     Q_INTERFACES(IPlugin)
 
 public:

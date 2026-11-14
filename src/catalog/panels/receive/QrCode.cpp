@@ -6,7 +6,7 @@
 #include <QDebug>
 #include <QImage>
 #include <QPainter>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 
 namespace catalog {

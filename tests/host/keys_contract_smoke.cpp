@@ -73,7 +73,7 @@ void operationRouting(keys::KeysModule &module, ExternalSigner &signer, quint32 
     for (const auto &operation : {Operation{.name = QStringLiteral("ordinary"), .required = 1U},
                                   Operation{.name = QStringLiteral("taproot"), .required = 2U},
                                   Operation{.name = QStringLiteral("mixed"), .required = 3U}}) {
-        QFile fixture(QDir(QStringLiteral(SILENT_KEYS_FIXTURES))
+        QFile fixture(QDir(QStringLiteral(RECKLESS_KEYS_FIXTURES))
                           .filePath(QStringLiteral("signer-%1.hex").arg(operation.name)));
         require(fixture.open(QIODevice::ReadOnly), "operation PSBT fixture opens");
         auto psbt = QString::fromLatin1(fixture.readAll().trimmed());

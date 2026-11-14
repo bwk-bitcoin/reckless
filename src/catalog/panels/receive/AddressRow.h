@@ -18,7 +18,7 @@ public:
     explicit AddressRow(QWidget *parent = nullptr);
     void setAddress(const QString &address);
     [[nodiscard]] auto address() const -> QString;
-    // When true, a long address is split across two centered lines (silent
+    // When true, a long address is split across two centered lines (reckless
     // payment); otherwise it stays on a single line.
     void setTwoLineAddress(bool two_lines);
     void setGenerateVisible(bool visible);

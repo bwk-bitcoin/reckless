@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QMetaType>
-#include <silent.h>
+#include <reckless.h>
 
 // Register CXX shared types with Qt's meta-object system
 // for cross-thread signal-slot connections (queued delivery).

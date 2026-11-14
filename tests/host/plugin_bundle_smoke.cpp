@@ -31,7 +31,7 @@
 #include <QtTypes>
 #include <algorithm>
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 
 namespace smoke {
@@ -138,7 +138,7 @@ auto listedMeta(PluginRegistry &registry, const QString &plugin_id) -> QMap<QStr
 auto loadedPlugin(PluginRegistry &registry, const QString &plugin_id) -> IPlugin * {
     for (auto *plugin : registry.plugins()) {
         auto *object = dynamic_cast<QObject *>(plugin);
-        if (object != nullptr && object->qt_metacast(SILENT_IPlugin_IID) != nullptr &&
+        if (object != nullptr && object->qt_metacast(RECKLESS_IPlugin_IID) != nullptr &&
             plugin->meta().value(QStringLiteral("id")) == plugin_id) {
             return plugin;
         }
@@ -247,7 +247,7 @@ void requireEnabled(PluginRegistry &registry, const QJsonObject &manifest) {
                     .toString(),
             "the loaded library is the manifest entry");
     auto *plugin = loadedPlugin(registry, id);
-    require(plugin != nullptr, "the loaded root object is a current ABI Silent plugin");
+    require(plugin != nullptr, "the loaded root object is a current ABI Reckless plugin");
     auto meta = plugin->meta();
     requireMetaField(meta, manifest, QStringLiteral("name"), "loaded root");
     requireMetaField(meta, manifest, QStringLiteral("version"), "loaded root");
@@ -395,7 +395,7 @@ void pluginBundleSmoke(const QString &bundle) {
 
     // A broken replacement leaves the installed bundle as it was.
     auto broken =
-        install(copyBundle(bundle, directory.filePath(QStringLiteral("broken.silent")), true));
+        install(copyBundle(bundle, directory.filePath(QStringLiteral("broken.reckless")), true));
     require(!broken.is_ok && !std::string(broken.error).empty(),
             "a truncated bundle is refused with its error");
     rescanPlugins(registry);

@@ -49,19 +49,19 @@ build-local: binding
         rm -rf build; \
       fi; \
     fi
-    cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSILENT_MOCK_UI=OFF
+    cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DRECKLESS_MOCK_UI=OFF
     cmake --build build -j$(nproc)
     cp -f build/compile_commands.json ./compile_commands.json
 
 # Build locally on mock account data (UI preview, no backend/FFI)
 build-mock: binding
-    cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DSILENT_MOCK_UI=ON
+    cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DRECKLESS_MOCK_UI=ON
     cmake --build build -j$(nproc)
     cp -f build/compile_commands.json ./compile_commands.json
 
-# Run silent
+# Run reckless
 run:
-    ./build/silent
+    ./build/reckless
 
 # Build locally + run
 br: build-local
@@ -73,8 +73,8 @@ format:
 
 # Lint Rust binding
 lint-rust:
-    cargo fmt --manifest-path silent/Cargo.toml -- --check
-    cargo clippy --manifest-path silent/Cargo.toml -- -D warnings
+    cargo fmt --manifest-path reckless/Cargo.toml -- --check
+    cargo clippy --manifest-path reckless/Cargo.toml -- -D warnings
 
 # Lint Rust on each commit in a range
 lint-rust-commits range="HEAD~1...HEAD":
@@ -82,7 +82,7 @@ lint-rust-commits range="HEAD~1...HEAD":
 
 # Lint full C++ app codebase (clang-tidy)
 lint-cpp-full:
-    if [ ! -f lib/include/silent.h ]; then just binding; fi
+    if [ ! -f lib/include/reckless.h ]; then just binding; fi
     if [ ! -f build/compile_commands.json ]; then cmake -B build .; fi
     bash -o pipefail -c "start=\$(date +%s%3N); if command -v run-clang-tidy >/dev/null 2>&1; then run-clang-tidy -p build -j\$(nproc) -quiet -header-filter='^src/.*' -source-filter='^src/.*' 'src/.*\\.cpp$'; else find src -type f -name '*.cpp' ! -path 'src/resources/*' -print0 | xargs -0 -P\$(nproc) -n1 clang-tidy -p build --quiet --warnings-as-errors='*' --header-filter='^src/.*'; fi 2>&1 | { rg -v '^[0-9]+ warnings generated\\.$' || true; }; rc=\${PIPESTATUS[0]}; end=\$(date +%s%3N); elapsed=\$((end-start)); printf 'Lint full (%s files) in %d.%03dS\n' \"\$(find src -type f -name '*.cpp' ! -path 'src/resources/*' | wc -l)\" \$((elapsed/1000)) \$((elapsed%1000)); exit \$rc"
 
@@ -105,7 +105,7 @@ lint-full: lint-rust lint-cpp-full
 # Simulate CI lint job locally
 ci-lint:
     scripts/lint/rust_lint_commits.sh "{{lint_base_commit}}...HEAD"
-    if [ ! -f lib/include/silent.h ]; then bash build.sh; fi
+    if [ ! -f lib/include/reckless.h ]; then bash build.sh; fi
     cmake -B build .
     scripts/lint/clang_tidy_diff_commits.sh "{{lint_base_commit}}...HEAD"
     python3 scripts/i18n/sync_lang.py --lang-dir i18n --check
@@ -113,18 +113,18 @@ ci-lint:
 
 # Simulate full CI pipeline locally (lint + tests + local build)
 ci: ci-lint
-    cargo test --manifest-path silent/Cargo.toml
+    cargo test --manifest-path reckless/Cargo.toml
     just build-local
 
 # Auto-fix clang-tidy warnings
 fix:
-    find src -name '*.cpp' | xargs -P$(nproc) -n1 clang-tidy -p build --header-filter='^.*/silent/src/.*' --quiet --fix
+    find src -name '*.cpp' | xargs -P$(nproc) -n1 clang-tidy -p build --header-filter='^{{justfile_directory()}}/src/.*' --quiet --fix
 
 # Clean all build artifacts (Rust + C++)
 clean:
-    cargo clean --manifest-path silent/Cargo.toml
+    cargo clean --manifest-path reckless/Cargo.toml
     rm -rf build
-    rm -f lib/libsilent.* lib/libtemplar.*
+    rm -f lib/libreckless.* lib/libtemplar.*
     rm -rf lib/include
 
 # Add i18n language boilerplate (locale + autonym)
@@ -137,4 +137,4 @@ i18n-id id text:
 
 # List pending untranslated locale entries (NONE)
 i18n-pending:
-    rg '=> "NONE"$' i18n/silent_*.lang
+    rg '=> "NONE"$' i18n/reckless_*.lang

@@ -86,7 +86,7 @@ auto ComboBox::renderChevron(const QColor &color) -> QString {
     // that URL. Encode the color in the filename so a theme change resolves to a
     // new URL instead of silently reusing the cached chevron of the old color.
     auto dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    auto path = dir + QString("/silent_chevron_down_%1.png").arg(color.name().mid(1));
+    auto path = dir + QString("/reckless_chevron_down_%1.png").arg(color.name().mid(1));
     if (QFile::exists(path)) {
         return path;
     }

@@ -20,8 +20,8 @@ def validate_locale(locale: str) -> None:
 
 def create_lang_file(repo_root: Path, locale: str) -> Path:
     i18n_dir = repo_root / "i18n"
-    src = i18n_dir / "silent_en.lang"
-    dst = i18n_dir / f"silent_{locale}.lang"
+    src = i18n_dir / "reckless_en.lang"
+    dst = i18n_dir / f"reckless_{locale}.lang"
 
     if dst.exists():
         raise FileExistsError(f"{dst} already exists")

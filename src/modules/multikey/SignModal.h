@@ -12,7 +12,7 @@
 #include <QStringList>
 #include <cstdint>
 #include <memory>
-#include <silent.h>
+#include <reckless.h>
 
 class MusigAccountController;
 class QEvent;

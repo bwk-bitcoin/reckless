@@ -16,7 +16,7 @@ def main():
     entry = next(item for item in database if item["file"].endswith("/src/main.cpp"))
     test_flags = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "Qt6Test"], text=True))
     test_libraries = shlex.split(subprocess.check_output(["pkg-config", "--libs", "Qt6Test"], text=True))
-    with tempfile.TemporaryDirectory(prefix="silent-setup-") as directory:
+    with tempfile.TemporaryDirectory(prefix="reckless-setup-") as directory:
         scratch = Path(directory)
         objects = []
         for source in ("setup.cpp", "FakeUnlockDevices.cpp"):
@@ -27,7 +27,7 @@ def main():
             command[1:1] = test_flags
             subprocess.run(command, cwd=entry["directory"], check=True)
             objects.append(str(output))
-        command = shlex.split((build / "CMakeFiles/silent.dir/link.txt").read_text())
+        command = shlex.split((build / "CMakeFiles/reckless.dir/link.txt").read_text())
         command = [item for item in command if not item.endswith(("/src/main.cpp.o", "/src/state/UnlockDevices.cpp.o"))]
         command[command.index("-o") + 1] = str(scratch / "setup-test")
         command[1:1] = objects

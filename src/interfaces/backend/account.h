@@ -103,4 +103,4 @@ signals:
 
 } // namespace backend
 
-Q_DECLARE_INTERFACE(backend::IAccountBackend, "dev.silent.backend.IAccountBackend/1.0")
+Q_DECLARE_INTERFACE(backend::IAccountBackend, "dev.reckless.backend.IAccountBackend/1.0")

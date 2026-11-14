@@ -1,5 +1,5 @@
 // An account service provider built against the published SDK only. Built twice:
-// services.full supplies every service, services.chain (SILENT_SERVICE_CHAIN_FIXTURE)
+// services.full supplies every service, services.chain (RECKLESS_SERVICE_CHAIN_FIXTURE)
 // only the blockchain and labels, and deletes a service it is handed back only a while
 // later. Every getter answers this plugin's id so a consumer
 // can tell which provider served it. Payloads are heap copies: they outlive no unload.
@@ -33,7 +33,7 @@
 
 namespace {
 
-#ifdef SILENT_SERVICE_CHAIN_FIXTURE
+#ifdef RECKLESS_SERVICE_CHAIN_FIXTURE
 constexpr auto PLUGIN_ID = "services.chain";
 // How long a released service lives on.
 constexpr int HELD_MS = 1500;
@@ -53,7 +53,7 @@ auto refusal() -> QString {
 }
 
 auto supplies(backend::ServiceKind kind) -> bool {
-#ifdef SILENT_SERVICE_CHAIN_FIXTURE
+#ifdef RECKLESS_SERVICE_CHAIN_FIXTURE
     return kind == backend::ServiceKind::Blockchain || kind == backend::ServiceKind::Labels;
 #else
     Q_UNUSED(kind);
@@ -370,7 +370,7 @@ public:
     [[nodiscard]] auto meta() const -> QMap<QString, QString> override {
         QMap<QString, QString> meta{
             {QString::fromLatin1("id"), pluginId() + QString::fromLatin1(".module")}};
-#ifdef SILENT_SERVICE_CHAIN_FIXTURE
+#ifdef RECKLESS_SERVICE_CHAIN_FIXTURE
         meta.insert(QString::fromLatin1(backend::WATCH_META),
                     QString::fromLatin1(backend::WATCH_DESCRIPTORS));
 #endif
@@ -429,7 +429,7 @@ public:
 
     void releaseService(backend::IService *service) override {
         setProperty("outstanding", --m_outstanding);
-#ifdef SILENT_SERVICE_CHAIN_FIXTURE
+#ifdef RECKLESS_SERVICE_CHAIN_FIXTURE
         // Deleted a while after its release: the plugin must stay loaded until it is.
         QTimer::singleShot(HELD_MS, service, &QObject::deleteLater);
 #else
@@ -459,7 +459,7 @@ private:
 
 class Q_DECL_HIDDEN FixturePlugin final : public QObject, public IPlugin {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID SILENT_IPlugin_IID)
+    Q_PLUGIN_METADATA(IID RECKLESS_IPlugin_IID)
     Q_INTERFACES(IPlugin)
 
 public:

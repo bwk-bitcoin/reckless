@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <atomic>
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 #include <vector>
 
@@ -85,7 +85,7 @@ public:
 class HeldFeeState final {
 public:
     HeldFeeState() {
-        m_file.setFileName(QDir::homePath() + QStringLiteral("/.silent/app.lock"));
+        m_file.setFileName(QDir::homePath() + QStringLiteral("/.reckless/app.lock"));
         require(m_file.open(QIODevice::ReadWrite), "the real app.lock opens");
         require(::flock(m_file.handle(), LOCK_EX) == 0, "the fixture holds the real app.lock");
         auto fd = m_file.handle();
@@ -143,7 +143,7 @@ void requirePersisted(const FeePreferences &preferences) {
 
 #ifdef Q_OS_LINUX
 auto feeTempPath() -> QString {
-    return QDir::homePath() + QStringLiteral("/.silent/app.tmp");
+    return QDir::homePath() + QStringLiteral("/.reckless/app.tmp");
 }
 #endif
 

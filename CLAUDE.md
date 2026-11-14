@@ -5,7 +5,7 @@ in this repository.
 
 ## Project Overview
 
-Silent is a privacy-focused desktop Bitcoin wallet using the Silent Payments
+Reckless is a privacy-focused desktop Bitcoin wallet using the Silent Payments
 protocol. It has a two-language architecture: C++ (Qt6 GUI) and Rust (backend via
 CXX FFI).
 
@@ -15,7 +15,7 @@ CXX FFI).
 ```bash
 just br           # build-local + run
 just build-local  # Rust binding + CMake build (no Nix)
-just run          # run the built binary (./build/silent)
+just run          # run the built binary (./build/reckless)
 ```
 
 **First-time setup** (fetch qontrol framework into `lib/qontrol`):
@@ -25,20 +25,20 @@ just qontrol
 
 **Individual steps:**
 ```bash
-cargo build --release --manifest-path silent/Cargo.toml  # Rust only
+cargo build --release --manifest-path reckless/Cargo.toml  # Rust only
 ./build.sh                                                # Rust + copy libs/headers to lib/
 cmake -B build . && cmake --build build                   # C++ GUI (after build.sh)
 ```
 
 **Lint:**
 ```bash
-cargo clippy --manifest-path silent/Cargo.toml
+cargo clippy --manifest-path reckless/Cargo.toml
 ```
 
 **Tests:**
 ```bash
-cargo test --manifest-path silent/Cargo.toml
-cargo test --manifest-path silent/Cargo.toml <test_name>  # single test
+cargo test --manifest-path reckless/Cargo.toml
+cargo test --manifest-path reckless/Cargo.toml <test_name>  # single test
 ```
 
 **Clean:**
@@ -58,10 +58,10 @@ Qt6 GUI (C++)  ──CXX FFI──>  Account (Rust, wraps bwk-sp)
                               BlindBit Server (HTTP/ureq)
 ```
 
-**Rust crate (`silent/src/`):** CXX bridge wrapping `bwk-sp` (Bitcoin Wallet Kit -
+**Rust crate (`reckless/src/`):** CXX bridge wrapping `bwk-sp` (Bitcoin Wallet Kit -
 Silent Payments).
 - `lib.rs` — CXX bridge definition, all FFI types and exported methods
-- `config.rs` — Wallet config persistence (`~/.silent/<account>/`), network
+- `config.rs`: Wallet config persistence (`~/.reckless/<account>/`), network
 settings, mnemonic storage
 - `account.rs` — Account wrapper around `bwk-sp::Account`, notification polling
 via mpsc, transaction lifecycle (simulate → prepare → sign → broadcast)
@@ -88,7 +88,7 @@ hex) → `broadcast_transaction()` (submit to network). There is also a combined
 `lib.rs` within the `#[cxx::bridge]` module. To expose new Rust functionality to
 C++, add the type/function declaration in `lib.rs` and implement it in the
 corresponding module (`account.rs` or `config.rs`). After changes, run `./build.sh`
-to regenerate the C++ headers (`lib/include/silent.h`, `lib/include/cxx.h`).
+to regenerate the C++ headers (`lib/include/reckless.h`, `lib/include/cxx.h`).
 
 ## Code Guidelines
 
@@ -112,7 +112,7 @@ coordinate with upstream maintainers to make the required changes.
 ## Build Pipeline
 
 `build.sh` compiles the Rust crate, then copies generated CXX bridge headers
-(`silent.h`, `cxx.h`) and static library (`libsilent.a`) into `lib/`. CMake then
+(`reckless.h`, `cxx.h`) and static library (`libreckless.a`) into `lib/`. CMake then
 links against these when building the C++ GUI. The Rust `build.rs` uses `cxx_build`
 to generate the C++ bridge code.
 
@@ -130,12 +130,12 @@ nix develop          # development shell (Rust toolchain, CMake, Qt6)
 ```
 
 The flake resolves Cargo path dependencies (`../../bwk/sp`, `../../spdk/spdk-core`)
-by laying out `bwk`, `spdk`, and `silent` as sibling directories in the Nix sandbox.
+by laying out `bwk`, `spdk`, and `reckless` as sibling directories in the Nix sandbox.
 Git dependencies are vendored via `importCargoLock` with pinned hashes.
 
 ## Testing
 
-Tests are in `silent/tests/` using standard Rust `#[test]`:
+Tests are in `reckless/tests/` using standard Rust `#[test]`:
 - `integration.rs` — End-to-end wallet operations (creation, config roundtrip, SP
 addresses)
 - `multi_account.rs` — Multi-account isolation and edge cases

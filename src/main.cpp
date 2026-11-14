@@ -1,7 +1,9 @@
 #include "AppController.h"
 #include "MainWindow.h"
+#include "catalog/feedback/MessageModal.h"
 #include "host/PluginRegistry.h"
 #include "i18n/I18nManager.h"
+#include "i18n/Tr.h"
 #include "interfaces/host.h"
 #include "interfaces/types.h"
 #include "metatypes.h"
@@ -23,7 +25,7 @@
 #include <common.h>
 #include <memory>
 
-#ifdef SILENT_STATIC_PLUGINS
+#ifdef RECKLESS_STATIC_PLUGINS
 Q_IMPORT_PLUGIN(SpPlugin)
 Q_IMPORT_PLUGIN(HwiPlugin)
 Q_IMPORT_PLUGIN(MusigPlugin)
@@ -78,10 +80,21 @@ auto main(int argc, char *argv[]) -> int {
     // The reckless mark (ws-plaude/silent#111), in its own colours.
     // The desktop entry the installed icon belongs to (ws-plaude/silent#112).
     QGuiApplication::setDesktopFileName(QStringLiteral("reckless"));
+    // The app's Qt names (ws-plaude/silent#113). No data path derives from them.
+    QCoreApplication::setApplicationName(QStringLiteral("reckless"));
+    QCoreApplication::setOrganizationName(QStringLiteral("Reckless"));
     QApplication::setWindowIcon(icon::windowIcon(icon::windowIconPremultiplied()));
 
     // Initialize i18n before creating UI widgets
     i18n::I18nManager::get()->init(&app);
+
+    // Silent's data directory moves to Reckless's before anything reads it
+    // (ws-plaude/silent#113). A failed move leaves it in place, in use for this run.
+    if (QString error = QString::fromStdString(std::string(app_datadir_migration_error()));
+        !error.isEmpty()) {
+        AppController::execModal(new catalog::MessageModal(
+            TR("datadir-migration-failed"), TR("datadir-migration-failed-text").arg(error)));
+    }
 
     // The state is encrypted: nothing reads it before it is unlocked. The language
     // picked is in it, so the unlock screens are in the default one.

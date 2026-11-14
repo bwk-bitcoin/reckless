@@ -1,8 +1,8 @@
 # CODE_GUIDELINES.md
 
-Project-specific coding conventions and patterns for the Silent wallet.
+Project-specific coding conventions and patterns for the Reckless wallet.
 
-## Rust: CXX Bridge Conventions (`silent/src/lib.rs`)
+## Rust: CXX Bridge Conventions (`reckless/src/lib.rs`)
 
 All FFI surface area lives in `lib.rs` inside the `#[cxx::bridge]` module.
 Implementation goes in `account.rs` or `config.rs`.
@@ -96,7 +96,7 @@ pub fn set_dust_limit(&mut self, limit: u64) {
   _ => unreachable!("CXX enum type safety guarantees no other variants exist")
   ```
 
-## Rust: Config File I/O (`silent/src/config.rs`)
+## Rust: Config File I/O (`reckless/src/config.rs`)
 
 Built-in configs are pretty-printed JSON files inside their module-owned logical
 account subtree. See `docs/MODULES.md`, Account deletion and built-in logical persistence.

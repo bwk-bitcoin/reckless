@@ -15,25 +15,25 @@ public:
     [[nodiscard]] virtual QList<IModule *> modules() const = 0;
 };
 
-#ifdef SILENT_ABI11_FIXTURE
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/11.0"
-#elif defined(SILENT_ABI10_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/10.0"
-#elif defined(SILENT_ABI9_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/9.0"
-#elif defined(SILENT_ABI8_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/8.0"
-#elif defined(SILENT_ABI7_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/7.0"
-#elif defined(SILENT_ABI6_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/6.0"
-#elif defined(SILENT_ABI5_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/5.0"
-#elif defined(SILENT_ABI4_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/4.0"
-#elif defined(SILENT_ABI3_FIXTURE)
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/3.0"
+#ifdef RECKLESS_ABI11_FIXTURE
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/11.0"
+#elif defined(RECKLESS_ABI10_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/10.0"
+#elif defined(RECKLESS_ABI9_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/9.0"
+#elif defined(RECKLESS_ABI8_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/8.0"
+#elif defined(RECKLESS_ABI7_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/7.0"
+#elif defined(RECKLESS_ABI6_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/6.0"
+#elif defined(RECKLESS_ABI5_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/5.0"
+#elif defined(RECKLESS_ABI4_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/4.0"
+#elif defined(RECKLESS_ABI3_FIXTURE)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/3.0"
 #else
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/2.0"
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/2.0"
 #endif
-Q_DECLARE_INTERFACE(IPlugin, SILENT_IPlugin_IID)
+Q_DECLARE_INTERFACE(IPlugin, RECKLESS_IPlugin_IID)

@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 
-set(BIN silent)
+set(BIN reckless)
 project(${BIN} VERSION 0.1.0 LANGUAGES CXX)
 
-option(SILENT_I18N_TRACE_IDS "Emit i18n ID pragma trace markers" OFF)
-option(SILENT_BUILD_HOST_SMOKE "Build the plugin host smoke test" OFF)
-option(SILENT_BUILD_DEVICE_E2E "Build the device GUI end to end probe" OFF)
-option(SILENT_MOCK_UI "Run the UI on mock account data instead of the real FFI controller" OFF)
+option(RECKLESS_I18N_TRACE_IDS "Emit i18n ID pragma trace markers" OFF)
+option(RECKLESS_BUILD_HOST_SMOKE "Build the plugin host smoke test" OFF)
+option(RECKLESS_BUILD_DEVICE_E2E "Build the device GUI end to end probe" OFF)
+option(RECKLESS_MOCK_UI "Run the UI on mock account data instead of the real FFI controller" OFF)
 
-# Build silent Rust crate before main project
+# Build reckless Rust crate before main project
 add_custom_target(
     RunBeforeBuild ALL
     COMMAND bash build.sh
@@ -36,9 +36,9 @@ if(RECKLESS_MARK_AT EQUAL -1)
 endif()
 
 # Import Rust static library
-add_library(silent_rust STATIC IMPORTED)
-set_target_properties(silent_rust PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libsilent.a
+add_library(reckless_rust STATIC IMPORTED)
+set_target_properties(reckless_rust PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/lib/libreckless.a
 )
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Gui Core Svg)
@@ -63,7 +63,7 @@ set(CMAKE_AUTOUIC ON)
 
 # Shared application sources (everything except the executable entry point).
 # Reused by the optional host smoke target so it links the real Host/PluginRegistry.
-set(SILENT_APP_SOURCES
+set(RECKLESS_APP_SOURCES
     src/QtAbiSurface.cpp
     src/host/CallerHandles.h
     src/host/CallerHandles.cpp
@@ -483,9 +483,9 @@ set(SILENT_APP_SOURCES
 )
 
 # The mock controller is dev-only UI scaffolding. It is excluded from the build
-# unless SILENT_MOCK_UI is set, which also flips AccountWidget to instantiate it.
-if(SILENT_MOCK_UI)
-    list(APPEND SILENT_APP_SOURCES
+# unless RECKLESS_MOCK_UI is set, which also flips AccountWidget to instantiate it.
+if(RECKLESS_MOCK_UI)
+    list(APPEND RECKLESS_APP_SOURCES
         src/modules/sp/MockAccountController.h
         src/modules/sp/MockAccountController.cpp
     )
@@ -493,23 +493,23 @@ endif()
 
 set(SOURCES
     src/main.cpp
-    ${SILENT_APP_SOURCES}
+    ${RECKLESS_APP_SOURCES}
 )
 
 # Discover all translator-editable catalogs.
-# Any new `i18n/silent_<locale>.lang` file is embedded automatically.
-file(GLOB TRANSLATION_LANG_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/i18n/silent_*.lang)
+# Any new `i18n/reckless_<locale>.lang` file is embedded automatically.
+file(GLOB TRANSLATION_LANG_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/i18n/reckless_*.lang)
 
 qt_add_executable(${BIN}
     ${SOURCES}
 )
 
-if(SILENT_I18N_TRACE_IDS)
+if(RECKLESS_I18N_TRACE_IDS)
     target_compile_definitions(${BIN} PRIVATE I18N_TRACE_IDS=1)
 endif()
 
-if(SILENT_MOCK_UI)
-    target_compile_definitions(${BIN} PRIVATE SILENT_MOCK_UI=1)
+if(RECKLESS_MOCK_UI)
+    target_compile_definitions(${BIN} PRIVATE RECKLESS_MOCK_UI=1)
 endif()
 
 foreach(LANG_FILE ${TRANSLATION_LANG_FILES})
@@ -540,7 +540,7 @@ target_include_directories(${BIN}
 
 target_link_libraries(${BIN}
     PRIVATE
-    silent_rust
+    reckless_rust
     ssl
     crypto
     pthread
@@ -553,7 +553,7 @@ if(UNIX AND NOT APPLE AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COM
         "-Wl,--export-dynamic"
     )
 
-    set(SILENT_QT_AND_QONTROL_LIBS
+    set(RECKLESS_QT_AND_QONTROL_LIBS
         Qt6::Core
         Qt6::Gui
         Qt6::Widgets
@@ -561,17 +561,17 @@ if(UNIX AND NOT APPLE AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COM
         qontrol
     )
 
-    set(SILENT_ELF_LINK_LIBS)
-    foreach(SILENT_LIB ${SILENT_QT_AND_QONTROL_LIBS})
-        get_target_property(SILENT_LIB_TYPE ${SILENT_LIB} TYPE)
-        if(SILENT_LIB_TYPE STREQUAL "STATIC_LIBRARY")
-            list(APPEND SILENT_ELF_LINK_LIBS "$<LINK_LIBRARY:WHOLE_ARCHIVE,${SILENT_LIB}>")
+    set(RECKLESS_ELF_LINK_LIBS)
+    foreach(RECKLESS_LIB ${RECKLESS_QT_AND_QONTROL_LIBS})
+        get_target_property(RECKLESS_LIB_TYPE ${RECKLESS_LIB} TYPE)
+        if(RECKLESS_LIB_TYPE STREQUAL "STATIC_LIBRARY")
+            list(APPEND RECKLESS_ELF_LINK_LIBS "$<LINK_LIBRARY:WHOLE_ARCHIVE,${RECKLESS_LIB}>")
         else()
-            list(APPEND SILENT_ELF_LINK_LIBS "${SILENT_LIB}")
+            list(APPEND RECKLESS_ELF_LINK_LIBS "${RECKLESS_LIB}")
         endif()
     endforeach()
 
-    target_link_libraries(${BIN} PRIVATE ${SILENT_ELF_LINK_LIBS})
+    target_link_libraries(${BIN} PRIVATE ${RECKLESS_ELF_LINK_LIBS})
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     # Windows host-symbol export for plugin DLLs. Plugins link only against the
     # host import library, so a single static Qt lives in the host and plugins
@@ -594,13 +594,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
         find_program(CMAKE_NM NAMES x86_64-w64-mingw32-nm nm)
     endif()
 
-    set(SILENT_HOST_DEF "${CMAKE_CURRENT_BINARY_DIR}/silent_host_exports.def")
+    set(RECKLESS_HOST_DEF "${CMAKE_CURRENT_BINARY_DIR}/reckless_host_exports.def")
     add_custom_command(TARGET ${BIN} PRE_LINK
         COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/gen_host_exports.sh"
                 "${CMAKE_NM}"
                 "$<TARGET_FILE:qontrol>"
                 "$<TARGET_FILE_DIR:Qt6::Core>"
-                "${SILENT_HOST_DEF}"
+                "${RECKLESS_HOST_DEF}"
                 "$<TARGET_OBJECTS:${BIN}>"
         COMMAND_EXPAND_LISTS
         VERBATIM
@@ -609,7 +609,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 
     target_link_options(${BIN} PRIVATE
         "-Wl,--exclude-all-symbols"
-        "${SILENT_HOST_DEF}"
+        "${RECKLESS_HOST_DEF}"
     )
 
     # Build the import library that plugin DLLs link against. We generate it from
@@ -619,13 +619,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     if(NOT CMAKE_DLLTOOL)
         find_program(CMAKE_DLLTOOL NAMES x86_64-w64-mingw32-dlltool dlltool)
     endif()
-    set(SILENT_HOST_IMPLIB "${CMAKE_CURRENT_BINARY_DIR}/libsilent_host_exports.a")
+    set(RECKLESS_HOST_IMPLIB "${CMAKE_CURRENT_BINARY_DIR}/libreckless_host_exports.a")
     add_custom_command(TARGET ${BIN} POST_BUILD
         COMMAND "${CMAKE_DLLTOOL}"
-                --input-def "${SILENT_HOST_DEF}"
+                --input-def "${RECKLESS_HOST_DEF}"
                 --dllname "$<TARGET_FILE_NAME:${BIN}>"
-                --output-lib "${SILENT_HOST_IMPLIB}"
-        BYPRODUCTS "${SILENT_HOST_IMPLIB}"
+                --output-lib "${RECKLESS_HOST_IMPLIB}"
+        BYPRODUCTS "${RECKLESS_HOST_IMPLIB}"
         VERBATIM
         COMMENT "Generating host import library for plugin DLLs"
     )
@@ -660,7 +660,11 @@ elseif(APPLE)
     set(RECKLESS_ICNS ${RECKLESS_BRAND_DIR}/reckless.icns)
     set_source_files_properties(${RECKLESS_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     target_sources(${BIN} PRIVATE ${RECKLESS_ICNS})
-    set_target_properties(${BIN} PROPERTIES MACOSX_BUNDLE_ICON_FILE reckless.icns)
+    # The bundle is Reckless.app (ws-plaude/silent#113).
+    set_target_properties(${BIN} PROPERTIES
+        OUTPUT_NAME Reckless
+        MACOSX_BUNDLE_BUNDLE_NAME Reckless
+        MACOSX_BUNDLE_ICON_FILE reckless.icns)
 else()
     include(GNUInstallDirs)
     install(TARGETS ${BIN} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -678,7 +682,7 @@ endif()
 # Opt-in plugin host/registry smoke test. OFF by default so it never affects the
 # normal build. When ON it reuses the shared application sources so it links the
 # real Host and PluginRegistry, and drives them headless with mock plugins.
-if(SILENT_BUILD_HOST_SMOKE)
+if(RECKLESS_BUILD_HOST_SMOKE)
     add_subdirectory(tests/interfaces)
     set(SMOKE host_smoke)
 
@@ -693,43 +697,43 @@ if(SILENT_BUILD_HOST_SMOKE)
         foreach(ABI_VERSION 1 2 3 4 5 6 7 8 9 10 11 12)
             qt_add_library(plugin_abi${ABI_VERSION}_fixture MODULE tests/host/PluginAbiFixture.cpp)
             add_dependencies(plugin_abi${ABI_VERSION}_fixture RunBeforeBuild)
-            target_link_libraries(plugin_abi${ABI_VERSION}_fixture PRIVATE silent_interfaces)
+            target_link_libraries(plugin_abi${ABI_VERSION}_fixture PRIVATE reckless_interfaces)
             target_include_directories(plugin_abi${ABI_VERSION}_fixture PRIVATE
                 $<TARGET_PROPERTY:Qt6::Core,INTERFACE_INCLUDE_DIRECTORIES>)
             target_compile_definitions(plugin_abi${ABI_VERSION}_fixture PRIVATE
                 $<TARGET_PROPERTY:Qt6::Core,INTERFACE_COMPILE_DEFINITIONS>)
         endforeach()
         target_include_directories(plugin_abi1_fixture PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-        target_compile_definitions(plugin_abi1_fixture PRIVATE SILENT_ABI1_FIXTURE)
-        target_compile_definitions(plugin_abi2_fixture PRIVATE SILENT_ABI2_FIXTURE)
-        target_compile_definitions(plugin_abi3_fixture PRIVATE SILENT_ABI3_FIXTURE)
-        target_compile_definitions(plugin_abi4_fixture PRIVATE SILENT_ABI4_FIXTURE)
-        target_compile_definitions(plugin_abi5_fixture PRIVATE SILENT_ABI5_FIXTURE)
-        target_compile_definitions(plugin_abi6_fixture PRIVATE SILENT_ABI6_FIXTURE)
-        target_compile_definitions(plugin_abi7_fixture PRIVATE SILENT_ABI7_FIXTURE)
-        target_compile_definitions(plugin_abi8_fixture PRIVATE SILENT_ABI8_FIXTURE)
-        target_compile_definitions(plugin_abi9_fixture PRIVATE SILENT_ABI9_FIXTURE)
-        target_compile_definitions(plugin_abi10_fixture PRIVATE SILENT_ABI10_FIXTURE)
-        target_compile_definitions(plugin_abi11_fixture PRIVATE SILENT_ABI11_FIXTURE)
-        target_compile_definitions(plugin_abi12_fixture PRIVATE SILENT_ABI12_FIXTURE)
+        target_compile_definitions(plugin_abi1_fixture PRIVATE RECKLESS_ABI1_FIXTURE)
+        target_compile_definitions(plugin_abi2_fixture PRIVATE RECKLESS_ABI2_FIXTURE)
+        target_compile_definitions(plugin_abi3_fixture PRIVATE RECKLESS_ABI3_FIXTURE)
+        target_compile_definitions(plugin_abi4_fixture PRIVATE RECKLESS_ABI4_FIXTURE)
+        target_compile_definitions(plugin_abi5_fixture PRIVATE RECKLESS_ABI5_FIXTURE)
+        target_compile_definitions(plugin_abi6_fixture PRIVATE RECKLESS_ABI6_FIXTURE)
+        target_compile_definitions(plugin_abi7_fixture PRIVATE RECKLESS_ABI7_FIXTURE)
+        target_compile_definitions(plugin_abi8_fixture PRIVATE RECKLESS_ABI8_FIXTURE)
+        target_compile_definitions(plugin_abi9_fixture PRIVATE RECKLESS_ABI9_FIXTURE)
+        target_compile_definitions(plugin_abi10_fixture PRIVATE RECKLESS_ABI10_FIXTURE)
+        target_compile_definitions(plugin_abi11_fixture PRIVATE RECKLESS_ABI11_FIXTURE)
+        target_compile_definitions(plugin_abi12_fixture PRIVATE RECKLESS_ABI12_FIXTURE)
         qt_add_library(price_feed_fixture MODULE tests/host/PriceFeedPlugin.cpp)
         add_dependencies(price_feed_fixture RunBeforeBuild)
         # Like real plugins, use Qt headers but resolve Qt symbols from the host.
-        target_link_libraries(price_feed_fixture PRIVATE silent_interfaces)
+        target_link_libraries(price_feed_fixture PRIVATE reckless_interfaces)
         target_include_directories(price_feed_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Core,INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(price_feed_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Core,INTERFACE_COMPILE_DEFINITIONS>)
         qt_add_library(storage_fixture MODULE tests/host/StoragePlugin.cpp)
         qt_add_library(removal_fixture MODULE tests/host/RemovalPlugin.cpp)
-        target_link_libraries(removal_fixture PRIVATE silent_interfaces)
+        target_link_libraries(removal_fixture PRIVATE reckless_interfaces)
         target_include_directories(removal_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_INCLUDE_DIRECTORIES>
             ${CMAKE_SOURCE_DIR}/lib/qontrol/src)
         target_compile_definitions(removal_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_COMPILE_DEFINITIONS>)
         add_dependencies(storage_fixture RunBeforeBuild)
-        target_link_libraries(storage_fixture PRIVATE silent_interfaces)
+        target_link_libraries(storage_fixture PRIVATE reckless_interfaces)
         target_include_directories(storage_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Core,INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(storage_fixture PRIVATE
@@ -737,12 +741,12 @@ if(SILENT_BUILD_HOST_SMOKE)
         # The published SDK alone, laid out as an out-of-tree plugin vendors it
         # (sdk/include/src): the public interfaces and the palette they include, no other
         # header of src/.
-        set(SILENT_SDK_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/sdk/include/src")
-        file(MAKE_DIRECTORY "${SILENT_SDK_INCLUDE}/theme")
+        set(RECKLESS_SDK_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/sdk/include/src")
+        file(MAKE_DIRECTORY "${RECKLESS_SDK_INCLUDE}/theme")
         file(CREATE_LINK "${CMAKE_SOURCE_DIR}/src/interfaces"
-            "${SILENT_SDK_INCLUDE}/interfaces" SYMBOLIC)
+            "${RECKLESS_SDK_INCLUDE}/interfaces" SYMBOLIC)
         file(CREATE_LINK "${CMAKE_SOURCE_DIR}/src/theme/Palette.h"
-            "${SILENT_SDK_INCLUDE}/theme/Palette.h" SYMBOLIC)
+            "${RECKLESS_SDK_INCLUDE}/theme/Palette.h" SYMBOLIC)
         # Account service providers built against that SDK only: the guard headers fail
         # the build if an interface pulls generated Rust/CXX headers.
         foreach(SERVICE_FIXTURE full chain)
@@ -752,15 +756,15 @@ if(SILENT_BUILD_HOST_SMOKE)
             target_include_directories(service_${SERVICE_FIXTURE}_fixture BEFORE PRIVATE
                 ${CMAKE_SOURCE_DIR}/tests/interfaces/generated_guard)
             target_include_directories(service_${SERVICE_FIXTURE}_fixture PRIVATE
-                "${SILENT_SDK_INCLUDE}"
+                "${RECKLESS_SDK_INCLUDE}"
                 $<TARGET_PROPERTY:Qt6::Core,INTERFACE_INCLUDE_DIRECTORIES>)
             target_compile_definitions(service_${SERVICE_FIXTURE}_fixture PRIVATE
                 $<TARGET_PROPERTY:Qt6::Core,INTERFACE_COMPILE_DEFINITIONS>)
         endforeach()
-        target_compile_definitions(service_chain_fixture PRIVATE SILENT_SERVICE_CHAIN_FIXTURE)
+        target_compile_definitions(service_chain_fixture PRIVATE RECKLESS_SERVICE_CHAIN_FIXTURE)
         qt_add_library(custom_widget_fixture MODULE tests/host/CustomWidgetPlugin.cpp)
         add_dependencies(custom_widget_fixture RunBeforeBuild)
-        target_link_libraries(custom_widget_fixture PRIVATE silent_interfaces)
+        target_link_libraries(custom_widget_fixture PRIVATE reckless_interfaces)
         target_include_directories(custom_widget_fixture PRIVATE
             $<TARGET_PROPERTY:Qt6::Widgets,INTERFACE_INCLUDE_DIRECTORIES>)
         target_compile_definitions(custom_widget_fixture PRIVATE
@@ -805,29 +809,29 @@ if(SILENT_BUILD_HOST_SMOKE)
         tests/host/quit_shutdown_smoke.cpp
         tests/host/quit_shutdown_smoke.h
         tests/host/storage_smoke.cpp
-        ${SILENT_APP_SOURCES}
+        ${RECKLESS_APP_SOURCES}
     )
 
     add_dependencies(${SMOKE} RunBeforeBuild qontrol)
     target_compile_definitions(${SMOKE} PRIVATE
-        SILENT_KEYS_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/host/fixtures")
+        RECKLESS_KEYS_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/host/fixtures")
     if(TARGET price_feed_fixture)
         target_sources(${SMOKE} PRIVATE tests/host/plugin_abi_smoke.cpp)
         add_dependencies(${SMOKE} price_feed_fixture plugin_abi1_fixture plugin_abi2_fixture plugin_abi3_fixture plugin_abi4_fixture plugin_abi5_fixture plugin_abi6_fixture plugin_abi7_fixture plugin_abi8_fixture plugin_abi9_fixture plugin_abi10_fixture plugin_abi11_fixture plugin_abi12_fixture)
         target_compile_definitions(${SMOKE} PRIVATE
-            SILENT_ABI1_FIXTURE_PATH="$<TARGET_FILE:plugin_abi1_fixture>"
-            SILENT_ABI2_FIXTURE_PATH="$<TARGET_FILE:plugin_abi2_fixture>"
-            SILENT_ABI3_FIXTURE_PATH="$<TARGET_FILE:plugin_abi3_fixture>"
-            SILENT_ABI4_FIXTURE_PATH="$<TARGET_FILE:plugin_abi4_fixture>"
-            SILENT_ABI5_FIXTURE_PATH="$<TARGET_FILE:plugin_abi5_fixture>"
-            SILENT_ABI6_FIXTURE_PATH="$<TARGET_FILE:plugin_abi6_fixture>"
-            SILENT_ABI7_FIXTURE_PATH="$<TARGET_FILE:plugin_abi7_fixture>"
-            SILENT_ABI8_FIXTURE_PATH="$<TARGET_FILE:plugin_abi8_fixture>"
-            SILENT_ABI9_FIXTURE_PATH="$<TARGET_FILE:plugin_abi9_fixture>"
-            SILENT_ABI10_FIXTURE_PATH="$<TARGET_FILE:plugin_abi10_fixture>"
-            SILENT_ABI11_FIXTURE_PATH="$<TARGET_FILE:plugin_abi11_fixture>"
-            SILENT_ABI12_FIXTURE_PATH="$<TARGET_FILE:plugin_abi12_fixture>"
-            SILENT_PRICE_FEED_FIXTURE="$<TARGET_FILE:price_feed_fixture>")
+            RECKLESS_ABI1_FIXTURE_PATH="$<TARGET_FILE:plugin_abi1_fixture>"
+            RECKLESS_ABI2_FIXTURE_PATH="$<TARGET_FILE:plugin_abi2_fixture>"
+            RECKLESS_ABI3_FIXTURE_PATH="$<TARGET_FILE:plugin_abi3_fixture>"
+            RECKLESS_ABI4_FIXTURE_PATH="$<TARGET_FILE:plugin_abi4_fixture>"
+            RECKLESS_ABI5_FIXTURE_PATH="$<TARGET_FILE:plugin_abi5_fixture>"
+            RECKLESS_ABI6_FIXTURE_PATH="$<TARGET_FILE:plugin_abi6_fixture>"
+            RECKLESS_ABI7_FIXTURE_PATH="$<TARGET_FILE:plugin_abi7_fixture>"
+            RECKLESS_ABI8_FIXTURE_PATH="$<TARGET_FILE:plugin_abi8_fixture>"
+            RECKLESS_ABI9_FIXTURE_PATH="$<TARGET_FILE:plugin_abi9_fixture>"
+            RECKLESS_ABI10_FIXTURE_PATH="$<TARGET_FILE:plugin_abi10_fixture>"
+            RECKLESS_ABI11_FIXTURE_PATH="$<TARGET_FILE:plugin_abi11_fixture>"
+            RECKLESS_ABI12_FIXTURE_PATH="$<TARGET_FILE:plugin_abi12_fixture>"
+            RECKLESS_PRICE_FEED_FIXTURE="$<TARGET_FILE:price_feed_fixture>")
     endif()
     if(TARGET storage_fixture)
         target_sources(${SMOKE} PRIVATE tests/host/access_async_smoke.cpp tests/host/access_async_smoke.h)
@@ -839,22 +843,22 @@ if(SILENT_BUILD_HOST_SMOKE)
         target_sources(${SMOKE} PRIVATE tests/host/plugin_removal_smoke.cpp)
         add_dependencies(${SMOKE} removal_fixture)
         target_compile_definitions(${SMOKE} PRIVATE
-            SILENT_REMOVAL_FIXTURE="$<TARGET_FILE:removal_fixture>")
+            RECKLESS_REMOVAL_FIXTURE="$<TARGET_FILE:removal_fixture>")
         add_dependencies(${SMOKE} storage_fixture)
         target_compile_definitions(${SMOKE} PRIVATE
-            SILENT_STORAGE_FIXTURE="$<TARGET_FILE:storage_fixture>")
+            RECKLESS_STORAGE_FIXTURE="$<TARGET_FILE:storage_fixture>")
     endif()
     if(TARGET service_full_fixture)
         target_sources(${SMOKE} PRIVATE tests/host/account_services_smoke.cpp)
         add_dependencies(${SMOKE} service_full_fixture service_chain_fixture)
         target_compile_definitions(${SMOKE} PRIVATE
-            SILENT_SERVICE_FULL_FIXTURE="$<TARGET_FILE:service_full_fixture>"
-            SILENT_SERVICE_CHAIN_FIXTURE="$<TARGET_FILE:service_chain_fixture>")
+            RECKLESS_SERVICE_FULL_FIXTURE="$<TARGET_FILE:service_full_fixture>"
+            RECKLESS_SERVICE_CHAIN_FIXTURE="$<TARGET_FILE:service_chain_fixture>")
     endif()
     if(TARGET custom_widget_fixture)
         add_dependencies(${SMOKE} custom_widget_fixture)
         target_compile_definitions(${SMOKE} PRIVATE
-            SILENT_CUSTOM_WIDGET_FIXTURE="$<TARGET_FILE:custom_widget_fixture>")
+            RECKLESS_CUSTOM_WIDGET_FIXTURE="$<TARGET_FILE:custom_widget_fixture>")
     endif()
 
     # The catalogs, so TR() returns real text.
@@ -873,7 +877,7 @@ if(SILENT_BUILD_HOST_SMOKE)
 
     target_link_libraries(${SMOKE}
         PRIVATE
-        silent_rust
+        reckless_rust
         ssl
         crypto
         pthread
@@ -920,12 +924,12 @@ endif()
 # Opt-in device GUI end to end probe (tests/e2e/devices/run.sh). OFF by default so it
 # never affects the normal build. When ON it links the shared application sources, as
 # host_smoke does, and drives the real app against Speculos and the Coldcard simulator.
-if(SILENT_BUILD_DEVICE_E2E)
+if(RECKLESS_BUILD_DEVICE_E2E)
     set(DEVICE_E2E device_e2e)
 
     qt_add_executable(${DEVICE_E2E}
         tests/e2e/devices/probe/main.cpp
-        ${SILENT_APP_SOURCES}
+        ${RECKLESS_APP_SOURCES}
     )
 
     add_dependencies(${DEVICE_E2E} RunBeforeBuild qontrol)
@@ -945,7 +949,7 @@ if(SILENT_BUILD_DEVICE_E2E)
 
     target_link_libraries(${DEVICE_E2E}
         PRIVATE
-        silent_rust
+        reckless_rust
         ssl
         crypto
         pthread

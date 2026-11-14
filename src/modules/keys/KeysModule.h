@@ -16,7 +16,7 @@
 #include <interfaces/keys.h>
 #include <interfaces/module.h>
 #include <interfaces/types.h>
-#include <silent.h>
+#include <reckless.h>
 
 class HwiModule;
 class ISigner;

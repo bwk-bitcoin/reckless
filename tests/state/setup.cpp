@@ -14,7 +14,7 @@
 #include <Qontrol>
 #include <functional>
 #include <memory>
-#include <silent.h>
+#include <reckless.h>
 
 #define private public
 #define protected public
@@ -190,7 +190,7 @@ void passwordSuccess(bool destroy) {
 }
 
 void passwordFailure() {
-    QDir directory(QDir::homePath() + "/.silent");
+    QDir directory(QDir::homePath() + "/.reckless");
     require(directory.mkdir("unlock.key"), "filesystem refusal fixture created");
     state::StateSetup setup(Network::Regtest);
     setup.show();
@@ -218,8 +218,8 @@ void passwordFailure() {
 
 void passwordExisting() {
     require(::state_create_with_password(PASSWORD).empty(), "original password state created");
-    QFile key(QDir::homePath() + "/.silent/unlock.key");
-    QFile check(QDir::homePath() + "/.silent/unlock.bip138");
+    QFile key(QDir::homePath() + "/.reckless/unlock.key");
+    QFile check(QDir::homePath() + "/.reckless/unlock.bip138");
     require(key.open(QIODevice::ReadOnly) && check.open(QIODevice::ReadOnly),
             "original unlock files readable");
     auto originalKey = key.readAll();

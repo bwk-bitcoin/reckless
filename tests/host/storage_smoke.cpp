@@ -12,7 +12,7 @@
 #include <QThread>
 #include <QUuid>
 #include <memory>
-#include <silent.h>
+#include <reckless.h>
 #include <utility>
 
 // Synchronize worker completion without delivering its queued result to the public consumer.
@@ -20,7 +20,7 @@
 #include "host/StorageHandle.h"
 #undef private
 
-#ifdef SILENT_STORAGE_FIXTURE
+#ifdef RECKLESS_STORAGE_FIXTURE
 #include "PluginBundleFixture.h"
 #include <QCryptographicHash>
 #include <QDir>
@@ -269,7 +269,7 @@ void migration(Host *host, IModule *module, const QString &run) {
                  "a migration destination is a logical path");
 }
 
-#ifdef SILENT_STORAGE_FIXTURE
+#ifdef RECKLESS_STORAGE_FIXTURE
 const QString FIXTURE_ID = QStringLiteral("storage.fixture");
 // The fixture library installed under another id: its meta() still claims FIXTURE_ID.
 const QString CLAIMER_ID = QStringLiteral("storage.claimer");
@@ -322,7 +322,7 @@ void setStateGrant(const QString &hash, PluginGrant grant) {
 
 // Names and contents below the visible plugin root are sealed.
 void requireSealedRoot(const QString &run, const QByteArray &marker) {
-    QDir root(QDir::home().filePath(QStringLiteral(".silent/%1").arg(FIXTURE_ID)));
+    QDir root(QDir::home().filePath(QStringLiteral(".reckless/%1").arg(FIXTURE_ID)));
     require(root.exists(), "the plugin root is visible below the data directory");
     QDirIterator it(root.path(),
                     QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System,
@@ -556,7 +556,7 @@ void changedIdentity(HostImpl *host, PluginRegistry *registry, const QString &ru
 
 void externalPlugin(HostImpl *host, PluginRegistry *registry, ExternalStorageConsumer &witness,
                     const QString &witness_storage, const QString &run) {
-    QFile file(QString::fromUtf8(SILENT_STORAGE_FIXTURE));
+    QFile file(QString::fromUtf8(RECKLESS_STORAGE_FIXTURE));
     require(file.open(QIODevice::ReadOnly), "the fixture library opens");
     auto library = file.readAll();
     installFixture(FIXTURE_ID, library);
@@ -608,7 +608,7 @@ auto storageSmoke(const QString &password) -> bool {
     droppedCaller(host, plugin.otherModule(), witness, witnessStorage, run);
     lockedStorage(host, plugin.module(), password, run);
     migration(host, plugin.module(), run);
-#ifdef SILENT_STORAGE_FIXTURE
+#ifdef RECKLESS_STORAGE_FIXTURE
     externalPlugin(host, registry, witness, witnessStorage, run);
 #endif
     // A reused HOME keeps the plugin trees: each run removes its own, within their bounds.

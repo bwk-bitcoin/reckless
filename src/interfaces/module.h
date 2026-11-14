@@ -48,7 +48,7 @@ public:
     // Stop accepting work and asynchronously drain every owned instance, including
     // already-closing ones, workers, callbacks and backend writes. Success promises
     // no owned work or callbacks can outlive plugin destruction. Never infer this from a
-    // removed host registration. Refusal keeps the library mapped and retryable. Silent
+    // removed host registration. Refusal keeps the library mapped and retryable. Reckless
     // also calls it on every enabled module when it quits, once its event loop has
     // returned, and waits up to 5 seconds for the answers before the process exits.
     virtual void shutdown(ReqId req_id) {
@@ -70,7 +70,7 @@ signals:
     void error(std::optional<ReqId> req_id, QString message);
 };
 
-#define SILENT_IPlugin_IID "dev.silent.IPlugin/1.0"
-Q_DECLARE_INTERFACE(IPlugin, SILENT_IPlugin_IID)
+#define RECKLESS_IPlugin_IID "dev.reckless.IPlugin/1.0"
+Q_DECLARE_INTERFACE(IPlugin, RECKLESS_IPlugin_IID)
 
-#define SILENT_IModule_IID "dev.silent.IModule/1.0"
+#define RECKLESS_IModule_IID "dev.reckless.IModule/1.0"

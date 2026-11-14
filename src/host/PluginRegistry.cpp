@@ -19,7 +19,7 @@
 #include <QThread>
 #include <algorithm>
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 
 namespace {
 constexpr int PLUGIN_STOP_POLL_INTERVAL_MS = 20;
@@ -302,7 +302,7 @@ void PluginRegistry::applyPluginState(const PluginStateJob &job) {
     }
 
     // Only the plugins sealed in the app state: nothing found loose in
-    // ~/.silent/plugins/ is ever read (ws-plaude/silent#41).
+    // ~/.reckless/plugins/ is ever read (ws-plaude/silent#41).
     for (const auto &bundle : metadata) {
         auto meta = sidecarMeta(bundle);
         QString pluginId = meta.value(QStringLiteral("id")).trimmed();
@@ -939,7 +939,7 @@ QString PluginRegistry::pluginI18nDir(IPlugin *plugin) const {
     if (recordIt != m_records.end() && !recordIt->i18n_dir.isEmpty()) {
         return recordIt->i18n_dir;
     }
-    return QDir::homePath() + QStringLiteral("/.silent/plugins/%1/i18n").arg(id);
+    return QDir::homePath() + QStringLiteral("/.reckless/plugins/%1/i18n").arg(id);
 }
 
 void PluginRegistry::syncPluginTranslations(const QString &plugin_id, bool enabled) {
@@ -1047,7 +1047,7 @@ bool PluginRegistry::enablePlugin(const QString &plugin_id, const PluginLibraryR
     auto *plugin = qobject_cast<IPlugin *>(root);
     if (plugin == nullptr) {
         qWarning() << "Plugin interface cast failed:" << plugin_id;
-        record.load_error = TR("settings-plugin-not-silent");
+        record.load_error = TR("settings-plugin-not-reckless");
         delete record.library;
         record.library = nullptr;
         return false;

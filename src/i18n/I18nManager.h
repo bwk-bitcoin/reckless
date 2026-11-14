@@ -18,7 +18,7 @@ public:
     [[nodiscard]] auto selectedLocale() const -> QString;
     [[nodiscard]] auto applyLocale(const QString &locale, bool persist = true) -> bool;
     auto registerPluginTranslations(const QString &plugin_id, const QString &dir) -> bool;
-    // A plugin's catalogs held in memory, by file name (silent_en.lang): an external
+    // A plugin's catalogs held in memory, by file name (reckless_en.lang): an external
     // plugin's, opened from the app state.
     auto registerPluginCatalogs(const QString &plugin_id, const QHash<QString, QString> &catalogs)
         -> bool;
@@ -41,7 +41,7 @@ private:
         QTranslator *translator = nullptr;
         QString plugin_id;
         QString dir;
-        // Catalogs held in memory, by file name (silent_en.lang), read before `dir`.
+        // Catalogs held in memory, by file name (reckless_en.lang), read before `dir`.
         QHash<QString, QString> catalogs;
         bool installed = false;
     };

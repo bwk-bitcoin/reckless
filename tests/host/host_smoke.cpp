@@ -5,8 +5,8 @@
 // MainWindow or real tabs: it only drives Host::registerInstance/instances/
 // removeInstance and the PluginRegistry builtin path.
 //
-// Built only when SILENT_BUILD_HOST_SMOKE=ON. Run under QT_QPA_PLATFORM=offscreen
-// and a throwaway HOME so the Rust app-state FFI (~/.silent/app.json) stays
+// Built only when RECKLESS_BUILD_HOST_SMOKE=ON. Run under QT_QPA_PLATFORM=offscreen
+// and a throwaway HOME so the Rust app-state FFI (~/.reckless/app.json) stays
 // hermetic. Exits 0 on success, non-zero on the first failed check.
 
 #include <cstdio>
@@ -31,7 +31,7 @@
 #include <common.h>
 #include <memory>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 #include <utility>
 
 #include <AppController.h>
@@ -223,7 +223,7 @@ auto main(int argc, char *argv[]) -> int {
     qRegisterMetaType<std::optional<ReqId>>();
     i18n::I18nManager::get()->init(&app);
     auto arguments = QApplication::arguments();
-#ifdef SILENT_ABI2_FIXTURE_PATH
+#ifdef RECKLESS_ABI2_FIXTURE_PATH
     if (arguments.size() == 4 && arguments.at(1) == QStringLiteral("--plugin-gnu-hash-child")) {
         return smoke::pluginGnuHashChild(arguments.at(2),
                                          arguments.at(3) == QStringLiteral("admit"));
@@ -359,7 +359,7 @@ auto main(int argc, char *argv[]) -> int {
         std::fprintf(stdout, "Backend services smoke: OK\n");
         return gOk ? 0 : 1;
     }
-#ifdef SILENT_SERVICE_FULL_FIXTURE
+#ifdef RECKLESS_SERVICE_FULL_FIXTURE
     if (arguments.contains(QStringLiteral("--account-services"))) {
         // The account shell is themed.
         Theme::init();
@@ -383,7 +383,7 @@ auto main(int argc, char *argv[]) -> int {
         return gOk ? 0 : 1;
     }
 #endif
-#ifdef SILENT_REMOVAL_FIXTURE
+#ifdef RECKLESS_REMOVAL_FIXTURE
     if (arguments.contains(QStringLiteral("--registry-async-errors"))) {
         Theme::init();
         Theme::get()->apply();
@@ -516,7 +516,7 @@ auto main(int argc, char *argv[]) -> int {
         std::fprintf(stdout, "storage contract smoke: OK\n");
         return gOk ? 0 : 1;
     }
-#ifdef SILENT_ABI2_FIXTURE_PATH
+#ifdef RECKLESS_ABI2_FIXTURE_PATH
     if (arguments.size() == 3 && arguments.at(1) == QStringLiteral("--legacy-plugin-abi")) {
         smoke::legacyPluginAbiSmoke(arguments.at(2));
         std::fprintf(stdout, "legacy plugin ABI smoke: OK\n");
@@ -534,17 +534,17 @@ auto main(int argc, char *argv[]) -> int {
 
     smoke::MockPlugin plugin;
     check(qobject_cast<IPlugin *>(&plugin) == &plugin &&
-              plugin.qt_metacast("dev.silent.IPlugin/2.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/3.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/4.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/5.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/6.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/7.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/8.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/9.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/10.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/11.0") == nullptr &&
-              plugin.qt_metacast("dev.silent.IPlugin/12.0") == nullptr,
+              plugin.qt_metacast("dev.reckless.IPlugin/2.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/3.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/4.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/5.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/6.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/7.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/8.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/9.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/10.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/11.0") == nullptr &&
+              plugin.qt_metacast("dev.reckless.IPlugin/12.0") == nullptr,
           "mock plugin metadata exposes ABI 1 only");
     auto *module = plugin.module();
 

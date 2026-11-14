@@ -63,14 +63,14 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent.parent
     lang_dir = (repo_root / args.lang_dir).resolve()
 
-    en_file = lang_dir / "silent_en.lang"
+    en_file = lang_dir / "reckless_en.lang"
     if not en_file.exists():
         raise FileNotFoundError(en_file)
 
     append_if_missing(en_file, format_single(args.msg_id, args.english_text), args.msg_id)
 
-    for locale_file in sorted(lang_dir.glob("silent_*.lang")):
-        if locale_file.name == "silent_en.lang":
+    for locale_file in sorted(lang_dir.glob("reckless_*.lang")):
+        if locale_file.name == "reckless_en.lang":
             continue
         append_if_missing(
             locale_file,

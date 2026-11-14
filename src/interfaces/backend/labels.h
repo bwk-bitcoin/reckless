@@ -38,4 +38,4 @@ signals:
 
 } // namespace backend
 
-Q_DECLARE_INTERFACE(backend::ILabels, "dev.silent.backend.ILabels/1.0")
+Q_DECLARE_INTERFACE(backend::ILabels, "dev.reckless.backend.ILabels/1.0")

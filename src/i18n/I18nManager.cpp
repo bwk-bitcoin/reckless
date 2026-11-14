@@ -5,7 +5,7 @@
 #include <QLocale>
 #include <QLoggingCategory>
 #include <QTextStream>
-#include <silent.h>
+#include <reckless.h>
 
 namespace i18n {
 
@@ -239,14 +239,14 @@ auto I18nManager::applyLocale(const QString &locale, bool persist) -> bool {
         m_base_translator_installed = false;
     }
     auto *baseTranslator = static_cast<CatalogTranslator *>(m_base_translator);
-    if (baseTranslator != nullptr && baseTranslator->loadLangResource(":/i18n/silent_en.lang")) {
+    if (baseTranslator != nullptr && baseTranslator->loadLangResource(":/i18n/reckless_en.lang")) {
         m_base_translator_installed = QApplication::installTranslator(m_base_translator);
     }
 
     auto *localeTranslator = static_cast<CatalogTranslator *>(m_translator);
     QString loadedLocale;
     for (const auto &candidate : candidates) {
-        auto resourcePath = QString(":/i18n/silent_%1.lang").arg(candidate);
+        auto resourcePath = QString(":/i18n/reckless_%1.lang").arg(candidate);
         if (localeTranslator != nullptr && localeTranslator->loadLangResource(resourcePath)) {
             loadedLocale = candidate;
             break;
@@ -290,7 +290,7 @@ auto I18nManager::applyLocale(const QString &locale, bool persist) -> bool {
         bool pluginLoaded = false;
         const QString prefix = entry.plugin_id + '.';
         for (const auto &candidate : candidates) {
-            QString name = QString("silent_%1.lang").arg(candidate);
+            QString name = QString("reckless_%1.lang").arg(candidate);
             if (entry.catalogs.contains(name)) {
                 if (pluginTranslator->loadLangText(entry.catalogs.value(name), prefix)) {
                     pluginLoaded = true;

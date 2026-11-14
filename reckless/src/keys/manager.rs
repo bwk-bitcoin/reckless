@@ -1,0 +1,3569 @@
+//! In-memory view of every registered key on one network, backed by a `KeyStore`.
+//!
+//! `KeyManager` owns the records for one network and writes every change through to
+//! disk before it updates memory. Everything that can be derived from a record and the
+//! live device list, such as whether a key is connected, is computed at call time and
+//! never cached.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
+
+use bitcoin::{
+    bip32::{DerivationPath, Fingerprint, Xpub},
+    secp256k1::{All, Secp256k1},
+    Network, Psbt,
+};
+use bwk::bwk_sign::musig::{MusigRound, MusigStatus};
+use bwk_sp::bwk_sign::{
+    bwk_descriptor::{
+        descriptor::Descriptor, sp_descriptor::SpDescriptor, wallet::WalletDescriptorExt,
+    },
+    miniscript::DescriptorPublicKey,
+};
+use zeroize::Zeroizing;
+
+use crate::keys::{
+    crypto::{self, Password},
+    error::Error,
+    hot, ledger_nonces, musig_sessions, network_name,
+    psbt::{
+        inspect_bytes, musig_completed_fingerprints, musig_nonces_complete,
+        ordinary_signature_complete, parse_v2, PsbtArtifacts,
+    },
+    record::{DescriptorEntry, DeviceRecord, KeyRecord, RouteKind, SecretEnvelope, XpubEntry},
+    store::KeyStore,
+    supports_musig, CAPABILITY_MUSIG, CAPABILITY_MUSIG_CACHE,
+};
+
+/// One signing device as currently seen by a hardware backend, for example HWI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveDevice {
+    /// Stable, serial based where the device provides one.
+    pub id: String,
+    pub kind: String,
+    pub model: String,
+    pub serial: String,
+    /// Name of the module that produced this device, for example "hwi".
+    pub module: String,
+    /// Firmware version, empty when the module does not report one (hwi).
+    pub version: String,
+    /// Explicit ordinary, Taproot, SP and MuSig2 capability bits (`CAPABILITY_*`).
+    pub capabilities: u32,
+    /// None until the device reports one: a locked or unsupported device has none.
+    pub fingerprint: Option<Fingerprint>,
+}
+
+impl LiveDevice {
+    pub fn to_record(&self) -> DeviceRecord {
+        DeviceRecord {
+            kind: self.kind.clone(),
+            model: self.model.clone(),
+            serial: self.serial.clone(),
+            module: self.module.clone(),
+            version: self.version.clone(),
+            capabilities: self.capabilities,
+        }
+    }
+}
+
+/// Why a candidate cannot sign right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnusableReason {
+    /// No key record exists for this fingerprint on this network.
+    NotRegistered,
+    /// The key exists but has no route at all.
+    NoRoute,
+    /// The only routes are USB and no matching device is connected.
+    DeviceNotConnected,
+    /// The only route is Hot and the record carries no secret.
+    NoHotSecret,
+    /// The SP key has not completed the output scripts yet.
+    SpOutputsPending,
+    UnsupportedMusig,
+    UnsupportedOperation,
+}
+
+/// One fingerprint the PSBT requires, whether or not a key is registered for it and
+/// whether or not it has a usable route right now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SigningCandidate {
+    pub fingerprint: Fingerprint,
+    /// Empty when the key is not registered: there is no alias to show yet.
+    pub alias: String,
+    pub registered: bool,
+    /// The route the signing flow would take, None when the key is unusable.
+    pub route: Option<RouteKind>,
+    /// The live device id, set only when `route` is `RouteKind::Usb`.
+    pub device_id: String,
+    /// This key completes the SP output scripts, so it acts before the others.
+    pub must_sign_first: bool,
+    /// None when the candidate can sign right now.
+    pub unusable: Option<UnusableReason>,
+    /// The key already gave its share for the PSBT's current MuSig2 round.
+    pub musig_done: bool,
+    pub nonces_done: bool,
+    pub signatures_done: bool,
+    /// Every MuSig policy this key still owes nonces for has a usable cached session.
+    /// Always true when nothing is pending, and only meaningful in round one.
+    pub cache_ready: bool,
+    /// The key's route supports transaction-independent cache preparation. False for
+    /// a QR key whose recorded device does not advertise the cache capability.
+    pub cache_supported: bool,
+}
+
+/// What the signer picker is built from for one PSBT.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SigningPlan {
+    /// One entry per fingerprint the PSBT requires, SP first when it must sign first,
+    /// then in fingerprint order.
+    pub candidates: Vec<SigningCandidate>,
+    /// Connected devices whose fingerprint this PSBT does not need, so the UI can warn
+    /// about a wrong device.
+    pub unrelated_live: Vec<LiveDevice>,
+    pub sp_fingerprint: Option<Fingerprint>,
+    pub sp_outputs_pending: bool,
+}
+
+/// Names the exact cause instead of a catch-all: empty routes, hot with no secret, or
+/// the remaining case of a route that needs a device that is not connected.
+fn unusable_reason(record: &KeyRecord) -> UnusableReason {
+    if record.routes.is_empty() {
+        return UnusableReason::NoRoute;
+    }
+    if record.routes.as_slice() == [RouteKind::Hot] && record.secret.is_none() {
+        return UnusableReason::NoHotSecret;
+    }
+    UnusableReason::DeviceNotConnected
+}
+
+pub trait KeyManagerImpl {
+    fn network(&self) -> Network;
+
+    fn keys(&self) -> Vec<KeyRecord>;
+    fn key(&self, fingerprint: Fingerprint) -> Option<&KeyRecord>;
+    fn add_key(&mut self, record: KeyRecord) -> Result<(), Error>;
+    fn remove_key(&mut self, fingerprint: Fingerprint, force: bool) -> Result<(), Error>;
+    fn set_alias(&mut self, fingerprint: Fingerprint, alias: String) -> Result<(), Error>;
+
+    fn import_hot_key(
+        &mut self,
+        mnemonic: Zeroizing<String>,
+        alias: String,
+        password: Password,
+    ) -> Result<Fingerprint, Error>;
+    /// Stores a key `hot::seal_mnemonic` already sealed: a new record with the
+    /// secret and the Hot route, or the existing record updated with both in the
+    /// same store write.
+    fn commit_hot_key(
+        &mut self,
+        fingerprint: Fingerprint,
+        envelope: SecretEnvelope,
+        alias: String,
+    ) -> Result<(), Error>;
+    fn reveal_mnemonic(
+        &self,
+        fingerprint: Fingerprint,
+        password: Password,
+    ) -> Result<Zeroizing<String>, Error>;
+
+    fn add_route(&mut self, fingerprint: Fingerprint, kind: RouteKind) -> Result<(), Error>;
+    fn remove_route(&mut self, fingerprint: Fingerprint, kind: RouteKind) -> Result<(), Error>;
+    fn set_route_order(
+        &mut self,
+        fingerprint: Fingerprint,
+        order: Vec<RouteKind>,
+    ) -> Result<(), Error>;
+    fn best_route(&self, fingerprint: Fingerprint) -> Option<RouteKind>;
+
+    fn record_device(
+        &mut self,
+        fingerprint: Fingerprint,
+        device: DeviceRecord,
+    ) -> Result<(), Error>;
+    fn set_live_devices(&mut self, live: Vec<LiveDevice>);
+    fn live_devices(&self) -> &[LiveDevice];
+
+    fn cache_xpub(
+        &mut self,
+        fingerprint: Fingerprint,
+        path: DerivationPath,
+        xpub: Xpub,
+    ) -> Result<(), Error>;
+    /// Marks used every xpub `descriptor` carries under the origin of a registered key,
+    /// caching it when the cache lacks it. One conflicting with the xpub cached at its
+    /// path is left alone.
+    fn mark_xpubs_used(&mut self, descriptor: &str) -> Result<(), Error>;
+    /// Drops the xpub cached at `path`, unless it is used or a registered descriptor
+    /// carries it.
+    fn remove_xpub(&mut self, fingerprint: Fingerprint, path: &DerivationPath)
+        -> Result<(), Error>;
+    fn xpub(&self, fingerprint: Fingerprint, path: &DerivationPath) -> Option<Xpub>;
+
+    fn set_descriptor_registered(
+        &mut self,
+        fingerprint: Fingerprint,
+        alias: String,
+        descriptor: String,
+    ) -> Result<(), Error>;
+    /// Records `descriptor` as registered for the key, as `set_descriptor_registered`
+    /// does, with the proof the device returned for it.
+    fn set_descriptor_hmac(
+        &mut self,
+        fingerprint: Fingerprint,
+        alias: String,
+        descriptor: String,
+        hmac: [u8; 32],
+    ) -> Result<(), Error>;
+    /// The stored proof of `descriptor` on the key, None when absent or unreadable.
+    fn descriptor_hmac(&self, fingerprint: Fingerprint, descriptor: &str) -> Option<[u8; 32]>;
+    fn clear_descriptor_registration(
+        &mut self,
+        fingerprint: Fingerprint,
+        descriptor: &str,
+    ) -> Result<(), Error>;
+    fn registered_descriptors(&self, fingerprint: Fingerprint) -> &[DescriptorEntry];
+    fn keys_for_descriptor(&self, descriptor: &str) -> Vec<Fingerprint>;
+
+    fn required_fingerprints(&self, psbt_bytes: &[u8]) -> Result<BTreeSet<Fingerprint>, Error>;
+    fn signing_plan(&self, psbt_bytes: &[u8]) -> Result<SigningPlan, Error>;
+}
+
+/// The records by fingerprint, active ones apart from removed ones.
+fn split_deleted(
+    records: Vec<KeyRecord>,
+) -> (
+    BTreeMap<Fingerprint, KeyRecord>,
+    BTreeMap<Fingerprint, KeyRecord>,
+) {
+    let (deleted, active): (Vec<_>, Vec<_>) = records.into_iter().partition(|r| r.deleted);
+    let by_fingerprint = |records: Vec<KeyRecord>| {
+        records
+            .into_iter()
+            .map(|record| (record.fingerprint, record))
+            .collect()
+    };
+    (by_fingerprint(active), by_fingerprint(deleted))
+}
+
+/// Owns the in-memory view of every registered key on one network.
+pub struct KeyManager {
+    network: Network,
+    records: BTreeMap<Fingerprint, KeyRecord>,
+    // Removed keys, kept with their whole state; out of `records` and every list.
+    deleted: BTreeMap<Fingerprint, KeyRecord>,
+    store: KeyStore,
+    live: Vec<LiveDevice>,
+    secp: Secp256k1<All>,
+}
+
+pub(crate) struct UsedXpub {
+    pub fingerprint: Fingerprint,
+    pub entry: XpubEntry,
+}
+
+impl KeyManager {
+    pub(crate) fn used_xpubs(&self) -> Vec<UsedXpub> {
+        self.records
+            .values()
+            .flat_map(|record| {
+                record
+                    .xpubs
+                    .iter()
+                    .filter(|entry| entry.used)
+                    .map(|entry| UsedXpub {
+                        fingerprint: record.fingerprint,
+                        entry: entry.clone(),
+                    })
+            })
+            .collect()
+    }
+
+    /// Merge only monotonic usage metadata; persistence happened on the worker.
+    pub(crate) fn merge_used_xpubs(&mut self, used: &[UsedXpub]) -> bool {
+        let mut changed = false;
+        for used in used {
+            let Some(record) = self.records.get_mut(&used.fingerprint) else {
+                continue;
+            };
+            match record
+                .xpubs
+                .iter_mut()
+                .find(|entry| entry.path == used.entry.path)
+            {
+                Some(entry) if entry.xpub == used.entry.xpub => {
+                    changed |= !entry.used;
+                    entry.used = true;
+                }
+                Some(_) => log::warn!("worker usage conflicts with a newer cached xpub; retained"),
+                None => {
+                    insert_xpub(record, used.entry.clone());
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
+
+    pub(crate) fn import_portable(&mut self, record: KeyRecord) -> Result<KeyRecord, Error> {
+        let record = self.store.import_portable(record)?;
+        self.accept_imported(record.clone())?;
+        Ok(record)
+    }
+
+    pub(crate) fn accept_imported(&mut self, record: KeyRecord) -> Result<(), Error> {
+        if record.network != self.network {
+            return Err(Error::NetworkMismatch {
+                expected: self.network.to_string(),
+                found: record.network.to_string(),
+            });
+        }
+        self.deleted.remove(&record.fingerprint);
+        self.records.insert(record.fingerprint, record);
+        Ok(())
+    }
+
+    fn requested_musig_policies(
+        &self,
+        real: &Psbt,
+    ) -> Result<BTreeMap<String, MusigStatus>, Error> {
+        let mut policies = BTreeMap::new();
+        for record in self.records.values() {
+            for entry in &record.descriptors {
+                if policies.contains_key(&entry.descriptor) {
+                    continue;
+                }
+                if let Some(status) =
+                    ledger_nonces::signing_status(record.fingerprint, &entry.descriptor, real)
+                        .map_err(Error::State)?
+                {
+                    policies.insert(entry.descriptor.clone(), status);
+                }
+            }
+        }
+        Ok(policies)
+    }
+
+    fn ledger_candidate(
+        &self,
+        candidate: &mut SigningCandidate,
+        real: &Psbt,
+        policies: &BTreeMap<String, MusigStatus>,
+        round1: bool,
+    ) -> Result<(), Error> {
+        let Some(record) = self.records.get(&candidate.fingerprint) else {
+            return Ok(());
+        };
+        if !record.routes.contains(RouteKind::Usb)
+            || !record
+                .devices
+                .iter()
+                .any(|device| ledger_nonces::is_ledger(&device.kind))
+        {
+            return Ok(());
+        }
+        let mut requested = false;
+        let mut done = true;
+        let mut cached = true;
+        let check_cache = round1 && candidate.unusable == Some(UnusableReason::DeviceNotConnected);
+        for (policy, status) in policies {
+            let Some(own) = status
+                .cosigners
+                .iter()
+                .find(|own| own.fingerprint == candidate.fingerprint)
+            else {
+                continue;
+            };
+            requested = true;
+            done &= if round1 {
+                own.nonces == own.expected
+            } else {
+                own.partial_sigs == own.expected
+            };
+            if check_cache && own.nonces < own.expected {
+                cached &= ledger_nonces::can_publish(candidate.fingerprint, policy, real)
+                    .map_err(Error::State)?;
+            }
+        }
+        if requested {
+            candidate.musig_done = done;
+            if round1 {
+                candidate.nonces_done |= done;
+            } else {
+                candidate.signatures_done |= done;
+            }
+            if check_cache && cached {
+                candidate.route = Some(RouteKind::Usb);
+                candidate.unusable = None;
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether the route supports transaction-independent cache preparation: a QR
+    /// key only when its recorded device advertises the cache capability.
+    fn cache_support(&self, fingerprint: Fingerprint, route: Option<RouteKind>) -> bool {
+        match route {
+            Some(RouteKind::Qr) => self.records.get(&fingerprint).is_some_and(|record| {
+                record
+                    .devices
+                    .iter()
+                    .any(|device| device.capabilities & CAPABILITY_MUSIG_CACHE != 0)
+            }),
+            Some(RouteKind::SdCard) => false,
+            _ => true,
+        }
+    }
+
+    /// Whether every MuSig policy this key still owes nonces for holds a usable
+    /// cached session, read from the in-memory snapshot only. `round1` false and
+    /// nothing pending both read as ready: there is nothing to prepare.
+    fn cache_ready(
+        &self,
+        fingerprint: Fingerprint,
+        real: &Psbt,
+        policies: &BTreeMap<String, MusigStatus>,
+        round1: bool,
+        route: Option<RouteKind>,
+    ) -> Result<bool, Error> {
+        if !round1 {
+            return Ok(true);
+        }
+        let mut ready = true;
+        let mut pending = false;
+        for (policy, status) in policies {
+            let Some(own) = status
+                .cosigners
+                .iter()
+                .find(|own| own.fingerprint == fingerprint)
+            else {
+                continue;
+            };
+            if own.nonces >= own.expected {
+                continue;
+            }
+            pending = true;
+            ready &= match route {
+                Some(RouteKind::Hot) => {
+                    musig_sessions::count_for(fingerprint, policy, RouteKind::Hot) > 0
+                }
+                Some(RouteKind::Usb) => {
+                    musig_sessions::count_for(fingerprint, policy, RouteKind::Usb) > 0
+                        || self.usb_allocation(fingerprint, policy, real)
+                }
+                Some(RouteKind::Qr) => {
+                    musig_sessions::qr_ready(fingerprint, policy, real).map_err(Error::State)?
+                }
+                _ => false,
+            };
+        }
+        Ok(!pending || ready)
+    }
+
+    /// Whether the USB provider already holds an allocation bound to this attempt.
+    fn usb_allocation(&self, fingerprint: Fingerprint, policy: &str, real: &Psbt) -> bool {
+        let Ok(parsed) = musig_sessions::descriptor(policy) else {
+            return false;
+        };
+        let Ok(binding) = musig_sessions::binding(real, &parsed, fingerprint) else {
+            return false;
+        };
+        musig_sessions::snapshot(fingerprint).is_some_and(|state| {
+            state.allocated.iter().any(|allocation| {
+                allocation.binding == binding && allocation.provider == RouteKind::Usb
+            })
+        })
+    }
+
+    pub fn new(store: KeyStore, network: Network) -> Result<Self, Error> {
+        let (records, deleted) = split_deleted(store.list()?);
+        Ok(Self {
+            network,
+            records,
+            deleted,
+            store,
+            live: Vec::new(),
+            secp: Secp256k1::new(),
+        })
+    }
+
+    /// Re-reads every record from the store, for when another process wrote one.
+    pub fn reload(&mut self) -> Result<(), Error> {
+        (self.records, self.deleted) = split_deleted(self.store.list()?);
+        Ok(())
+    }
+
+    /// Writes through to the store before committing the change to memory, so memory
+    /// never holds a change that failed to reach disk.
+    fn mutate<F>(&mut self, fingerprint: Fingerprint, apply: F) -> Result<(), Error>
+    where
+        F: FnOnce(&mut KeyRecord) -> Result<(), Error>,
+    {
+        if !self.records.contains_key(&fingerprint) {
+            return Err(Error::UnknownKey(fingerprint));
+        }
+        let saved = self.store.update(fingerprint, apply)?;
+        self.records.insert(fingerprint, saved);
+        Ok(())
+    }
+
+    /// An sp() descriptor carrying its spend secret is never stored in a record.
+    fn refuse_sp_spend_descriptor(&self, descriptor: &str) -> Result<(), Error> {
+        let Ok(parsed) = SpDescriptor::from_str(descriptor) else {
+            return Ok(());
+        };
+        match parsed.spend_secret_key(&self.secp) {
+            Ok(Some(_)) => Err(Error::SpSpendDescriptor),
+            Ok(None) => Ok(()),
+            Err(e) => Err(Error::DescriptorParse(e.to_string())),
+        }
+    }
+
+    fn route_is_usable(&self, record: &KeyRecord, kind: RouteKind) -> bool {
+        match kind {
+            RouteKind::Hot => record.secret.is_some(),
+            RouteKind::Usb => self.live_device_for(record.fingerprint).is_some(),
+            RouteKind::Qr | RouteKind::SdCard => true,
+        }
+    }
+
+    fn signing_device(&self, fingerprint: Fingerprint, required: u32) -> Option<&LiveDevice> {
+        self.live.iter().find(|device| {
+            device.fingerprint == Some(fingerprint) && device.capabilities & required == required
+        })
+    }
+
+    fn best_signing_route(&self, fingerprint: Fingerprint, required: u32) -> Option<RouteKind> {
+        let record = self.records.get(&fingerprint)?;
+        record
+            .routes
+            .as_slice()
+            .iter()
+            .copied()
+            .find(|kind| match kind {
+                RouteKind::Hot => record.secret.is_some(),
+                RouteKind::Usb => self.signing_device(fingerprint, required).is_some(),
+                RouteKind::Qr | RouteKind::SdCard => {
+                    required & CAPABILITY_MUSIG == 0 || self.can_musig(fingerprint)
+                }
+            })
+    }
+
+    /// Derived from the record and the live device list, never stored.
+    pub fn is_connected(&self, fingerprint: Fingerprint) -> bool {
+        self.live_device_for(fingerprint).is_some()
+    }
+
+    pub fn check_device_signing(
+        &self,
+        psbt_bytes: &[u8],
+        fingerprint: Fingerprint,
+        available: u32,
+    ) -> Result<(), Error> {
+        let descriptors = self.registered_sp_descriptors()?;
+        let artifacts = inspect_bytes(psbt_bytes, &descriptors, &self.secp)?;
+        let required = artifacts
+            .required_capabilities
+            .get(&fingerprint)
+            .filter(|_| artifacts.required.contains(&fingerprint))
+            .ok_or_else(|| Error::PsbtParse(format!("key '{fingerprint}' is not required")))?;
+        if available & required != *required {
+            return Err(Error::UnsupportedOperation {
+                fingerprint,
+                required: *required,
+                available,
+            });
+        }
+        Ok(())
+    }
+
+    /// Whether the key can sign MuSig2: reckless signs with its hot secret, or one of its
+    /// recorded devices or its live device reports the MuSig2 capability.
+    pub fn can_musig(&self, fingerprint: Fingerprint) -> bool {
+        let Some(record) = self.records.get(&fingerprint) else {
+            return false;
+        };
+        record.secret.is_some()
+            || record
+                .devices
+                .iter()
+                .any(|device| supports_musig(device.capabilities))
+            || self
+                .live_device_for(fingerprint)
+                .is_some_and(|device| supports_musig(device.capabilities))
+    }
+
+    /// Derived from the record, never stored.
+    pub fn has_hot_secret(&self, fingerprint: Fingerprint) -> bool {
+        self.records
+            .get(&fingerprint)
+            .is_some_and(|record| record.secret.is_some())
+    }
+
+    /// The first live device carrying this fingerprint, if any.
+    pub fn live_device_for(&self, fingerprint: Fingerprint) -> Option<&LiveDevice> {
+        self.live
+            .iter()
+            .find(|device| device.fingerprint == Some(fingerprint))
+    }
+
+    fn candidate_for(
+        &self,
+        fingerprint: Fingerprint,
+        artifacts: &PsbtArtifacts,
+    ) -> SigningCandidate {
+        let is_sp = artifacts.sp_fingerprint == Some(fingerprint);
+        let record = self.records.get(&fingerprint);
+        let mut candidate = SigningCandidate {
+            fingerprint,
+            alias: record
+                .map(|record| record.alias.clone())
+                .unwrap_or_default(),
+            registered: record.is_some(),
+            route: None,
+            device_id: String::new(),
+            must_sign_first: is_sp && artifacts.sp_outputs_pending,
+            unusable: Some(UnusableReason::NotRegistered),
+            musig_done: artifacts.musig_done.contains(&fingerprint),
+            nonces_done: false,
+            signatures_done: false,
+            cache_ready: true,
+            cache_supported: true,
+        };
+        let Some(record) = record else {
+            return candidate;
+        };
+        if artifacts.sp_outputs_pending && !is_sp {
+            candidate.unusable = Some(UnusableReason::SpOutputsPending);
+            return candidate;
+        }
+        let Some(required) = artifacts.required_capabilities.get(&fingerprint).copied() else {
+            candidate.unusable = Some(UnusableReason::UnsupportedOperation);
+            return candidate;
+        };
+        candidate.route = self.best_signing_route(fingerprint, required);
+        candidate.unusable = candidate
+            .route
+            .is_none()
+            .then(|| self.signing_unusable_reason(record, required));
+        if candidate.route == Some(RouteKind::Usb) {
+            candidate.device_id = self
+                .signing_device(fingerprint, required)
+                .map(|device| device.id.clone())
+                .unwrap_or_default();
+        }
+        candidate
+    }
+
+    fn signing_unusable_reason(&self, record: &KeyRecord, required: u32) -> UnusableReason {
+        let connected = record.routes.contains(RouteKind::Usb)
+            && self.live_device_for(record.fingerprint).is_some();
+        match unusable_reason(record) {
+            reason @ (UnusableReason::NoRoute | UnusableReason::NoHotSecret) => reason,
+            _ if required & CAPABILITY_MUSIG != 0
+                && (connected || !self.can_musig(record.fingerprint)) =>
+            {
+                UnusableReason::UnsupportedMusig
+            }
+            _ if connected => UnusableReason::UnsupportedOperation,
+            reason => reason,
+        }
+    }
+
+    /// Every `sp(` descriptor registered on any key on this network, parsed. A
+    /// descriptor that fails to parse is refused outright rather than skipped: a
+    /// broken registration must not silently vanish from the signing plan.
+    pub fn registered_sp_descriptors(&self) -> Result<Vec<SpDescriptor>, Error> {
+        self.records
+            .values()
+            .flat_map(|record| record.descriptors.iter())
+            .filter(|entry| entry.descriptor.starts_with("sp("))
+            .map(|entry| {
+                SpDescriptor::from_str(&entry.descriptor)
+                    .map_err(|e| Error::DescriptorParse(e.to_string()))
+            })
+            .collect()
+    }
+
+    /// Splitting this from `signing_plan` keeps the plan testable without building a
+    /// PSBT for every ordering case.
+    pub fn plan_from_artifacts(&self, artifacts: &PsbtArtifacts) -> SigningPlan {
+        let mut candidates: Vec<SigningCandidate> = artifacts
+            .required
+            .iter()
+            .map(|fingerprint| self.candidate_for(*fingerprint, artifacts))
+            .collect();
+
+        if let Some(index) = candidates
+            .iter()
+            .position(|candidate| candidate.must_sign_first)
+        {
+            let sp_candidate = candidates.remove(index);
+            candidates.insert(0, sp_candidate);
+        }
+
+        let unrelated_live = self
+            .live
+            .iter()
+            .filter(|device| {
+                device
+                    .fingerprint
+                    .is_some_and(|fingerprint| !artifacts.required.contains(&fingerprint))
+            })
+            .cloned()
+            .collect();
+
+        SigningPlan {
+            candidates,
+            unrelated_live,
+            sp_fingerprint: artifacts.sp_fingerprint,
+            sp_outputs_pending: artifacts.sp_outputs_pending,
+        }
+    }
+}
+
+impl KeyManagerImpl for KeyManager {
+    fn network(&self) -> Network {
+        self.network
+    }
+
+    fn keys(&self) -> Vec<KeyRecord> {
+        self.records.values().cloned().collect()
+    }
+
+    fn key(&self, fingerprint: Fingerprint) -> Option<&KeyRecord> {
+        self.records.get(&fingerprint)
+    }
+
+    fn add_key(&mut self, record: KeyRecord) -> Result<(), Error> {
+        if record.network != self.network {
+            return Err(Error::NetworkMismatch {
+                expected: network_name(self.network)?.to_string(),
+                found: network_name(record.network)?.to_string(),
+            });
+        }
+        let fingerprint = record.fingerprint;
+        // The same key removed before: taken up again, with what it held.
+        if let Some(previous) = self.deleted.get(&fingerprint) {
+            let revived = KeyRecord::revive(previous.clone(), record);
+            self.store.save(&revived)?;
+            self.deleted.remove(&fingerprint);
+            self.records.insert(fingerprint, revived);
+            return Ok(());
+        }
+        match self.store.insert(&record) {
+            Ok(()) => {
+                self.records.insert(fingerprint, record);
+                Ok(())
+            }
+            Err(Error::DuplicateKey(fp)) => {
+                if let Ok(existing) = self.store.load(fp) {
+                    self.records.insert(fp, existing);
+                }
+                Err(Error::DuplicateKey(fp))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn import_hot_key(
+        &mut self,
+        mnemonic: Zeroizing<String>,
+        alias: String,
+        password: Password,
+    ) -> Result<Fingerprint, Error> {
+        let (fingerprint, envelope) = hot::seal_mnemonic(&mnemonic, self.network, password)?;
+        self.commit_hot_key(fingerprint, envelope, alias)?;
+        Ok(fingerprint)
+    }
+
+    fn commit_hot_key(
+        &mut self,
+        fingerprint: Fingerprint,
+        envelope: SecretEnvelope,
+        alias: String,
+    ) -> Result<(), Error> {
+        if !self.records.contains_key(&fingerprint) {
+            let mut record = KeyRecord::new(fingerprint, self.network, alias);
+            record.secret = Some(envelope.clone());
+            record.routes.push(RouteKind::Hot)?;
+            match self.add_key(record) {
+                Ok(()) => return Ok(()),
+                Err(Error::DuplicateKey(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+
+        self.mutate(fingerprint, |record| {
+            if record.secret.is_some() {
+                return Err(Error::SecretAlreadyPresent(fingerprint));
+            }
+            record.secret = Some(envelope);
+            record.routes.push(RouteKind::Hot)
+        })
+    }
+
+    fn reveal_mnemonic(
+        &self,
+        fingerprint: Fingerprint,
+        password: Password,
+    ) -> Result<Zeroizing<String>, Error> {
+        let record = self
+            .records
+            .get(&fingerprint)
+            .ok_or(Error::UnknownKey(fingerprint))?;
+        crypto::open_mnemonic(record, self.network, password)
+    }
+
+    fn remove_key(&mut self, fingerprint: Fingerprint, force: bool) -> Result<(), Error> {
+        let record = self
+            .records
+            .get(&fingerprint)
+            .ok_or(Error::UnknownKey(fingerprint))?;
+        let descriptor_count = record.descriptors.len();
+        if descriptor_count > 0 && !force {
+            return Err(Error::DescriptorsRegistered {
+                fingerprint,
+                count: descriptor_count,
+            });
+        }
+        // Kept on disk with its whole state, marked deleted.
+        let saved = self.store.update(fingerprint, |record| {
+            record.deleted = true;
+            Ok(())
+        })?;
+        self.records.remove(&fingerprint);
+        self.deleted.insert(fingerprint, saved);
+        Ok(())
+    }
+
+    fn set_alias(&mut self, fingerprint: Fingerprint, alias: String) -> Result<(), Error> {
+        self.mutate(fingerprint, |record| {
+            record.alias = alias;
+            Ok(())
+        })
+    }
+
+    fn add_route(&mut self, fingerprint: Fingerprint, kind: RouteKind) -> Result<(), Error> {
+        self.mutate(fingerprint, |record| record.routes.push(kind))
+    }
+
+    fn remove_route(&mut self, fingerprint: Fingerprint, kind: RouteKind) -> Result<(), Error> {
+        self.mutate(fingerprint, |record| record.routes.remove(kind))
+    }
+
+    fn set_route_order(
+        &mut self,
+        fingerprint: Fingerprint,
+        order: Vec<RouteKind>,
+    ) -> Result<(), Error> {
+        self.mutate(fingerprint, |record| record.routes.set_order(order))
+    }
+
+    fn best_route(&self, fingerprint: Fingerprint) -> Option<RouteKind> {
+        let record = self.records.get(&fingerprint)?;
+        record
+            .routes
+            .as_slice()
+            .iter()
+            .copied()
+            .find(|kind| self.route_is_usable(record, *kind))
+    }
+
+    fn record_device(
+        &mut self,
+        fingerprint: Fingerprint,
+        device: DeviceRecord,
+    ) -> Result<(), Error> {
+        self.mutate(fingerprint, |record| {
+            // A known device keeps its entry and takes the version and capabilities
+            // it reports now.
+            match record
+                .devices
+                .iter_mut()
+                .find(|existing| existing.same_device(&device))
+            {
+                Some(existing) => *existing = device,
+                None => record.devices.push(device),
+            }
+            Ok(())
+        })
+    }
+
+    fn set_live_devices(&mut self, live: Vec<LiveDevice>) {
+        self.live = live;
+    }
+
+    fn live_devices(&self) -> &[LiveDevice] {
+        &self.live
+    }
+
+    fn cache_xpub(
+        &mut self,
+        fingerprint: Fingerprint,
+        path: DerivationPath,
+        xpub: Xpub,
+    ) -> Result<(), Error> {
+        self.mutate(fingerprint, |record| {
+            if let Some(entry) = record.xpubs.iter().find(|entry| entry.path == path) {
+                if entry.xpub == xpub {
+                    return Ok(());
+                }
+                return Err(Error::XpubMismatch {
+                    fingerprint,
+                    path,
+                    cached: Box::new(entry.xpub),
+                    found: Box::new(xpub),
+                });
+            }
+            insert_xpub(
+                record,
+                XpubEntry {
+                    path,
+                    xpub,
+                    used: false,
+                },
+            );
+            Ok(())
+        })
+    }
+
+    fn mark_xpubs_used(&mut self, descriptor: &str) -> Result<(), Error> {
+        // An sp() descriptor carries no xpub of a key's cache.
+        let Some(miniscript) = Descriptor::from_str(descriptor)
+            .ok()
+            .and_then(|parsed| parsed.as_miniscript().cloned())
+        else {
+            return Ok(());
+        };
+        for key in miniscript.plain_keys() {
+            let (origin, xpub) = match key {
+                DescriptorPublicKey::XPub(k) => (k.origin, k.xkey),
+                DescriptorPublicKey::MultiXPub(k) => (k.origin, k.xkey),
+                DescriptorPublicKey::Single(_) => continue,
+            };
+            let Some((fingerprint, path)) = origin else {
+                continue;
+            };
+            let Some(record) = self.records.get(&fingerprint) else {
+                continue;
+            };
+            if let Some(cached) = record.xpubs.iter().find(|entry| entry.path == path) {
+                if cached.xpub != xpub {
+                    log::warn!(
+                        "mark_xpubs_used: {fingerprint} at {path} caches another xpub than the \
+                         descriptor's, left as it is"
+                    );
+                    continue;
+                }
+                if cached.used {
+                    continue;
+                }
+            }
+            self.mutate(fingerprint, |record| {
+                match record.xpubs.iter_mut().find(|entry| entry.path == path) {
+                    Some(entry) if entry.xpub == xpub => entry.used = true,
+                    Some(_) => log::warn!(
+                        "mark_xpubs_used: {fingerprint} at {path} caches another xpub than the \
+                         descriptor's, left as it is"
+                    ),
+                    None => insert_xpub(
+                        record,
+                        XpubEntry {
+                            path,
+                            xpub,
+                            used: true,
+                        },
+                    ),
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
+    fn remove_xpub(
+        &mut self,
+        fingerprint: Fingerprint,
+        path: &DerivationPath,
+    ) -> Result<(), Error> {
+        self.mutate(fingerprint, |record| {
+            let Some(index) = record.xpubs.iter().position(|entry| &entry.path == path) else {
+                return Err(Error::XpubNotCached {
+                    fingerprint,
+                    path: path.clone(),
+                });
+            };
+            let xpub = record.xpubs[index].xpub.to_string();
+            if record.xpubs[index].used
+                || record
+                    .descriptors
+                    .iter()
+                    .any(|entry| entry.descriptor.contains(&xpub))
+            {
+                return Err(Error::XpubInUse {
+                    fingerprint,
+                    path: path.clone(),
+                });
+            }
+            record.xpubs.remove(index);
+            Ok(())
+        })
+    }
+
+    fn xpub(&self, fingerprint: Fingerprint, path: &DerivationPath) -> Option<Xpub> {
+        self.records
+            .get(&fingerprint)?
+            .xpubs
+            .iter()
+            .find(|entry| entry.path == *path)
+            .map(|entry| entry.xpub)
+    }
+
+    fn set_descriptor_registered(
+        &mut self,
+        fingerprint: Fingerprint,
+        alias: String,
+        descriptor: String,
+    ) -> Result<(), Error> {
+        self.refuse_sp_spend_descriptor(&descriptor)?;
+        self.mark_xpubs_used(&descriptor)?;
+        self.mutate(fingerprint, |record| {
+            upsert_descriptor_entry(record, alias, descriptor);
+            Ok(())
+        })
+    }
+
+    fn set_descriptor_hmac(
+        &mut self,
+        fingerprint: Fingerprint,
+        alias: String,
+        descriptor: String,
+        hmac: [u8; 32],
+    ) -> Result<(), Error> {
+        self.refuse_sp_spend_descriptor(&descriptor)?;
+        self.mark_xpubs_used(&descriptor)?;
+        self.mutate(fingerprint, |record| {
+            upsert_descriptor_entry(record, alias, descriptor).hmac = Some(hex::encode(hmac));
+            Ok(())
+        })
+    }
+
+    fn descriptor_hmac(&self, fingerprint: Fingerprint, descriptor: &str) -> Option<[u8; 32]> {
+        let hmac = self
+            .registered_descriptors(fingerprint)
+            .iter()
+            .find(|entry| entry.descriptor == descriptor)?
+            .hmac
+            .as_ref()?;
+        let mut bytes = [0u8; 32];
+        match hex::decode_to_slice(hmac, &mut bytes) {
+            Ok(()) => Some(bytes),
+            Err(e) => {
+                log::warn!("malformed stored hmac for key {fingerprint}: {e}");
+                None
+            }
+        }
+    }
+
+    fn clear_descriptor_registration(
+        &mut self,
+        fingerprint: Fingerprint,
+        descriptor: &str,
+    ) -> Result<(), Error> {
+        let record = self
+            .records
+            .get(&fingerprint)
+            .ok_or(Error::UnknownKey(fingerprint))?;
+        if !record
+            .descriptors
+            .iter()
+            .any(|entry| entry.descriptor == descriptor)
+        {
+            return Err(Error::DescriptorNotRegistered {
+                fingerprint,
+                descriptor: descriptor.to_string(),
+            });
+        }
+        self.mutate(fingerprint, |record| {
+            record
+                .descriptors
+                .retain(|entry| entry.descriptor != descriptor);
+            Ok(())
+        })
+    }
+
+    fn registered_descriptors(&self, fingerprint: Fingerprint) -> &[DescriptorEntry] {
+        self.records
+            .get(&fingerprint)
+            .map(|record| record.descriptors.as_slice())
+            .unwrap_or(&[])
+    }
+
+    fn keys_for_descriptor(&self, descriptor: &str) -> Vec<Fingerprint> {
+        // A key the descriptor names in its key origins holds part of it, registered
+        // or not (an account's segwit and taproot sub-accounts were not registered).
+        let named = Descriptor::from_str(descriptor).ok();
+        self.records
+            .iter()
+            .filter(|(fingerprint, record)| {
+                record
+                    .descriptors
+                    .iter()
+                    .any(|entry| entry.descriptor == descriptor)
+                    || named
+                        .as_ref()
+                        .is_some_and(|parsed| descriptor_has_key(parsed, **fingerprint))
+            })
+            .map(|(fingerprint, _)| *fingerprint)
+            .collect()
+    }
+
+    fn required_fingerprints(&self, psbt_bytes: &[u8]) -> Result<BTreeSet<Fingerprint>, Error> {
+        let descriptors = self.registered_sp_descriptors()?;
+        let artifacts = inspect_bytes(psbt_bytes, &descriptors, &self.secp)?;
+        Ok(artifacts.required)
+    }
+
+    fn signing_plan(&self, psbt_bytes: &[u8]) -> Result<SigningPlan, Error> {
+        let descriptors = self.registered_sp_descriptors()?;
+        let artifacts = inspect_bytes(psbt_bytes, &descriptors, &self.secp)?;
+        let mut plan = self.plan_from_artifacts(&artifacts);
+        let psbt = parse_v2(psbt_bytes)?;
+        if !artifacts.sp_outputs_pending {
+            let missing_nonces = !musig_nonces_complete(&psbt)?;
+            let nonces = musig_completed_fingerprints(&psbt, true)?;
+            let signatures = musig_completed_fingerprints(&psbt, false)?;
+            let real = psbt
+                .into_bitcoin_psbt()
+                .map_err(|e| Error::PsbtParse(e.to_string()))?;
+            let policies = self.requested_musig_policies(&real)?;
+            let round1 = missing_nonces
+                || policies
+                    .values()
+                    .any(|status| status.round == MusigRound::Nonces);
+            for candidate in &mut plan.candidates {
+                candidate.nonces_done = nonces.contains(&candidate.fingerprint);
+                candidate.signatures_done = signatures.contains(&candidate.fingerprint)
+                    || ordinary_signature_complete(&real, candidate.fingerprint);
+                self.ledger_candidate(candidate, &real, &policies, round1)?;
+                candidate.musig_done |= candidate.signatures_done;
+                candidate.cache_ready = self.cache_ready(
+                    candidate.fingerprint,
+                    &real,
+                    &policies,
+                    round1,
+                    candidate.route,
+                )?;
+                candidate.cache_supported =
+                    self.cache_support(candidate.fingerprint, candidate.route);
+                let cached = round1
+                    && candidate.route == Some(RouteKind::Usb)
+                    && candidate.device_id.is_empty();
+                let capable = match candidate.route {
+                    Some(RouteKind::Hot) => true,
+                    Some(RouteKind::Usb) => {
+                        cached
+                            || self
+                                .live
+                                .iter()
+                                .find(|device| device.id == candidate.device_id)
+                                .is_some_and(|device| supports_musig(device.capabilities))
+                    }
+                    _ => self.can_musig(candidate.fingerprint),
+                };
+                if artifacts
+                    .required_capabilities
+                    .get(&candidate.fingerprint)
+                    .is_some_and(|required| required & CAPABILITY_MUSIG != 0)
+                    && candidate.unusable.is_none()
+                    && !capable
+                {
+                    candidate.unusable = Some(UnusableReason::UnsupportedMusig);
+                }
+            }
+        }
+        Ok(plan)
+    }
+}
+
+/// Inserts `entry` into `record`'s cache, kept sorted by path.
+fn insert_xpub(record: &mut KeyRecord, entry: XpubEntry) {
+    let index = record
+        .xpubs
+        .iter()
+        .position(|cached| cached.path > entry.path)
+        .unwrap_or(record.xpubs.len());
+    record.xpubs.insert(index, entry);
+}
+
+/// The entry of `descriptor` in `record`, inserted in sorted order when missing. An
+/// existing entry takes `alias` and keeps its hmac.
+fn upsert_descriptor_entry(
+    record: &mut KeyRecord,
+    alias: String,
+    descriptor: String,
+) -> &mut DescriptorEntry {
+    let index = match record
+        .descriptors
+        .iter()
+        .position(|entry| entry.descriptor == descriptor)
+    {
+        Some(index) => {
+            record.descriptors[index].alias = alias;
+            index
+        }
+        None => {
+            let index = record
+                .descriptors
+                .iter()
+                .position(|entry| entry.descriptor > descriptor)
+                .unwrap_or(record.descriptors.len());
+            record.descriptors.insert(
+                index,
+                DescriptorEntry {
+                    alias,
+                    descriptor,
+                    hmac: None,
+                },
+            );
+            index
+        }
+    };
+    &mut record.descriptors[index]
+}
+
+/// The fingerprint of `key`'s origin, None for a key without one.
+pub(crate) fn descriptor_key_fingerprint(key: &DescriptorPublicKey) -> Option<Fingerprint> {
+    match key {
+        DescriptorPublicKey::Single(k) => k.origin.as_ref(),
+        DescriptorPublicKey::XPub(k) => k.origin.as_ref(),
+        DescriptorPublicKey::MultiXPub(k) => k.origin.as_ref(),
+    }
+    .map(|(fg, _)| *fg)
+}
+
+/// Whether `descriptor` names `fingerprint` among its key origins. Every key of a
+/// miniscript descriptor is walked (its `fingerprint()` returns only one), and a
+/// musig() key matches each of its cosigners; an sp() descriptor is single-key.
+pub(crate) fn descriptor_has_key(descriptor: &Descriptor, fingerprint: Fingerprint) -> bool {
+    match descriptor.as_miniscript() {
+        Some(miniscript) => miniscript
+            .plain_keys()
+            .iter()
+            .any(|key| descriptor_key_fingerprint(key) == Some(fingerprint)),
+        None => descriptor.fingerprint() == Some(fingerprint),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::keys::{
+        record::SecretEnvelope, CAPABILITY_ORDINARY, CAPABILITY_SILENT_PAYMENTS, CAPABILITY_TAPROOT,
+    };
+
+    fn fingerprint(value: u32) -> Fingerprint {
+        Fingerprint::from(value.to_be_bytes())
+    }
+
+    fn manager_over(root: &std::path::Path, network: Network) -> KeyManager {
+        let store = KeyStore::new(root.to_path_buf(), network);
+        KeyManager::new(store, network).expect("build manager")
+    }
+
+    fn test_secret() -> SecretEnvelope {
+        SecretEnvelope {
+            version: 1,
+            kdf: "argon2id".to_string(),
+            m_cost_kib: 65_536,
+            t_cost: 3,
+            p_cost: 1,
+            salt: "salt".to_string(),
+            cipher: "xchacha20poly1305".to_string(),
+            nonce: "nonce".to_string(),
+            ciphertext: "ciphertext".to_string(),
+        }
+    }
+
+    fn test_xpub() -> Xpub {
+        let seed = [11u8; 32];
+        let xpriv = bitcoin::bip32::Xpriv::new_master(bitcoin::NetworkKind::Test, &seed)
+            .expect("valid seed");
+        let secp = bitcoin::secp256k1::Secp256k1::new();
+        Xpub::from_priv(&secp, &xpriv)
+    }
+
+    fn other_test_xpub() -> Xpub {
+        let seed = [13u8; 32];
+        let xpriv = bitcoin::bip32::Xpriv::new_master(bitcoin::NetworkKind::Test, &seed)
+            .expect("valid seed");
+        let secp = bitcoin::secp256k1::Secp256k1::new();
+        Xpub::from_priv(&secp, &xpriv)
+    }
+
+    #[test]
+    fn new_loads_the_records_already_on_disk() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let first = KeyRecord::new(fingerprint(1), Network::Regtest, "first".to_string());
+        let second = KeyRecord::new(fingerprint(2), Network::Regtest, "second".to_string());
+        store.save(&first).expect("save first");
+        store.save(&second).expect("save second");
+
+        let manager = manager_over(tmp.path(), Network::Regtest);
+        let keys = manager.keys();
+        assert_eq!(
+            keys,
+            vec![first, second],
+            "expected both records in fingerprint order, got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn add_key_refuses_a_duplicate_fingerprint() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record.clone()).expect("first add succeeds");
+
+        let mut duplicate = record.clone();
+        duplicate.alias = "other alias".to_string();
+        let result = manager.add_key(duplicate);
+        assert!(
+            matches!(result, Err(Error::DuplicateKey(fp)) if fp == fingerprint(1)),
+            "expected DuplicateKey, got {result:?}"
+        );
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let on_disk = store.load(fingerprint(1)).expect("load record");
+        assert_eq!(
+            on_disk, record,
+            "stored file must be unchanged after the refused add, got {on_disk:?}"
+        );
+    }
+
+    #[test]
+    fn add_key_refuses_a_foreign_network() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Signet, "alias".to_string());
+
+        let result = manager.add_key(record);
+        assert!(
+            matches!(result, Err(Error::NetworkMismatch { .. })),
+            "expected NetworkMismatch, got {result:?}"
+        );
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let listed = store.list().expect("list");
+        assert!(
+            listed.is_empty(),
+            "expected nothing written for a foreign network record, got {listed:?}"
+        );
+    }
+
+    #[test]
+    fn add_key_catches_up_memory_from_a_stale_duplicate_on_disk() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager_a = manager_over(tmp.path(), Network::Regtest);
+        let mut manager_b = manager_over(tmp.path(), Network::Regtest);
+
+        let fp = fingerprint(1);
+        let mut with_secret = KeyRecord::new(fp, Network::Regtest, "hot alias".to_string());
+        with_secret.secret = Some(test_secret());
+        with_secret
+            .routes
+            .push(RouteKind::Hot)
+            .expect("push hot route");
+        manager_a
+            .add_key(with_secret.clone())
+            .expect("A adds the hot key");
+
+        let without_secret = KeyRecord::new(fp, Network::Regtest, "stale alias".to_string());
+        let result = manager_b.add_key(without_secret);
+        assert!(
+            matches!(result, Err(Error::DuplicateKey(found)) if found == fp),
+            "expected DuplicateKey, got {result:?}"
+        );
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let on_disk = store.load(fp).expect("load record");
+        assert_eq!(
+            on_disk, with_secret,
+            "the on-disk record must keep A's secret, got {on_disk:?}"
+        );
+
+        let refreshed = manager_b.key(fp).expect("B's memory refreshed from disk");
+        assert_eq!(
+            refreshed, &with_secret,
+            "expected B's in-memory record to catch up to the on-disk one, got {refreshed:?}"
+        );
+    }
+
+    #[test]
+    fn add_key_refuses_a_record_written_directly_through_a_second_store_instance() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+
+        let second_store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let mut written = KeyRecord::new(fp, Network::Regtest, "written directly".to_string());
+        written.secret = Some(test_secret());
+        written.routes.push(RouteKind::Hot).expect("push hot route");
+        second_store
+            .save(&written)
+            .expect("second writer saves directly");
+
+        let result = manager.add_key(KeyRecord::new(
+            fp,
+            Network::Regtest,
+            "manager alias".to_string(),
+        ));
+        assert!(
+            matches!(result, Err(Error::DuplicateKey(found)) if found == fp),
+            "expected DuplicateKey, got {result:?}"
+        );
+
+        let on_disk = second_store.load(fp).expect("load record");
+        assert_eq!(
+            on_disk, written,
+            "expected the directly written record to remain unchanged, got {on_disk:?}"
+        );
+
+        let refreshed = manager
+            .key(fp)
+            .expect("manager's memory refreshed from disk");
+        assert_eq!(
+            refreshed, &written,
+            "expected the manager's memory to catch up to the on-disk record, got {refreshed:?}"
+        );
+    }
+
+    #[test]
+    fn set_alias_persists() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        manager
+            .set_alias(fingerprint(1), "new alias".to_string())
+            .expect("set alias");
+
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        let key = reloaded.key(fingerprint(1)).expect("key present");
+        assert_eq!(
+            key.alias, "new alias",
+            "expected the new alias to persist, got {}",
+            key.alias
+        );
+    }
+
+    #[test]
+    fn an_unknown_fingerprint_errors_rather_than_creating_a_record() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let unknown = fingerprint(99);
+
+        let alias_result = manager.set_alias(unknown, "alias".to_string());
+        assert!(
+            matches!(alias_result, Err(Error::UnknownKey(fp)) if fp == unknown),
+            "expected UnknownKey from set_alias, got {alias_result:?}"
+        );
+
+        let route_result = manager.add_route(unknown, RouteKind::Usb);
+        assert!(
+            matches!(route_result, Err(Error::UnknownKey(fp)) if fp == unknown),
+            "expected UnknownKey from add_route, got {route_result:?}"
+        );
+
+        let remove_result = manager.remove_key(unknown, false);
+        assert!(
+            matches!(remove_result, Err(Error::UnknownKey(fp)) if fp == unknown),
+            "expected UnknownKey from remove_key, got {remove_result:?}"
+        );
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let listed = store.list().expect("list");
+        assert!(
+            listed.is_empty(),
+            "expected no file to appear from failed operations, got {listed:?}"
+        );
+    }
+
+    #[test]
+    fn remove_key_refuses_while_descriptors_are_registered() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let mut record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        record.descriptors.push(DescriptorEntry {
+            alias: "descriptor alias".to_string(),
+            descriptor: "descriptor string".to_string(),
+            hmac: None,
+        });
+        manager.add_key(record).expect("add key");
+
+        let refused = manager.remove_key(fingerprint(1), false);
+        assert!(
+            matches!(
+                refused,
+                Err(Error::DescriptorsRegistered { fingerprint: fp, count: 1 })
+                    if fp == fingerprint(1)
+            ),
+            "expected DescriptorsRegistered with count 1, got {refused:?}"
+        );
+
+        manager
+            .remove_key(fingerprint(1), true)
+            .expect("forced remove succeeds");
+        assert!(
+            manager.key(fingerprint(1)).is_none(),
+            "key should be gone after a forced remove"
+        );
+    }
+
+    #[test]
+    fn removed_key_keeps_its_state_and_comes_back_with_it() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let mut record = KeyRecord::new(fingerprint(1), Network::Regtest, "old".to_string());
+        let xpub = Xpub::from_priv(
+            &Secp256k1::new(),
+            &bitcoin::bip32::Xpriv::new_master(Network::Regtest, &[7; 32]).expect("master"),
+        );
+        record.xpubs.push(XpubEntry {
+            path: DerivationPath::from_str("m/87'/1'/0'/0").expect("path"),
+            xpub,
+            used: true,
+        });
+        manager.add_key(record).expect("add key");
+        manager.remove_key(fingerprint(1), false).expect("remove");
+
+        assert!(
+            manager.key(fingerprint(1)).is_none(),
+            "out of the keys once removed"
+        );
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let listed = store.list().expect("list");
+        assert!(
+            listed.len() == 1 && listed[0].deleted && listed[0].xpubs.len() == 1,
+            "kept on disk, marked deleted, its xpub with it: {listed:?}"
+        );
+        let reopened = manager_over(tmp.path(), Network::Regtest);
+        assert!(
+            reopened.key(fingerprint(1)).is_none(),
+            "a removed key stays out after a reload"
+        );
+
+        let added = KeyRecord::new(fingerprint(1), Network::Regtest, "new".to_string());
+        manager.add_key(added).expect("added back");
+        let back = manager.key(fingerprint(1)).expect("back in the keys");
+        assert_eq!(back.alias, "new", "the new alias");
+        assert!(!back.deleted, "no longer deleted");
+        assert!(
+            back.xpubs.len() == 1 && back.xpubs[0].used,
+            "the cached xpub came back, still used: {:?}",
+            back.xpubs
+        );
+    }
+
+    #[test]
+    fn routes_persist_and_keep_hot_first() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let mut record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        record.secret = Some(test_secret());
+        manager.add_key(record).expect("add key");
+
+        manager
+            .add_route(fingerprint(1), RouteKind::Usb)
+            .expect("add usb");
+        manager
+            .add_route(fingerprint(1), RouteKind::Qr)
+            .expect("add qr");
+        manager
+            .add_route(fingerprint(1), RouteKind::Hot)
+            .expect("add hot");
+
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        let key = reloaded.key(fingerprint(1)).expect("key present");
+        assert_eq!(
+            key.routes.as_slice(),
+            &[RouteKind::Hot, RouteKind::Usb, RouteKind::Qr],
+            "expected hot first, got {:?}",
+            key.routes.as_slice()
+        );
+    }
+
+    const TEST_MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon \
+        abandon abandon abandon abandon abandon about";
+    const TEST_HOT_FINGERPRINT_BYTES: [u8; 4] = [0x73, 0xc5, 0xda, 0x0a];
+
+    fn test_hot_fingerprint() -> Fingerprint {
+        Fingerprint::from(TEST_HOT_FINGERPRINT_BYTES)
+    }
+
+    fn import_test_mnemonic(
+        manager: &mut KeyManager,
+        alias: &str,
+        password: &str,
+    ) -> Result<Fingerprint, Error> {
+        manager.import_hot_key(
+            Zeroizing::new(TEST_MNEMONIC.to_string()),
+            alias.to_string(),
+            Password::new(password.to_string()),
+        )
+    }
+
+    #[test]
+    fn import_hot_key_creates_the_record_with_hot_first() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+
+        let fingerprint =
+            import_test_mnemonic(&mut manager, "alias", "password").expect("import succeeds");
+        assert_eq!(
+            fingerprint,
+            test_hot_fingerprint(),
+            "expected the standard test vector's fingerprint, got {fingerprint}"
+        );
+
+        let key = manager.key(fingerprint).expect("key present");
+        assert_eq!(
+            key.routes.as_slice(),
+            &[RouteKind::Hot],
+            "expected only the hot route, got {:?}",
+            key.routes.as_slice()
+        );
+        assert!(
+            key.secret.is_some(),
+            "expected the imported key to carry a secret"
+        );
+    }
+
+    #[test]
+    fn import_hot_key_attaches_to_an_existing_record() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = test_hot_fingerprint();
+        manager
+            .add_key(KeyRecord::new(
+                fp,
+                Network::Regtest,
+                "usb alias".to_string(),
+            ))
+            .expect("add usb key");
+        manager
+            .add_route(fp, RouteKind::Usb)
+            .expect("add usb route");
+
+        import_test_mnemonic(&mut manager, "ignored alias", "password")
+            .expect("import attaches to the existing record");
+
+        let key = manager.key(fp).expect("key present");
+        assert_eq!(
+            key.routes.as_slice(),
+            &[RouteKind::Hot, RouteKind::Usb],
+            "expected hot first alongside the existing usb route, got {:?}",
+            key.routes.as_slice()
+        );
+        assert_eq!(
+            key.alias, "usb alias",
+            "expected the original alias to be kept, got {}",
+            key.alias
+        );
+        assert!(
+            key.secret.is_some(),
+            "expected the attached key to carry a secret"
+        );
+    }
+
+    #[test]
+    fn import_hot_key_refuses_to_overwrite_a_secret() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = import_test_mnemonic(&mut manager, "alias", "password").expect("first import");
+        let before = manager
+            .key(fp)
+            .expect("key present")
+            .secret
+            .clone()
+            .expect("secret present");
+
+        let result = import_test_mnemonic(&mut manager, "alias", "other password");
+        assert!(
+            matches!(result, Err(Error::SecretAlreadyPresent(found)) if found == fp),
+            "expected SecretAlreadyPresent, got {result:?}"
+        );
+
+        let after = manager
+            .key(fp)
+            .expect("key present")
+            .secret
+            .clone()
+            .expect("secret present");
+        assert_eq!(
+            before, after,
+            "expected the stored envelope to be unchanged after the refused import"
+        );
+    }
+
+    #[test]
+    fn import_hot_key_refuses_a_stale_secret_already_present_on_disk() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager_a = manager_over(tmp.path(), Network::Regtest);
+        let fp = test_hot_fingerprint();
+        manager_a
+            .add_key(KeyRecord::new(
+                fp,
+                Network::Regtest,
+                "usb alias".to_string(),
+            ))
+            .expect("add usb key");
+        manager_a
+            .add_route(fp, RouteKind::Usb)
+            .expect("add usb route");
+
+        let mut manager_b = manager_over(tmp.path(), Network::Regtest);
+
+        import_test_mnemonic(&mut manager_a, "ignored alias", "password")
+            .expect("A imports the secret");
+
+        let result = import_test_mnemonic(&mut manager_b, "ignored alias", "other password");
+        assert!(
+            matches!(result, Err(Error::SecretAlreadyPresent(found)) if found == fp),
+            "expected SecretAlreadyPresent, got {result:?}"
+        );
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let on_disk = store.load(fp).expect("load record");
+        let a_secret = manager_a
+            .key(fp)
+            .expect("key present")
+            .secret
+            .clone()
+            .expect("secret present");
+        assert_eq!(
+            on_disk.secret,
+            Some(a_secret),
+            "expected the on-disk secret to be unchanged after B's refused import"
+        );
+    }
+
+    #[test]
+    fn import_hot_key_refuses_a_bad_mnemonic() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+
+        let result = manager.import_hot_key(
+            Zeroizing::new("not a mnemonic".to_string()),
+            "alias".to_string(),
+            Password::new("password".to_string()),
+        );
+        assert!(
+            matches!(result, Err(Error::Mnemonic(_))),
+            "expected a mnemonic error for an unparsable mnemonic, got {result:?}"
+        );
+        assert!(
+            manager.keys().is_empty(),
+            "expected no record to be created for a bad mnemonic, got {:?}",
+            manager.keys()
+        );
+    }
+
+    #[test]
+    fn reveal_mnemonic_round_trips() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = import_test_mnemonic(&mut manager, "alias", "password").expect("import");
+
+        let revealed = manager
+            .reveal_mnemonic(fp, Password::new("password".to_string()))
+            .expect("reveal succeeds");
+        assert_eq!(
+            revealed.as_str(),
+            TEST_MNEMONIC,
+            "expected the revealed mnemonic to match the imported one, got {}",
+            revealed.as_str()
+        );
+    }
+
+    #[test]
+    fn reveal_with_a_wrong_password_errors() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = import_test_mnemonic(&mut manager, "alias", "password").expect("import");
+
+        let result = manager.reveal_mnemonic(fp, Password::new("wrong".to_string()));
+        assert!(
+            matches!(result, Err(Error::WrongPassword)),
+            "expected WrongPassword, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn reveal_without_a_secret_errors() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+
+        let result = manager.reveal_mnemonic(fp, Password::new("password".to_string()));
+        assert!(
+            matches!(result, Err(Error::NoSecret(found)) if found == fp),
+            "expected NoSecret, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn can_musig_needs_a_hot_secret_or_a_device_with_the_capability() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        manager
+            .add_route(fingerprint(1), RouteKind::Usb)
+            .expect("add usb");
+        assert!(
+            !manager.can_musig(fingerprint(1)),
+            "a bare key cannot sign MuSig2"
+        );
+        assert!(
+            !manager.can_musig(fingerprint(9)),
+            "an unknown key cannot sign MuSig2"
+        );
+
+        let recorded = |capabilities| DeviceRecord {
+            kind: "hardware".to_string(),
+            model: "model".to_string(),
+            serial: "serial".to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities,
+        };
+        manager
+            .record_device(fingerprint(1), recorded(0))
+            .expect("record device");
+        assert!(
+            !manager.can_musig(fingerprint(1)),
+            "a recorded device with no capability cannot sign MuSig2"
+        );
+
+        let live = |capabilities| LiveDevice {
+            id: "dev-1".to_string(),
+            kind: "ledger".to_string(),
+            model: "other".to_string(),
+            serial: "other".to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities,
+            fingerprint: Some(fingerprint(1)),
+        };
+        manager.set_live_devices(vec![live(crate::keys::CAPABILITY_SILENT_PAYMENTS)]);
+        assert!(
+            !manager.can_musig(fingerprint(1)),
+            "a live device without the MuSig2 bit cannot sign MuSig2"
+        );
+        manager.set_live_devices(vec![live(crate::keys::CAPABILITY_MUSIG)]);
+        assert!(
+            manager.can_musig(fingerprint(1)),
+            "a live device with the MuSig2 bit signs MuSig2"
+        );
+        manager.set_live_devices(Vec::new());
+
+        let mut upgraded = recorded(crate::keys::CAPABILITY_MUSIG);
+        upgraded.serial = "second".to_string();
+        manager
+            .record_device(fingerprint(1), upgraded)
+            .expect("record second device");
+        assert!(
+            manager.can_musig(fingerprint(1)),
+            "a recorded device with the MuSig2 bit signs MuSig2"
+        );
+
+        let mut hot = KeyRecord::new(fingerprint(2), Network::Regtest, "hot".to_string());
+        hot.secret = Some(test_secret());
+        manager.add_key(hot).expect("add hot key");
+        assert!(manager.can_musig(fingerprint(2)), "a hot key signs MuSig2");
+    }
+
+    #[test]
+    fn record_device_dedupes_on_the_four_fields() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        let device = DeviceRecord {
+            kind: "hardware".to_string(),
+            model: "model".to_string(),
+            serial: "serial".to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities: 0,
+        };
+        manager
+            .record_device(fingerprint(1), device.clone())
+            .expect("first record");
+        manager
+            .record_device(fingerprint(1), device.clone())
+            .expect("duplicate record is a no-op");
+
+        let key = manager.key(fingerprint(1)).expect("key present");
+        assert_eq!(
+            key.devices.len(),
+            1,
+            "expected a duplicate device record to be a no-op, got {:?}",
+            key.devices
+        );
+
+        let mut different_serial = device.clone();
+        different_serial.serial = "other serial".to_string();
+        manager
+            .record_device(fingerprint(1), different_serial)
+            .expect("differing serial records");
+        let key = manager.key(fingerprint(1)).expect("key present");
+        assert_eq!(
+            key.devices.len(),
+            2,
+            "expected a device differing in serial to add a new entry, got {:?}",
+            key.devices
+        );
+    }
+
+    #[test]
+    fn record_device_refreshes_a_known_device() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        let device = DeviceRecord {
+            kind: "vendor".to_string(),
+            model: "model".to_string(),
+            serial: String::new(),
+            module: "qr".to_string(),
+            version: "1.0.0".to_string(),
+            capabilities: 0x0000_0001,
+        };
+        manager
+            .record_device(fingerprint(1), device.clone())
+            .expect("first record");
+        let mut upgraded = device.clone();
+        upgraded.version = "1.1.0".to_string();
+        upgraded.capabilities = 0x0000_0003;
+        manager
+            .record_device(fingerprint(1), upgraded.clone())
+            .expect("upgraded record");
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let on_disk = store.load(fingerprint(1)).expect("load record");
+        assert_eq!(
+            on_disk.devices,
+            vec![upgraded],
+            "expected the known device refreshed in place, got {:?}",
+            on_disk.devices
+        );
+    }
+
+    #[test]
+    fn record_device_dedupes_against_disk_not_stale_memory() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager_a = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager_a
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+
+        let mut manager_b = manager_over(tmp.path(), Network::Regtest);
+
+        let device = DeviceRecord {
+            kind: "hardware".to_string(),
+            model: "model".to_string(),
+            serial: "serial".to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities: 0,
+        };
+        manager_a
+            .record_device(fp, device.clone())
+            .expect("A records the device");
+        manager_b
+            .record_device(fp, device)
+            .expect("B's stale record is a no-op against disk");
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let on_disk = store.load(fp).expect("load record");
+        assert_eq!(
+            on_disk.devices.len(),
+            1,
+            "expected no duplicate device on disk, got {:?}",
+            on_disk.devices
+        );
+    }
+
+    #[test]
+    fn best_sp_route_takes_usb_only_on_a_device_with_silent_payments() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        manager
+            .add_route(fingerprint(1), RouteKind::Usb)
+            .expect("add usb");
+        manager
+            .add_route(fingerprint(1), RouteKind::Qr)
+            .expect("add qr");
+        let device = |capabilities| LiveDevice {
+            id: "dev-1".to_string(),
+            kind: "ledger".to_string(),
+            model: "model".to_string(),
+            serial: "serial".to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities,
+            fingerprint: Some(fingerprint(1)),
+        };
+
+        for (capabilities, expected) in [
+            (0, RouteKind::Qr),
+            (crate::keys::CAPABILITY_MUSIG, RouteKind::Qr),
+            (crate::keys::CAPABILITY_SILENT_PAYMENTS, RouteKind::Usb),
+        ] {
+            manager.set_live_devices(vec![device(capabilities)]);
+            let route = manager.best_signing_route(fingerprint(1), CAPABILITY_SILENT_PAYMENTS);
+            assert_eq!(
+                route,
+                Some(expected),
+                "capabilities {capabilities:#x}: expected {expected:?}, got {route:?}"
+            );
+            let plain = manager.best_route(fingerprint(1));
+            assert_eq!(
+                plain,
+                Some(RouteKind::Usb),
+                "a non-sp input keeps the connected USB device, got {plain:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn best_route_skips_an_unusable_route() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        manager
+            .add_route(fingerprint(1), RouteKind::Usb)
+            .expect("add usb");
+        manager
+            .add_route(fingerprint(1), RouteKind::Qr)
+            .expect("add qr");
+
+        let without_device = manager.best_route(fingerprint(1));
+        assert_eq!(
+            without_device,
+            Some(RouteKind::Qr),
+            "expected Qr when no live device carries the fingerprint, got {without_device:?}"
+        );
+
+        manager.set_live_devices(vec![LiveDevice {
+            id: "dev-1".to_string(),
+            kind: "hardware".to_string(),
+            model: "model".to_string(),
+            serial: "serial".to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities: 0,
+            fingerprint: Some(fingerprint(1)),
+        }]);
+        let with_device = manager.best_route(fingerprint(1));
+        assert_eq!(
+            with_device,
+            Some(RouteKind::Usb),
+            "expected Usb once a live device carries the fingerprint, got {with_device:?}"
+        );
+
+        let hot_only = KeyRecord::new(fingerprint(2), Network::Regtest, "hot only".to_string());
+        manager.add_key(hot_only).expect("add hot only key");
+        // The store refuses to persist a hot route without a secret, so this
+        // unusable state is simulated in memory only to exercise best_route's
+        // handling of it.
+        manager
+            .records
+            .get_mut(&fingerprint(2))
+            .expect("record present")
+            .routes
+            .push(RouteKind::Hot)
+            .expect("push hot route");
+        let no_secret = manager.best_route(fingerprint(2));
+        assert_eq!(
+            no_secret, None,
+            "expected None for a hot route with no secret, got {no_secret:?}"
+        );
+    }
+
+    #[test]
+    fn set_live_devices_persists_nothing() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+
+        manager.set_live_devices(vec![LiveDevice {
+            id: "dev-1".to_string(),
+            kind: "hardware".to_string(),
+            model: "model".to_string(),
+            serial: "serial".to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities: 0,
+            fingerprint: Some(fingerprint(42)),
+        }]);
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let listed = store.list().expect("list");
+        assert!(
+            listed.is_empty(),
+            "expected no file for an unregistered live device, got {listed:?}"
+        );
+    }
+
+    #[test]
+    fn cache_xpub_persists_and_reads_back() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let xpub = test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), xpub)
+            .expect("cache xpub");
+
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        let found = reloaded.xpub(fingerprint(1), &path);
+        assert_eq!(
+            found,
+            Some(xpub),
+            "expected the cached xpub to persist, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn caching_the_same_xpub_twice_does_not_rewrite_the_file() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let xpub = test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), xpub)
+            .expect("first cache");
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let file_path = store.record_path(fingerprint(1)).expect("record path");
+        let before = std::fs::read(&file_path).expect("read file before");
+
+        manager
+            .cache_xpub(fingerprint(1), path, xpub)
+            .expect("second cache is a no-op");
+
+        let after = std::fs::read(&file_path).expect("read file after");
+        assert_eq!(
+            before, after,
+            "expected caching the same xpub twice to leave the file untouched"
+        );
+    }
+
+    #[test]
+    fn a_different_xpub_at_the_same_path_is_refused() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let first = test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), first)
+            .expect("first cache");
+
+        let second = other_test_xpub();
+        let result = manager.cache_xpub(fingerprint(1), path.clone(), second);
+        assert!(
+            matches!(
+                result,
+                Err(Error::XpubMismatch { ref cached, ref found, .. })
+                    if **cached == first && **found == second
+            ),
+            "expected XpubMismatch carrying both values, got {result:?}"
+        );
+
+        let still_cached = manager.xpub(fingerprint(1), &path);
+        assert_eq!(
+            still_cached,
+            Some(first),
+            "expected the original xpub to remain cached, got {still_cached:?}"
+        );
+    }
+
+    #[test]
+    fn cache_xpub_detects_a_stale_conflict_against_disk() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager_a = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager_a
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+
+        let mut manager_b = manager_over(tmp.path(), Network::Regtest);
+
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let first = test_xpub();
+        manager_a
+            .cache_xpub(fp, path.clone(), first)
+            .expect("A caches the first xpub");
+
+        let second = other_test_xpub();
+        let result = manager_b.cache_xpub(fp, path.clone(), second);
+        assert!(
+            matches!(
+                result,
+                Err(Error::XpubMismatch { ref cached, ref found, .. })
+                    if **cached == first && **found == second
+            ),
+            "expected XpubMismatch against the on-disk xpub, got {result:?}"
+        );
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let on_disk = store.load(fp).expect("load record");
+        assert_eq!(
+            on_disk.xpubs,
+            vec![XpubEntry {
+                path,
+                xpub: first,
+                used: false
+            }],
+            "expected only A's xpub on disk, got {:?}",
+            on_disk.xpubs
+        );
+    }
+
+    #[test]
+    fn xpub_on_an_unknown_path_is_none() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let found = manager.xpub(fingerprint(1), &path);
+        assert_eq!(
+            found, None,
+            "expected no cached xpub for an unqueried path, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn remove_xpub_drops_an_unused_xpub() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), test_xpub())
+            .expect("cache xpub");
+
+        manager
+            .remove_xpub(fingerprint(1), &path)
+            .expect("remove xpub");
+
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        let found = reloaded.xpub(fingerprint(1), &path);
+        assert_eq!(found, None, "expected the xpub to be gone, got {found:?}");
+    }
+
+    #[test]
+    fn remove_xpub_refuses_an_xpub_a_descriptor_carries() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let xpub = test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), xpub)
+            .expect("cache xpub");
+        manager
+            .set_descriptor_registered(
+                fingerprint(1),
+                "wallet".to_string(),
+                format!("tr([00000001/86'/1'/0']{xpub}/<0;1>/*)"),
+            )
+            .expect("register descriptor");
+
+        let result = manager.remove_xpub(fingerprint(1), &path);
+        assert!(
+            matches!(result, Err(Error::XpubInUse { .. })),
+            "expected XpubInUse, got {result:?}"
+        );
+        let found = manager.xpub(fingerprint(1), &path);
+        assert_eq!(found, Some(xpub), "expected the xpub kept, got {found:?}");
+    }
+
+    #[test]
+    fn remove_xpub_on_an_uncached_path_errors() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let path = DerivationPath::from_str("m/84'/1'/0'").expect("valid path");
+
+        let result = manager.remove_xpub(fingerprint(1), &path);
+        assert!(
+            matches!(result, Err(Error::XpubNotCached { .. })),
+            "expected XpubNotCached, got {result:?}"
+        );
+    }
+
+    fn cached_entry(manager: &KeyManager, path: &DerivationPath) -> Option<XpubEntry> {
+        manager.key(fingerprint(1)).and_then(|record| {
+            record
+                .xpubs
+                .iter()
+                .find(|entry| &entry.path == path)
+                .cloned()
+        })
+    }
+
+    #[test]
+    fn mark_xpubs_used_keeps_the_xpub_used_on_disk() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let xpub = test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), xpub)
+            .expect("cache xpub");
+
+        manager
+            .mark_xpubs_used(&format!("tr([00000001/86'/1'/0']{xpub}/<0;1>/*)"))
+            .expect("mark xpubs used");
+
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        let entry = cached_entry(&reloaded, &path);
+        assert_eq!(
+            entry,
+            Some(XpubEntry {
+                path: path.clone(),
+                xpub,
+                used: true
+            }),
+            "expected the xpub marked used after a reload, got {entry:?}"
+        );
+        let result = manager.remove_xpub(fingerprint(1), &path);
+        assert!(
+            matches!(result, Err(Error::XpubInUse { .. })),
+            "expected XpubInUse on a used xpub, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn mark_xpubs_used_caches_an_uncached_xpub_as_used() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let path = DerivationPath::from_str("m/84'/1'/0'").expect("valid path");
+        let xpub = test_xpub();
+
+        manager
+            .mark_xpubs_used(&format!("wpkh([00000001/84'/1'/0']{xpub}/<0;1>/*)"))
+            .expect("mark xpubs used");
+
+        let entry = cached_entry(&manager, &path);
+        assert_eq!(
+            entry,
+            Some(XpubEntry {
+                path,
+                xpub,
+                used: true
+            }),
+            "expected the xpub cached and used, got {entry:?}"
+        );
+    }
+
+    #[test]
+    fn mark_xpubs_used_leaves_a_conflicting_cached_xpub() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let cached = other_test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), cached)
+            .expect("cache xpub");
+
+        manager
+            .mark_xpubs_used(&format!("tr([00000001/86'/1'/0']{}/<0;1>/*)", test_xpub()))
+            .expect("mark xpubs used");
+
+        let entry = cached_entry(&manager, &path);
+        assert_eq!(
+            entry,
+            Some(XpubEntry {
+                path,
+                xpub: cached,
+                used: false
+            }),
+            "expected the cached xpub left as it was, got {entry:?}"
+        );
+    }
+
+    #[test]
+    fn mark_xpubs_used_leaves_a_replacement_written_by_another_manager() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        manager
+            .add_key(KeyRecord::new(
+                fingerprint(1),
+                Network::Regtest,
+                "alias".into(),
+            ))
+            .expect("add key");
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let original = test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), original)
+            .expect("cache original xpub");
+        let mut worker = manager_over(tmp.path(), Network::Regtest);
+
+        manager
+            .remove_xpub(fingerprint(1), &path)
+            .expect("remove unused original xpub");
+        let replacement = other_test_xpub();
+        manager
+            .cache_xpub(fingerprint(1), path.clone(), replacement)
+            .expect("cache replacement at the same path");
+        assert_eq!(
+            worker.xpub(fingerprint(1), &path),
+            Some(original),
+            "worker still has the descriptor's original xpub"
+        );
+
+        worker
+            .mark_xpubs_used(&format!("tr([00000001/86'/1'/0']{original}/<0;1>/*)"))
+            .expect("conflicting usage is skipped");
+
+        let expected = Some(XpubEntry {
+            path: path.clone(),
+            xpub: replacement,
+            used: false,
+        });
+        assert_eq!(
+            cached_entry(&worker, &path),
+            expected,
+            "worker reloads the replacement without marking it used"
+        );
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        assert_eq!(
+            cached_entry(&reloaded, &path),
+            expected,
+            "replacement remains unused on disk"
+        );
+        worker
+            .remove_xpub(fingerprint(1), &path)
+            .expect("replacement remains removable");
+    }
+
+    #[test]
+    fn mark_xpubs_used_ignores_keys_not_registered_and_sp_descriptors() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let xpub = test_xpub();
+
+        for descriptor in [
+            format!("tr([00000002/86'/1'/0']{xpub}/<0;1>/*)"),
+            "sp(not a descriptor)".to_string(),
+        ] {
+            let result = manager.mark_xpubs_used(&descriptor);
+            assert!(
+                result.is_ok(),
+                "expected {descriptor} ignored, got {result:?}"
+            );
+        }
+        let xpubs = manager
+            .key(fingerprint(1))
+            .map(|record| record.xpubs.clone());
+        assert_eq!(
+            xpubs,
+            Some(Vec::new()),
+            "expected nothing cached, got {xpubs:?}"
+        );
+    }
+
+    #[test]
+    fn a_registered_descriptor_keeps_its_xpub_used_once_unregistered() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+        let xpub = test_xpub();
+        let descriptor = format!("tr([00000001/86'/1'/0']{xpub}/<0;1>/*)");
+        manager
+            .set_descriptor_registered(fingerprint(1), "wallet".to_string(), descriptor.clone())
+            .expect("register descriptor");
+
+        manager
+            .clear_descriptor_registration(fingerprint(1), &descriptor)
+            .expect("clear registration");
+
+        let entry = cached_entry(&manager, &path);
+        assert_eq!(
+            entry,
+            Some(XpubEntry {
+                path: path.clone(),
+                xpub,
+                used: true
+            }),
+            "expected the xpub still used once the descriptor is gone, got {entry:?}"
+        );
+        let result = manager.remove_xpub(fingerprint(1), &path);
+        assert!(
+            matches!(result, Err(Error::XpubInUse { .. })),
+            "expected XpubInUse, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn cache_xpub_on_an_unknown_fingerprint_errors() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let unknown = fingerprint(99);
+        let path = DerivationPath::from_str("m/86'/1'/0'").expect("valid path");
+
+        let result = manager.cache_xpub(unknown, path, test_xpub());
+        assert!(
+            matches!(result, Err(Error::UnknownKey(fp)) if fp == unknown),
+            "expected UnknownKey, got {result:?}"
+        );
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let listed = store.list().expect("list");
+        assert!(
+            listed.is_empty(),
+            "expected no file for a cache on an unknown fingerprint, got {listed:?}"
+        );
+    }
+
+    #[test]
+    fn set_descriptor_registered_persists_and_dedupes() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+
+        manager
+            .set_descriptor_registered(
+                fingerprint(1),
+                "first alias".to_string(),
+                "descriptor".to_string(),
+            )
+            .expect("first register");
+        manager
+            .set_descriptor_registered(
+                fingerprint(1),
+                "first alias".to_string(),
+                "descriptor".to_string(),
+            )
+            .expect("duplicate register is a no-op");
+
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        let descriptors = reloaded.registered_descriptors(fingerprint(1));
+        assert_eq!(
+            descriptors,
+            &[DescriptorEntry {
+                alias: "first alias".to_string(),
+                descriptor: "descriptor".to_string(),
+                hmac: None,
+            }],
+            "expected a single entry after registering twice with the same alias, got {descriptors:?}"
+        );
+
+        manager
+            .set_descriptor_registered(
+                fingerprint(1),
+                "new alias".to_string(),
+                "descriptor".to_string(),
+            )
+            .expect("re-register with a new alias");
+        let descriptors = manager.registered_descriptors(fingerprint(1));
+        assert_eq!(
+            descriptors,
+            &[DescriptorEntry {
+                alias: "new alias".to_string(),
+                descriptor: "descriptor".to_string(),
+                hmac: None,
+            }],
+            "expected the alias to update in place, got {descriptors:?}"
+        );
+    }
+
+    #[test]
+    fn set_descriptor_registered_dedupes_against_disk_not_stale_memory() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager_a = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager_a
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+
+        let mut manager_b = manager_over(tmp.path(), Network::Regtest);
+
+        manager_a
+            .set_descriptor_registered(fp, "alias one".to_string(), "descriptor".to_string())
+            .expect("A registers the descriptor");
+        manager_b
+            .set_descriptor_registered(fp, "alias one".to_string(), "descriptor".to_string())
+            .expect("B's stale register is a no-op against disk");
+
+        let store = KeyStore::new(tmp.path().to_path_buf(), Network::Regtest);
+        let on_disk = store.load(fp).expect("load record");
+        assert_eq!(
+            on_disk.descriptors.len(),
+            1,
+            "expected no duplicate descriptor on disk, got {:?}",
+            on_disk.descriptors
+        );
+    }
+
+    #[test]
+    fn clear_descriptor_registration_removes_the_entry() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        manager
+            .set_descriptor_registered(
+                fingerprint(1),
+                "alias".to_string(),
+                "descriptor".to_string(),
+            )
+            .expect("register");
+
+        manager
+            .clear_descriptor_registration(fingerprint(1), "descriptor")
+            .expect("clear registration");
+        let descriptors = manager.registered_descriptors(fingerprint(1));
+        assert!(
+            descriptors.is_empty(),
+            "expected no descriptors after clearing, got {descriptors:?}"
+        );
+
+        let second = manager.clear_descriptor_registration(fingerprint(1), "descriptor");
+        assert!(
+            matches!(
+                second,
+                Err(Error::DescriptorNotRegistered { fingerprint: fp, ref descriptor })
+                    if fp == fingerprint(1) && descriptor == "descriptor"
+            ),
+            "expected DescriptorNotRegistered on the second clear, got {second:?}"
+        );
+    }
+
+    #[test]
+    fn keys_for_descriptor_finds_a_key_its_origins_name_unregistered() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = Fingerprint::from_str("73c5da0a").unwrap();
+        manager
+            .add_key(KeyRecord::new(fp, Network::Regtest, "cold".to_string()))
+            .expect("add key");
+        // An account's segwit sub-account, never registered with the key.
+        let segwit = "wpkh([73c5da0a/84'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/<0;1>/*)";
+        assert_eq!(manager.keys_for_descriptor(segwit), vec![fp]);
+        let other = segwit.replace("73c5da0a", "deadbeef");
+        assert!(manager.keys_for_descriptor(&other).is_empty());
+    }
+
+    #[test]
+    fn keys_for_descriptor_finds_every_key() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        manager
+            .add_key(KeyRecord::new(
+                fingerprint(1),
+                Network::Regtest,
+                "first".to_string(),
+            ))
+            .expect("add first key");
+        manager
+            .add_key(KeyRecord::new(
+                fingerprint(2),
+                Network::Regtest,
+                "second".to_string(),
+            ))
+            .expect("add second key");
+
+        manager
+            .set_descriptor_registered(fingerprint(2), "alias 2".to_string(), "shared".to_string())
+            .expect("register on second");
+        manager
+            .set_descriptor_registered(fingerprint(1), "alias 1".to_string(), "shared".to_string())
+            .expect("register on first");
+
+        let found = manager.keys_for_descriptor("shared");
+        assert_eq!(
+            found,
+            vec![fingerprint(1), fingerprint(2)],
+            "expected both fingerprints in fingerprint order, got {found:?}"
+        );
+
+        let empty = manager.keys_for_descriptor("unregistered");
+        assert!(
+            empty.is_empty(),
+            "expected no keys for an unregistered descriptor, got {empty:?}"
+        );
+    }
+
+    #[test]
+    fn descriptor_has_key_walks_every_key() {
+        let text = "tr([73c5da0a/86'/1'/0']tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/<0;1>/*,pk([deadbeef/86'/1'/0']tpubDDxT9mkZzWwkKwpGT5fY6iiM9muYTPkTx6Eig8dpHR7TChuGGCWYAHVmpW1ciido5RiFWwjzYsF1GZHkEHg2nrYp3zNtx3QQRkznyLhQ77x/<0;1>/*))";
+        let descriptor = Descriptor::from_str(text).expect("valid tr descriptor");
+        for origin in ["73c5da0a", "deadbeef"] {
+            let fp = Fingerprint::from_str(origin).unwrap();
+            assert!(
+                descriptor_has_key(&descriptor, fp),
+                "expected the descriptor to carry origin {origin}"
+            );
+        }
+        let absent = Fingerprint::from_str("cafebabe").unwrap();
+        assert!(
+            !descriptor_has_key(&descriptor, absent),
+            "expected no key with origin {absent}"
+        );
+    }
+
+    #[test]
+    fn keys_for_descriptor_finds_a_musig_cosigner() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let (a, b, c) = (fingerprint(1), fingerprint(2), fingerprint(3));
+        for fp in [a, c] {
+            manager
+                .add_key(KeyRecord::new(fp, Network::Regtest, "cosigner".to_string()))
+                .expect("add key");
+        }
+        let descriptor = format!(
+            "tr(musig([{a}]{},[{b}]{})/<0;1>/*)",
+            test_xpub(),
+            other_test_xpub()
+        );
+        let found = manager.keys_for_descriptor(&descriptor);
+        assert_eq!(
+            found,
+            vec![a],
+            "expected only cosigner {a} among the registered keys, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn registered_descriptors_on_an_unknown_fingerprint_is_empty() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let manager = manager_over(tmp.path(), Network::Regtest);
+        let descriptors = manager.registered_descriptors(fingerprint(99));
+        assert!(
+            descriptors.is_empty(),
+            "expected an empty slice for an unknown fingerprint, got {descriptors:?}"
+        );
+    }
+
+    const TEST_HMAC: [u8; 32] = [0xab; 32];
+
+    /// A manager over `root` holding the key `fingerprint(1)`.
+    fn manager_with_key(root: &std::path::Path) -> KeyManager {
+        let mut manager = manager_over(root, Network::Regtest);
+        let record = KeyRecord::new(fingerprint(1), Network::Regtest, "alias".to_string());
+        manager.add_key(record).expect("add key");
+        manager
+    }
+
+    #[test]
+    fn set_descriptor_hmac_persists_across_a_reload() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_with_key(tmp.path());
+        manager
+            .set_descriptor_hmac(
+                fingerprint(1),
+                "alias".to_string(),
+                "descriptor".to_string(),
+                TEST_HMAC,
+            )
+            .expect("set hmac");
+
+        let reloaded = manager_over(tmp.path(), Network::Regtest);
+        let hmac = reloaded.descriptor_hmac(fingerprint(1), "descriptor");
+        assert_eq!(
+            hmac,
+            Some(TEST_HMAC),
+            "expected the stored hmac after a reload, got {hmac:?}"
+        );
+    }
+
+    #[test]
+    fn set_descriptor_hmac_inserts_a_missing_entry() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_with_key(tmp.path());
+        manager
+            .set_descriptor_hmac(
+                fingerprint(1),
+                "alias".to_string(),
+                "descriptor".to_string(),
+                TEST_HMAC,
+            )
+            .expect("set hmac");
+
+        let descriptors = manager.registered_descriptors(fingerprint(1));
+        assert_eq!(
+            descriptors,
+            &[DescriptorEntry {
+                alias: "alias".to_string(),
+                descriptor: "descriptor".to_string(),
+                hmac: Some("ab".repeat(32)),
+            }],
+            "expected one entry carrying the hmac, got {descriptors:?}"
+        );
+    }
+
+    #[test]
+    fn set_descriptor_registered_keeps_the_hmac() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_with_key(tmp.path());
+        manager
+            .set_descriptor_hmac(
+                fingerprint(1),
+                "alias".to_string(),
+                "descriptor".to_string(),
+                TEST_HMAC,
+            )
+            .expect("set hmac");
+        manager
+            .set_descriptor_registered(
+                fingerprint(1),
+                "new alias".to_string(),
+                "descriptor".to_string(),
+            )
+            .expect("re-register");
+
+        let descriptors = manager.registered_descriptors(fingerprint(1));
+        assert_eq!(
+            descriptors,
+            &[DescriptorEntry {
+                alias: "new alias".to_string(),
+                descriptor: "descriptor".to_string(),
+                hmac: Some("ab".repeat(32)),
+            }],
+            "expected the alias updated and the hmac kept, got {descriptors:?}"
+        );
+    }
+
+    #[test]
+    fn clear_descriptor_registration_drops_the_hmac() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_with_key(tmp.path());
+        manager
+            .set_descriptor_hmac(
+                fingerprint(1),
+                "alias".to_string(),
+                "descriptor".to_string(),
+                TEST_HMAC,
+            )
+            .expect("set hmac");
+        manager
+            .clear_descriptor_registration(fingerprint(1), "descriptor")
+            .expect("clear registration");
+
+        let hmac = manager.descriptor_hmac(fingerprint(1), "descriptor");
+        assert_eq!(hmac, None, "expected no hmac after clearing, got {hmac:?}");
+        let descriptors = manager.registered_descriptors(fingerprint(1));
+        assert!(
+            descriptors.is_empty(),
+            "expected no descriptors after clearing, got {descriptors:?}"
+        );
+    }
+
+    #[test]
+    fn descriptor_hmac_is_none_for_an_unknown_key_or_descriptor() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_with_key(tmp.path());
+        manager
+            .set_descriptor_hmac(
+                fingerprint(1),
+                "alias".to_string(),
+                "descriptor".to_string(),
+                TEST_HMAC,
+            )
+            .expect("set hmac");
+
+        let unknown_key = manager.descriptor_hmac(fingerprint(99), "descriptor");
+        assert_eq!(
+            unknown_key, None,
+            "expected no hmac for an unknown key, got {unknown_key:?}"
+        );
+        let unknown_descriptor = manager.descriptor_hmac(fingerprint(1), "other");
+        assert_eq!(
+            unknown_descriptor, None,
+            "expected no hmac for an unknown descriptor, got {unknown_descriptor:?}"
+        );
+    }
+
+    #[test]
+    fn set_descriptor_hmac_on_an_unknown_key_is_refused() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_with_key(tmp.path());
+        let result = manager.set_descriptor_hmac(
+            fingerprint(99),
+            "alias".to_string(),
+            "descriptor".to_string(),
+            TEST_HMAC,
+        );
+        assert!(
+            matches!(result, Err(Error::UnknownKey(fp)) if fp == fingerprint(99)),
+            "expected UnknownKey from set_descriptor_hmac, got {result:?}"
+        );
+    }
+
+    fn live_device(id: &str, serial: &str, fp: Option<Fingerprint>) -> LiveDevice {
+        LiveDevice {
+            id: id.to_string(),
+            kind: "hardware".to_string(),
+            model: "model".to_string(),
+            serial: serial.to_string(),
+            module: "hwi".to_string(),
+            version: String::new(),
+            capabilities: CAPABILITY_ORDINARY | CAPABILITY_TAPROOT,
+            fingerprint: fp,
+        }
+    }
+
+    /// One SP fingerprint and two other registered, USB-connected fingerprints, with
+    /// `sp_outputs_pending` true. Shared by the tests that check the SP-first rule.
+    fn sp_pending_scenario() -> (KeyManager, PsbtArtifacts) {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let sp_fp = fingerprint(1);
+        let other_a = fingerprint(2);
+        let other_b = fingerprint(3);
+
+        for fp in [sp_fp, other_a, other_b] {
+            manager
+                .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+                .expect("add key");
+        }
+        for fp in [other_a, other_b] {
+            manager
+                .add_route(fp, RouteKind::Usb)
+                .expect("add usb route");
+        }
+        manager.set_live_devices(vec![
+            live_device("dev-a", "serial-a", Some(other_a)),
+            live_device("dev-b", "serial-b", Some(other_b)),
+        ]);
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([sp_fp, other_a, other_b]),
+            required_capabilities: BTreeMap::from([
+                (sp_fp, CAPABILITY_SILENT_PAYMENTS),
+                (other_a, CAPABILITY_ORDINARY),
+                (other_b, CAPABILITY_ORDINARY),
+            ]),
+            sp_fingerprint: Some(sp_fp),
+            sp_inputs: true,
+            sp_outputs: true,
+            sp_outputs_pending: true,
+            musig_done: BTreeSet::new(),
+        };
+
+        (manager, artifacts)
+    }
+
+    #[test]
+    fn a_key_whose_share_is_in_is_musig_done() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let manager = manager_over(tmp.path(), Network::Regtest);
+        let (a, b) = (fingerprint(1), fingerprint(2));
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([a, b]),
+            required_capabilities: BTreeMap::from([(a, CAPABILITY_MUSIG), (b, CAPABILITY_MUSIG)]),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::from([a]),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+        let done: Vec<(Fingerprint, bool)> = plan
+            .candidates
+            .iter()
+            .map(|candidate| (candidate.fingerprint, candidate.musig_done))
+            .collect();
+        assert_eq!(
+            done,
+            vec![(a, true), (b, false)],
+            "expected {a} musig_done and {b} not, got {done:?}"
+        );
+    }
+
+    #[test]
+    fn every_required_fingerprint_gets_a_candidate() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        manager
+            .add_key(KeyRecord::new(
+                fingerprint(1),
+                Network::Regtest,
+                "alias".to_string(),
+            ))
+            .expect("add key");
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([fingerprint(1), fingerprint(2)]),
+            required_capabilities: BTreeMap::from([
+                (fingerprint(1), CAPABILITY_ORDINARY),
+                (fingerprint(2), CAPABILITY_ORDINARY),
+            ]),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::new(),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+        assert_eq!(
+            plan.candidates.len(),
+            2,
+            "expected one candidate per required fingerprint, got {:?}",
+            plan.candidates
+        );
+
+        let unregistered = plan
+            .candidates
+            .iter()
+            .find(|candidate| candidate.fingerprint == fingerprint(2))
+            .expect("unregistered candidate present");
+        assert_eq!(
+            unregistered.unusable,
+            Some(UnusableReason::NotRegistered),
+            "expected NotRegistered for the unregistered fingerprint, got {:?}",
+            unregistered.unusable
+        );
+        assert!(
+            !unregistered.registered,
+            "expected registered to be false for the unregistered fingerprint, got {unregistered:?}"
+        );
+    }
+
+    #[test]
+    fn sp_outputs_pending_blocks_every_other_key() {
+        let (manager, artifacts) = sp_pending_scenario();
+        let plan = manager.plan_from_artifacts(&artifacts);
+        let sp_fp = artifacts.sp_fingerprint.expect("sp fingerprint set");
+
+        for candidate in plan
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.fingerprint != sp_fp)
+        {
+            assert_eq!(
+                candidate.unusable,
+                Some(UnusableReason::SpOutputsPending),
+                "expected SpOutputsPending for {candidate:?}"
+            );
+            assert_eq!(
+                candidate.route, None,
+                "expected no route while sp outputs are pending, got {candidate:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_sp_key_must_sign_first_and_is_listed_first() {
+        let (manager, artifacts) = sp_pending_scenario();
+        let plan = manager.plan_from_artifacts(&artifacts);
+        let sp_fp = artifacts.sp_fingerprint.expect("sp fingerprint set");
+
+        assert_eq!(
+            plan.candidates[0].fingerprint, sp_fp,
+            "expected the sp candidate first, got {:?}",
+            plan.candidates
+        );
+        assert!(
+            plan.candidates[0].must_sign_first,
+            "expected the sp candidate to have must_sign_first set, got {:?}",
+            plan.candidates[0]
+        );
+        let other_must_sign_first = plan.candidates[1..]
+            .iter()
+            .filter(|candidate| candidate.must_sign_first)
+            .count();
+        assert_eq!(
+            other_must_sign_first, 0,
+            "expected no other candidate with must_sign_first set, got {:?}",
+            plan.candidates
+        );
+    }
+
+    #[test]
+    fn once_the_outputs_are_derived_everyone_can_sign() {
+        let (manager, mut artifacts) = sp_pending_scenario();
+        artifacts.sp_outputs_pending = false;
+        let plan = manager.plan_from_artifacts(&artifacts);
+
+        for candidate in &plan.candidates {
+            assert_ne!(
+                candidate.unusable,
+                Some(UnusableReason::SpOutputsPending),
+                "expected no SpOutputsPending once outputs are derived, got {candidate:?}"
+            );
+            assert!(
+                !candidate.must_sign_first,
+                "expected no must_sign_first once outputs are derived, got {candidate:?}"
+            );
+        }
+
+        let order: Vec<Fingerprint> = plan.candidates.iter().map(|c| c.fingerprint).collect();
+        let mut sorted = order.clone();
+        sorted.sort();
+        assert_eq!(
+            order, sorted,
+            "expected plain fingerprint order, got {order:?}"
+        );
+    }
+
+    #[test]
+    fn a_usb_candidate_names_the_device() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+        manager
+            .add_route(fp, RouteKind::Usb)
+            .expect("add usb route");
+        manager.set_live_devices(vec![live_device("dev-1", "serial", Some(fp))]);
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([fp]),
+            required_capabilities: BTreeMap::from([(fp, CAPABILITY_ORDINARY)]),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::new(),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+        let candidate = &plan.candidates[0];
+        assert_eq!(
+            candidate.route,
+            Some(RouteKind::Usb),
+            "expected a usb route, got {:?}",
+            candidate.route
+        );
+        assert!(
+            !candidate.device_id.is_empty(),
+            "expected a non-empty device id for a usb candidate, got {candidate:?}"
+        );
+    }
+
+    #[test]
+    fn a_non_usb_candidate_leaves_the_device_id_empty() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+        manager.add_route(fp, RouteKind::Qr).expect("add qr route");
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([fp]),
+            required_capabilities: BTreeMap::from([(fp, CAPABILITY_ORDINARY)]),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::new(),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+        let candidate = &plan.candidates[0];
+        assert_eq!(
+            candidate.route,
+            Some(RouteKind::Qr),
+            "expected a qr route, got {:?}",
+            candidate.route
+        );
+        assert!(
+            candidate.device_id.is_empty(),
+            "expected an empty device id for a non-usb candidate, got {}",
+            candidate.device_id
+        );
+    }
+
+    #[test]
+    fn each_unusable_reason_is_named_exactly() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let no_route = fingerprint(1);
+        let no_hot_secret = fingerprint(2);
+        let device_not_connected = fingerprint(3);
+
+        manager
+            .add_key(KeyRecord::new(
+                no_route,
+                Network::Regtest,
+                "alias".to_string(),
+            ))
+            .expect("add no route key");
+        manager
+            .add_key(KeyRecord::new(
+                no_hot_secret,
+                Network::Regtest,
+                "alias".to_string(),
+            ))
+            .expect("add hot key");
+        // The store now refuses to persist a hot route without a secret, so this
+        // fallback state (data written before that guard existed, or corrupted on
+        // disk) is simulated in memory only, to exercise unusable_reason's handling
+        // of it rather than the store's write path.
+        manager
+            .records
+            .get_mut(&no_hot_secret)
+            .expect("record present")
+            .routes
+            .push(RouteKind::Hot)
+            .expect("push hot route");
+        manager
+            .add_key(KeyRecord::new(
+                device_not_connected,
+                Network::Regtest,
+                "alias".to_string(),
+            ))
+            .expect("add usb key");
+        manager
+            .add_route(device_not_connected, RouteKind::Usb)
+            .expect("add usb route");
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([no_route, no_hot_secret, device_not_connected]),
+            required_capabilities: [no_route, no_hot_secret, device_not_connected]
+                .into_iter()
+                .map(|fp| (fp, CAPABILITY_ORDINARY))
+                .collect(),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::new(),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+
+        let reason_for = |fp: Fingerprint| {
+            plan.candidates
+                .iter()
+                .find(|candidate| candidate.fingerprint == fp)
+                .expect("candidate present")
+                .unusable
+        };
+        assert_eq!(
+            reason_for(no_route),
+            Some(UnusableReason::NoRoute),
+            "expected NoRoute for a key with no routes"
+        );
+        assert_eq!(
+            reason_for(no_hot_secret),
+            Some(UnusableReason::NoHotSecret),
+            "expected NoHotSecret for a hot-only key with no secret"
+        );
+        assert_eq!(
+            reason_for(device_not_connected),
+            Some(UnusableReason::DeviceNotConnected),
+            "expected DeviceNotConnected for a usb key with no live device"
+        );
+    }
+
+    #[test]
+    fn route_and_unusable_are_mutually_exclusive() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let usable = fingerprint(1);
+        let unregistered = fingerprint(2);
+        let no_route = fingerprint(3);
+
+        manager
+            .add_key(KeyRecord::new(
+                usable,
+                Network::Regtest,
+                "alias".to_string(),
+            ))
+            .expect("add usable key");
+        manager
+            .add_route(usable, RouteKind::Qr)
+            .expect("add qr route");
+        manager
+            .add_key(KeyRecord::new(
+                no_route,
+                Network::Regtest,
+                "alias".to_string(),
+            ))
+            .expect("add no route key");
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([usable, unregistered, no_route]),
+            required_capabilities: [usable, unregistered, no_route]
+                .into_iter()
+                .map(|fp| (fp, CAPABILITY_ORDINARY))
+                .collect(),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::new(),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+
+        let (sp_manager, sp_artifacts) = sp_pending_scenario();
+        let sp_plan = sp_manager.plan_from_artifacts(&sp_artifacts);
+
+        for candidate in plan.candidates.iter().chain(sp_plan.candidates.iter()) {
+            assert!(
+                candidate.route.is_some() != candidate.unusable.is_some(),
+                "expected exactly one of route/unusable set, got {candidate:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unrelated_live_devices_are_listed() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let required_fp = fingerprint(1);
+        let unrelated_fp = fingerprint(2);
+        manager.set_live_devices(vec![
+            live_device("dev-required", "serial-required", Some(required_fp)),
+            live_device("dev-unrelated", "serial-unrelated", Some(unrelated_fp)),
+        ]);
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([required_fp]),
+            required_capabilities: BTreeMap::from([(required_fp, CAPABILITY_ORDINARY)]),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::new(),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+        assert_eq!(
+            plan.unrelated_live.len(),
+            1,
+            "expected only the unrelated device listed, got {:?}",
+            plan.unrelated_live
+        );
+        assert_eq!(
+            plan.unrelated_live[0].fingerprint,
+            Some(unrelated_fp),
+            "expected the unrelated device's fingerprint, got {:?}",
+            plan.unrelated_live[0]
+        );
+    }
+
+    #[test]
+    fn a_live_device_with_no_fingerprint_is_not_unrelated() {
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        manager.set_live_devices(vec![live_device("dev-locked", "serial", None)]);
+
+        let artifacts = PsbtArtifacts {
+            required: BTreeSet::from([fingerprint(1)]),
+            required_capabilities: BTreeMap::from([(fingerprint(1), CAPABILITY_ORDINARY)]),
+            sp_fingerprint: None,
+            sp_inputs: false,
+            sp_outputs: false,
+            sp_outputs_pending: false,
+            musig_done: BTreeSet::new(),
+        };
+        let plan = manager.plan_from_artifacts(&artifacts);
+        assert!(
+            plan.unrelated_live.is_empty(),
+            "expected a fingerprint-less device to be excluded from unrelated_live, got {:?}",
+            plan.unrelated_live
+        );
+    }
+
+    #[test]
+    fn signing_plan_from_bytes_matches_plan_from_artifacts() {
+        use bitcoin::hashes::Hash;
+        use bwk_sp::bwk_tx::bwk_psbt::{Input as PsbtInput, PsbtV2};
+
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+
+        let secp = bitcoin::secp256k1::Secp256k1::new();
+        let public_key = bitcoin::secp256k1::PublicKey::from_secret_key(
+            &secp,
+            &bitcoin::secp256k1::SecretKey::from_slice(&[0x21; 32]).expect("valid key"),
+        );
+        let path = (
+            fp,
+            DerivationPath::from(vec![
+                bitcoin::bip32::ChildNumber::from_hardened_idx(0).expect("valid index")
+            ]),
+        );
+        let mut input = PsbtInput {
+            previous_output: bitcoin::OutPoint::new(bitcoin::Txid::from_byte_array([0x11; 32]), 0),
+            sequence: bitcoin::Sequence::MAX,
+            required_time_lock_time: None,
+            required_height_lock_time: None,
+            psbt: bitcoin::psbt::Input::default(),
+        };
+        input.psbt.bip32_derivation.insert(public_key, path);
+
+        let psbt = PsbtV2 {
+            tx_version: bitcoin::transaction::Version::TWO,
+            fallback_lock_time: Some(bitcoin::absolute::LockTime::ZERO),
+            tx_modifiable: None,
+            xpub: Default::default(),
+            proprietary: Default::default(),
+            unknown: Default::default(),
+            inputs: vec![input],
+            outputs: Vec::new(),
+        };
+        let bytes = psbt.serialize().expect("serialize psbt");
+
+        let artifacts = inspect_bytes(&bytes, &[], &manager.secp).expect("inspect bytes");
+        let expected = manager.plan_from_artifacts(&artifacts);
+        let found = manager
+            .signing_plan(&bytes)
+            .expect("signing plan from bytes");
+        assert_eq!(
+            found, expected,
+            "signing_plan from bytes must match plan_from_artifacts, got {found:?} expected {expected:?}"
+        );
+    }
+
+    #[test]
+    fn set_descriptor_registered_refuses_a_spend_descriptor_but_accepts_watch_only() {
+        use bitcoin::bip32::DerivationPath;
+        use bwk_sp::bwk_sign::bwk_descriptor::sp_key::{SpKey, SpSpendKey};
+        use bwk_sp::bwk_sign::hot_signer::HotSigner;
+        use bwk_sp::receiver::{bip352_base_derivation, scan_path, spend_path};
+
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = import_test_mnemonic(&mut manager, "alias", "password").expect("import");
+
+        let signer =
+            HotSigner::new_from_mnemonics(Network::Regtest, TEST_MNEMONIC).expect("signer builds");
+        let account = hot::sp_account().expect("sp account index");
+        let origin = (
+            signer.fingerprint(),
+            DerivationPath::from(bip352_base_derivation(Network::Regtest, account)),
+        );
+        let spend_descriptor = SpDescriptor::Packed {
+            origin: Some(origin),
+            key: SpKey::Spend(SpSpendKey {
+                scan_key: signer.private_key_at(&scan_path(Network::Regtest, account)),
+                spend_key: signer.private_key_at(&spend_path(Network::Regtest, account)),
+                network: bitcoin::NetworkKind::Test,
+            }),
+        }
+        .to_string();
+
+        let result = manager.set_descriptor_registered(fp, "alias".to_string(), spend_descriptor);
+        assert!(
+            matches!(result, Err(Error::SpSpendDescriptor)),
+            "expected SpSpendDescriptor, got {result:?}"
+        );
+        assert!(
+            manager.registered_descriptors(fp).is_empty(),
+            "expected nothing written for a refused spend descriptor, got {:?}",
+            manager.registered_descriptors(fp)
+        );
+
+        let watch_only_descriptor = hot::sp_descriptor(
+            manager.key(fp).expect("key present"),
+            Network::Regtest,
+            Password::new("password".to_string()),
+        )
+        .expect("watch-only descriptor builds")
+        .to_string();
+
+        manager
+            .set_descriptor_registered(fp, "alias".to_string(), watch_only_descriptor.clone())
+            .expect("watch-only descriptor is accepted");
+        assert_eq!(
+            manager.registered_descriptors(fp),
+            &[DescriptorEntry {
+                alias: "alias".to_string(),
+                descriptor: watch_only_descriptor,
+                hmac: None,
+            }],
+            "expected the watch-only descriptor to register"
+        );
+    }
+
+    #[test]
+    fn required_fingerprints_errors_on_a_malformed_registered_sp_descriptor() {
+        use bwk_sp::bwk_tx::bwk_psbt::PsbtV2;
+
+        let tmp = temp_dir::TempDir::new().expect("create temp dir");
+        let mut manager = manager_over(tmp.path(), Network::Regtest);
+        let fp = fingerprint(1);
+        manager
+            .add_key(KeyRecord::new(fp, Network::Regtest, "alias".to_string()))
+            .expect("add key");
+        manager
+            .set_descriptor_registered(
+                fp,
+                "alias".to_string(),
+                "sp(not a valid descriptor".to_string(),
+            )
+            .expect("registration itself does not validate parseability");
+
+        let psbt = PsbtV2 {
+            tx_version: bitcoin::transaction::Version::TWO,
+            fallback_lock_time: Some(bitcoin::absolute::LockTime::ZERO),
+            tx_modifiable: None,
+            xpub: Default::default(),
+            proprietary: Default::default(),
+            unknown: Default::default(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+        };
+        let bytes = psbt.serialize().expect("serialize psbt");
+
+        let result = manager.required_fingerprints(&bytes);
+        assert!(
+            matches!(result, Err(Error::DescriptorParse(_))),
+            "expected DescriptorParse rather than silently skipping the malformed \
+             descriptor, got {result:?}"
+        );
+    }
+}

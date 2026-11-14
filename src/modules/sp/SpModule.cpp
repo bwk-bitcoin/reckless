@@ -15,7 +15,7 @@
 #include <common.h>
 #include <memory>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 #include <vector>
 
@@ -44,7 +44,7 @@ auto SpModule::get() -> SpModule * {
 QMap<QString, QString> SpModule::meta() const {
     return {{QStringLiteral("id"), QStringLiteral("sp.module")},
             {QStringLiteral("name"), QStringLiteral("Silent Payments Accounts")},
-            {QStringLiteral("icon"), QStringLiteral("silent")},
+            {QStringLiteral("icon"), QStringLiteral("reckless")},
             {QStringLiteral("version"), QStringLiteral("1.0.0")}};
 }
 

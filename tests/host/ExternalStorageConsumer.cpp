@@ -63,7 +63,7 @@ void requireOpaque(const QJsonValue &value, const QString &key) {
         return;
     }
     auto text = value.toString();
-    require(!text.contains(QStringLiteral(".silent")), "an answer carries no host path");
+    require(!text.contains(QStringLiteral(".reckless")), "an answer carries no host path");
     if (key == QStringLiteral("path")) {
         require(!text.startsWith(QLatin1Char('/')) &&
                     !text.split(QLatin1Char('/')).contains(QStringLiteral("..")),

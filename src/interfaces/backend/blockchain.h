@@ -106,4 +106,4 @@ signals:
 
 } // namespace backend
 
-Q_DECLARE_INTERFACE(backend::IBlockchain, "dev.silent.backend.IBlockchain/1.0")
+Q_DECLARE_INTERFACE(backend::IBlockchain, "dev.reckless.backend.IBlockchain/1.0")

@@ -37,7 +37,7 @@ select_option() {
 }
 
 read_version() {
-    grep '^version' silent/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
+    grep '^version' reckless/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
 }
 
 bump_patch() {
@@ -64,8 +64,8 @@ bump_major() {
 update_version() {
     local new_version="$1"
 
-    # silent/Cargo.toml
-    sed -i "0,/^version = \".*\"/s//version = \"$new_version\"/" silent/Cargo.toml
+    # reckless/Cargo.toml
+    sed -i "0,/^version = \".*\"/s//version = \"$new_version\"/" reckless/Cargo.toml
 
     # CMakeLists.txt
     sed -i "s/project(\${BIN} VERSION .* LANGUAGES/project(\${BIN} VERSION $new_version LANGUAGES/" CMakeLists.txt
@@ -78,7 +78,7 @@ update_version() {
 
 command -v $NIX >/dev/null || die "'nix' not found."
 
-echo "=== Silent Release Script ==="
+echo "=== Reckless Release Script ==="
 echo
 
 select_option "What do you want to do?" \
@@ -188,7 +188,7 @@ if [[ "$is_rc" == false ]]; then
     echo
     echo "Updating version to $new_version..."
     update_version "$new_version"
-    git add silent/Cargo.toml CMakeLists.txt flake.nix
+    git add reckless/Cargo.toml CMakeLists.txt flake.nix
     git commit -m "release: $tag"
 fi
 
@@ -216,25 +216,25 @@ mkdir -p "$STAGING_DIR"
 
 echo "  Building Linux..."
 eval "$NIX $NIX_FLAGS build .#linux"
-cp result/bin/silent "$STAGING_DIR/silent-${tag}-linux-x86_64"
+cp result/bin/reckless "$STAGING_DIR/reckless-${tag}-linux-x86_64"
 
 echo "  Building Windows..."
 eval "$NIX $NIX_FLAGS build .#windows"
-cp result/bin/silent.exe "$STAGING_DIR/silent-${tag}-windows-x86_64.exe"
+cp result/bin/reckless.exe "$STAGING_DIR/reckless-${tag}-windows-x86_64.exe"
 
 echo "  Building macOS ARM..."
 eval "$NIX $NIX_FLAGS build .#aarch64-apple-darwin"
-cp result/bin/silent "$STAGING_DIR/silent-${tag}-macos-aarch64"
+cp result/bin/reckless "$STAGING_DIR/reckless-${tag}-macos-aarch64"
 
 echo "  Building macOS x86_64..."
 eval "$NIX $NIX_FLAGS build .#x86_64-apple-darwin"
-cp result/bin/silent "$STAGING_DIR/silent-${tag}-macos-x86_64"
+cp result/bin/reckless "$STAGING_DIR/reckless-${tag}-macos-x86_64"
 
 # --- Checksums ---
 
 echo "Generating checksums..."
 cd "$STAGING_DIR"
-sha256sum silent-${tag}-* > SHA256SUMS
+sha256sum reckless-${tag}-* > SHA256SUMS
 cd "$REPO_ROOT"
 
 # --- GitHub Release ---
@@ -257,7 +257,7 @@ if [[ "$has_gh" == true ]]; then
     if gh release create "$tag" \
         --title "$tag" \
         $prerelease_flag \
-        "$STAGING_DIR"/silent-${tag}-* \
+        "$STAGING_DIR"/reckless-${tag}-* \
         "$STAGING_DIR/SHA256SUMS"; then
         echo
         echo "=== Release $tag created successfully ==="
@@ -265,13 +265,13 @@ if [[ "$has_gh" == true ]]; then
         echo
         echo "WARNING: GitHub release creation failed."
         echo "Create it manually with:"
-        echo "  gh release create $tag $prerelease_flag --title $tag $STAGING_DIR/silent-${tag}-* $STAGING_DIR/SHA256SUMS"
+        echo "  gh release create $tag $prerelease_flag --title $tag $STAGING_DIR/reckless-${tag}-* $STAGING_DIR/SHA256SUMS"
     fi
 else
     echo
     echo "Skipping GitHub release (gh CLI not available)."
     echo "Create it manually with:"
-    echo "  gh release create $tag --title $tag $STAGING_DIR/silent-${tag}-* $STAGING_DIR/SHA256SUMS"
+    echo "  gh release create $tag --title $tag $STAGING_DIR/reckless-${tag}-* $STAGING_DIR/SHA256SUMS"
 fi
 
 echo

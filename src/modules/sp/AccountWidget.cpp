@@ -1,6 +1,6 @@
 #include "AccountWidget.h"
 #include "AccountController.h"
-#ifdef SILENT_MOCK_UI
+#ifdef RECKLESS_MOCK_UI
 #include "MockAccountController.h"
 #endif
 #include "StatusBar.h"
@@ -11,13 +11,13 @@
 
 AccountWidget::AccountWidget([[maybe_unused]] const QString &account, QWidget *parent)
     : QWidget(parent) {
-#ifdef SILENT_MOCK_UI
+#ifdef RECKLESS_MOCK_UI
     m_controller = new MockAccountController(this);
 #else
     m_controller = new AccountController(account, this);
 #endif
     initUI();
-#ifdef SILENT_MOCK_UI
+#ifdef RECKLESS_MOCK_UI
     m_controller->loadPanels();
     m_controller->loadPanel("history");
 #endif

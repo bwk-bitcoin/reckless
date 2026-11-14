@@ -21,7 +21,7 @@ public:
     ~IService() override = default;
 
 public slots:
-    // Runs the extension `operation` (named by its provider, "silent." for the built-in ones)
+    // Runs the extension `operation` (named by its provider, "reckless." for the built-in ones)
     // on bytes it defines, answered by rawResult(). An unknown operation answers error().
     virtual void raw(backend::RequestId request_id, QString operation, QByteArray payload) = 0;
 

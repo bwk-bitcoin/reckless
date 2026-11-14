@@ -7,7 +7,7 @@
 #include <QString>
 #include <QStringList>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 
 // Conversions between the Rust bridge types and the account UI service types. Unknown
 // values (a zero height, an unknown amount) become empty optionals.
@@ -15,7 +15,7 @@ namespace account::services {
 
 auto toQString(const rust::String &value) -> QString;
 auto toNetwork(Network network) -> backend::Network;
-// The bridge network of `network`, none for a network Silent accounts are not on.
+// The bridge network of `network`, none for a network Reckless accounts are not on.
 auto toRustNetwork(backend::Network network) -> std::optional<Network>;
 auto toQStrings(const rust::Vec<rust::String> &values) -> QStringList;
 auto toRustStrings(const QStringList &values) -> rust::Vec<rust::String>;

@@ -83,4 +83,4 @@ signals:
                plugin::SignError kind = plugin::SignError::Other);
 };
 
-Q_DECLARE_INTERFACE(ISigner, "dev.silent.ISigner/1.0")
+Q_DECLARE_INTERFACE(ISigner, "dev.reckless.ISigner/1.0")

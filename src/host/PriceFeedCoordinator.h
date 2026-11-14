@@ -5,7 +5,7 @@
 #include <QObject>
 #include <QPointer>
 #include <memory>
-#include <silent.h>
+#include <reckless.h>
 
 class IFeed;
 

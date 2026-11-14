@@ -18,7 +18,7 @@
 #include <QtEndian>
 #include <QtLogging>
 #include <QtTypes>
-#include <silent.h>
+#include <reckless.h>
 
 namespace smoke {
 
@@ -40,7 +40,7 @@ struct BundleCompatibility {
 
 // This host, as the Settings import passes it.
 inline auto hostCompatibility() -> BundleCompatibility {
-    return {.iid = QStringLiteral(SILENT_IPlugin_IID),
+    return {.iid = QStringLiteral(RECKLESS_IPlugin_IID),
             .qtMajor = QT_VERSION_MAJOR,
             .qtMinor = QT_VERSION_MINOR,
             .archRequirements = hostArchRequirements()};
@@ -85,7 +85,7 @@ inline auto bundleManifest(const QString &id, const QString &name, const QString
                          {QStringLiteral("name"), name},
                          {QStringLiteral("version"), QStringLiteral("1.0.0")},
                          {QStringLiteral("description"), name},
-                         {QStringLiteral("author"), QStringLiteral("Silent tests")},
+                         {QStringLiteral("author"), QStringLiteral("Reckless tests")},
                          {QStringLiteral("capabilities"), QJsonArray()},
                          {QStringLiteral("entry"), entry},
                          {QStringLiteral("translations"), QJsonArray()}};

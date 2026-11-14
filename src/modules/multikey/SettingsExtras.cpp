@@ -28,7 +28,7 @@
 #include <Qontrol>
 #include <common.h>
 #include <limits>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 
 namespace musig {

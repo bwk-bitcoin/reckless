@@ -9,12 +9,12 @@ from pathlib import Path
 
 
 CATALOGS = [
-    ("silent_en.lang", "silent_en.ts", "en_US", "en"),
-    ("silent_fr.lang", "silent_fr.ts", "fr", "en"),
-    ("silent_it.lang", "silent_it.ts", "it", "en"),
-    ("silent_de.lang", "silent_de.ts", "de", "en"),
-    ("silent_pt.lang", "silent_pt.ts", "pt", "en"),
-    ("silent_es.lang", "silent_es.ts", "es", "en"),
+    ("reckless_en.lang", "reckless_en.ts", "en_US", "en"),
+    ("reckless_fr.lang", "reckless_fr.ts", "fr", "en"),
+    ("reckless_it.lang", "reckless_it.ts", "it", "en"),
+    ("reckless_de.lang", "reckless_de.ts", "de", "en"),
+    ("reckless_pt.lang", "reckless_pt.ts", "pt", "en"),
+    ("reckless_es.lang", "reckless_es.ts", "es", "en"),
 ]
 
 

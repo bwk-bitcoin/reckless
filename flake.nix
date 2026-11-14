@@ -1,5 +1,5 @@
 {
-  description = "Silent - Privacy-focused desktop Bitcoin wallet using Silent Payments";
+  description = "Reckless - Privacy-focused desktop Bitcoin wallet using Silent Payments";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
@@ -84,7 +84,7 @@
 
       # Vendor Cargo dependencies (handles git deps via outputHashes)
       cargoVendorDir = pkgs.rustPlatform.importCargoLock {
-        lockFile = ./silent/Cargo.lock;
+        lockFile = ./reckless/Cargo.lock;
         outputHashes = {
           "blindbitd-0.0.1" = "sha256-XfO7P9uVLbw8mpiqLZbUoKw8XsxqM1MyeBuq6TKeZ24=";
           "bipqr-0.0.1" = "sha256-6FjvDOTc3Iiy40J2AZ+uF4DUagW6TL+wofPoMhxNxqI=";
@@ -108,10 +108,10 @@
       depsOnlySource = pkgs.lib.fileset.toSource {
         root = ./.;
         fileset = pkgs.lib.fileset.unions [
-          ./silent/Cargo.toml
-          ./silent/Cargo.lock
-          ./silent/build.rs
-          ./silent/src/lib.rs
+          ./reckless/Cargo.toml
+          ./reckless/Cargo.lock
+          ./reckless/build.rs
+          ./reckless/src/lib.rs
         ];
       };
 
@@ -146,12 +146,12 @@ directory = "${cargoVendorDir}"
 CARGO_EOF
       '';
 
-      # Shared source layout: bwk/spdk/silent as siblings under /build/src/
-      sourceLayout = silentSrc: ''
-        mkdir -p /build/src/{bwk,spdk,silent}
+      # Shared source layout: bwk/spdk/reckless as siblings under /build/src/
+      sourceLayout = recklessSrc: ''
+        mkdir -p /build/src/{bwk,spdk,reckless}
         cp -r ${bwk}/. /build/src/bwk/
         cp -r ${spdk}/. /build/src/spdk/
-        cp -r ${silentSrc}/. /build/src/silent/
+        cp -r ${recklessSrc}/. /build/src/reckless/
         chmod -R u+w /build/src
       '';
 
@@ -166,7 +166,7 @@ CARGO_EOF
           targetArg = if rustTarget != null then "--target ${rustTarget}" else "";
         in
         pkgs.stdenv.mkDerivation {
-          pname = "silent-rust-deps";
+          pname = "reckless-rust-deps";
           version = "0.1.0";
           CARGO_BUILD_JOBS = "1";
 
@@ -196,26 +196,26 @@ CARGO_EOF
             ${cargoConfig}
 
             # Create stub modules so deps compile without the real implementation
-            mkdir -p /build/src/silent/silent/src
-            touch /build/src/silent/silent/src/account.rs
-            touch /build/src/silent/silent/src/config.rs
+            mkdir -p /build/src/reckless/reckless/src
+            touch /build/src/reckless/reckless/src/account.rs
+            touch /build/src/reckless/reckless/src/config.rs
 
             ${preBuildSetup}
 
-            cd /build/src/silent/silent
+            cd /build/src/reckless/reckless
             cargo build --release ${targetArg} || true
           '';
 
           installPhase = ''
-            cd /build/src/silent/silent
+            cd /build/src/reckless/reckless
             # Save the target directory with all compiled deps
             mkdir -p $out
             cp -r target $out/target
-            # Remove only silent crate fingerprints so it recompiles with real source
-            find $out/target -name "libsilent*" -delete
-            find $out/target -name "silent-*" -path "*/fingerprint/*" -exec rm -rf {} + 2>/dev/null || true
-            find $out/target -name "silent-*" -path "*/deps/*" -delete 2>/dev/null || true
-            find $out/target -name "silent-*" -path "*/build/*" -exec rm -rf {} + 2>/dev/null || true
+            # Remove only reckless crate fingerprints so it recompiles with real source
+            find $out/target -name "libreckless*" -delete
+            find $out/target -name "reckless-*" -path "*/fingerprint/*" -exec rm -rf {} + 2>/dev/null || true
+            find $out/target -name "reckless-*" -path "*/deps/*" -delete 2>/dev/null || true
+            find $out/target -name "reckless-*" -path "*/build/*" -exec rm -rf {} + 2>/dev/null || true
           '';
 
           dontFixup = true;
@@ -238,7 +238,7 @@ CARGO_EOF
           };
         in
         pkgs.stdenv.mkDerivation {
-          pname = "silent-rust";
+          pname = "reckless-rust";
           version = "0.1.0";
           CARGO_BUILD_JOBS = "1";
 
@@ -268,26 +268,26 @@ CARGO_EOF
             ${cargoConfig}
 
             # Restore cached dependency artifacts
-            cp -r ${deps}/target /build/src/silent/silent/target
-            chmod -R u+w /build/src/silent/silent/target
+            cp -r ${deps}/target /build/src/reckless/reckless/target
+            chmod -R u+w /build/src/reckless/reckless/target
 
             ${preBuildSetup}
 
-            cd /build/src/silent/silent
+            cd /build/src/reckless/reckless
             cargo build --release ${targetArg}
           '';
 
           installPhase = ''
-            cd /build/src/silent/silent
+            cd /build/src/reckless/reckless
             mkdir -p $out/lib $out/include
-            cp ${releaseDir}/libsilent.a $out/lib/
+            cp ${releaseDir}/libreckless.a $out/lib/
 
             # CXX bridge headers may be under target/cxxbridge/ or target/<triple>/cxxbridge/
-            if [ -f target/cxxbridge/silent/src/lib.rs.h ]; then
-              cp target/cxxbridge/silent/src/lib.rs.h $out/include/silent.h
+            if [ -f target/cxxbridge/reckless/src/lib.rs.h ]; then
+              cp target/cxxbridge/reckless/src/lib.rs.h $out/include/reckless.h
               cp target/cxxbridge/rust/cxx.h $out/include/cxx.h
             else
-              find target -name 'lib.rs.h' -path '*/cxxbridge/silent/src/*' | head -1 | xargs -I{} cp {} $out/include/silent.h
+              find target -name 'lib.rs.h' -path '*/cxxbridge/reckless/src/*' | head -1 | xargs -I{} cp {} $out/include/reckless.h
               find target -name 'cxx.h' -path '*/cxxbridge/rust/*' | head -1 | xargs -I{} cp {} $out/include/cxx.h
             fi
           '';
@@ -305,7 +305,7 @@ CARGO_EOF
                  , preConfigureExtra ? ""
                  }:
         stdenvOverride.mkDerivation {
-          pname = "silent";
+          pname = "reckless";
           version = "0.1.0";
 
           dontWrapQtApps = true;
@@ -331,8 +331,8 @@ CARGO_EOF
 
             # Place pre-built Rust artifacts
             mkdir -p lib/include
-            cp ${rustLib}/lib/libsilent.a lib/
-            cp ${rustLib}/include/silent.h lib/include/
+            cp ${rustLib}/lib/libreckless.a lib/
+            cp ${rustLib}/include/reckless.h lib/include/
             cp ${rustLib}/include/cxx.h lib/include/
 
             # Replace lib/qontrol with the flake input version
@@ -362,26 +362,26 @@ CARGO_EOF
 
           installPhase = ''
             mkdir -p $out/bin
-            if [ -f silent ]; then
+            if [ -f reckless ]; then
               # The binary, its desktop entry and hicolor icons (ws-plaude/silent#112).
               cmake --install . --prefix $out
-            elif [ -f silent.exe ]; then
-              cp silent.exe $out/bin/
-            elif [ -f silent.app/Contents/MacOS/silent ]; then
-              cp -r silent.app $out/
-              ln -s $out/silent.app/Contents/MacOS/silent $out/bin/silent
+            elif [ -f reckless.exe ]; then
+              cp reckless.exe $out/bin/
+            elif [ -f Reckless.app/Contents/MacOS/Reckless ]; then
+              cp -r Reckless.app $out/
+              ln -s $out/Reckless.app/Contents/MacOS/Reckless $out/bin/reckless
             else
-              echo "ERROR: silent binary not found"
-              find . -name "silent*" -type f || true
+              echo "ERROR: reckless binary not found"
+              find . -name "reckless*" -type f || true
               exit 1
             fi
 
             # Windows host import library: plugin DLLs link against this to resolve
             # the host ABI (interfaces + qontrol + the Qt surface the host uses).
-            implib="$(find . -name libsilent_host_exports.a -print -quit || true)"
+            implib="$(find . -name libreckless_host_exports.a -print -quit || true)"
             echo "host import library: ''${implib:-<not found>}"
             if [ -n "$implib" ]; then
-              install -D "$implib" $out/lib/libsilent_host_exports.a
+              install -D "$implib" $out/lib/libreckless_host_exports.a
             fi
           '';
         };
@@ -416,7 +416,7 @@ CARGO_EOF
       linuxTrace = buildGui {
         rustLib = linuxRustLib;
         qt6Static = linuxQt6;
-        extraCmakeFlags = [ "-DSILENT_I18N_TRACE_IDS=ON" ];
+        extraCmakeFlags = [ "-DRECKLESS_I18N_TRACE_IDS=ON" ];
       };
 
       # ─── Windows (MinGW cross-compilation) ───
@@ -471,7 +471,7 @@ CARGO_EOF
         # Windows host-symbol export for plugin DLLs is wired in CMakeLists.txt:
         # a curated export table (host ABI + qontrol + the full QtCore/Gui/Widgets/
         # Svg ABI) is generated from the libraries and produces
-        # libsilent_host_exports.a. This stays under the PE 64K export-ordinal cap
+        # libreckless_host_exports.a. This stays under the PE 64K export-ordinal cap
         # that plain --export-all-symbols overflows (all Qt modules total >72K).
         extraCmakeFlags = [ ];
         # Replace Linux-specific link libraries with Windows equivalents
@@ -481,11 +481,11 @@ CARGO_EOF
           sed -i '/^\s*pthread$/d' CMakeLists.txt
           sed -i '/^\s*dl$/d' CMakeLists.txt
           sed -i '/^\s*udev$/d' CMakeLists.txt
-          # Add Windows system libraries after the silent_rust line in target_link_libraries.
+          # Add Windows system libraries after the reckless_rust line in target_link_libraries.
           # setupapi/cfgmgr32 back the rust serialport crate (SetupDi*/CM_Get*); they were
           # previously pulled in transitively by Qt, but whole-archiving Qt for the plugin
           # export drops that propagation, so link them explicitly.
-          sed -i '/target_link_libraries/,/)/{ s/^\(\s*\)silent_rust$/\1silent_rust\n\1ws2_32\n\1bcrypt\n\1userenv\n\1ntdll\n\1crypt32\n\1setupapi\n\1cfgmgr32/; }' CMakeLists.txt
+          sed -i '/target_link_libraries/,/)/{ s/^\(\s*\)reckless_rust$/\1reckless_rust\n\1ws2_32\n\1bcrypt\n\1userenv\n\1ntdll\n\1crypt32\n\1setupapi\n\1cfgmgr32/; }' CMakeLists.txt
         '';
       };
 
@@ -725,14 +725,14 @@ TOOLCHAIN
         '';
         postUnpackExtra = ''
           # macOS plugin linking uses -bundle_loader + -undefined dynamic_lookup.
-          # That applies when building plugin bundles, not the silent host binary.
+          # That applies when building plugin bundles, not the reckless host binary.
           ${macosGuiPostUnpack "aarch64"}
           sed -i '/^\s*ssl$/d' CMakeLists.txt
           sed -i '/^\s*crypto$/d' CMakeLists.txt
           sed -i '/^\s*pthread$/d' CMakeLists.txt
           sed -i '/^\s*dl$/d' CMakeLists.txt
           sed -i '/^\s*udev$/d' CMakeLists.txt
-          sed -i '/target_link_libraries/,/)/{ s/^\(\s*\)silent_rust$/\1silent_rust\n\1"-framework Security"\n\1"-framework SystemConfiguration"\n\1"-framework CoreFoundation"/; }' CMakeLists.txt
+          sed -i '/target_link_libraries/,/)/{ s/^\(\s*\)reckless_rust$/\1reckless_rust\n\1"-framework Security"\n\1"-framework SystemConfiguration"\n\1"-framework CoreFoundation"/; }' CMakeLists.txt
         '';
       };
 
@@ -778,14 +778,14 @@ TOOLCHAIN
         '';
         postUnpackExtra = ''
           # macOS plugin linking uses -bundle_loader + -undefined dynamic_lookup.
-          # That applies when building plugin bundles, not the silent host binary.
+          # That applies when building plugin bundles, not the reckless host binary.
           ${macosGuiPostUnpack "x86_64"}
           sed -i '/^\s*ssl$/d' CMakeLists.txt
           sed -i '/^\s*crypto$/d' CMakeLists.txt
           sed -i '/^\s*pthread$/d' CMakeLists.txt
           sed -i '/^\s*dl$/d' CMakeLists.txt
           sed -i '/^\s*udev$/d' CMakeLists.txt
-          sed -i '/target_link_libraries/,/)/{ s/^\(\s*\)silent_rust$/\1silent_rust\n\1"-framework Security"\n\1"-framework SystemConfiguration"\n\1"-framework CoreFoundation"/; }' CMakeLists.txt
+          sed -i '/target_link_libraries/,/)/{ s/^\(\s*\)reckless_rust$/\1reckless_rust\n\1"-framework Security"\n\1"-framework SystemConfiguration"\n\1"-framework CoreFoundation"/; }' CMakeLists.txt
         '';
       };
 
@@ -837,11 +837,11 @@ TOOLCHAIN
               cmakeFlags = [
                 "-DCMAKE_BUILD_TYPE=Release"
                 "-DCMAKE_PREFIX_PATH=${target.qt}"
-                "-DSILENT_SOURCE_DIR=${self}"
+                "-DRECKLESS_SOURCE_DIR=${self}"
                 "-DQONTROL_SOURCE_DIR=${qontrol}"
                 "-DRUST_PROFILE=release"
                 "-DRUST_TARGET=${target.triple}"
-              ] ++ pkgs.lib.optional isWindows "-DSILENT_HOST_IMPORT_LIB=${windows}/lib/libsilent_host_exports.a"
+              ] ++ pkgs.lib.optional isWindows "-DRECKLESS_HOST_IMPORT_LIB=${windows}/lib/libreckless_host_exports.a"
                 ++ pkgs.lib.optionals isApple [
                   "-DCMAKE_INSTALL_NAME_TOOL=${llvmPkgs.llvm}/bin/llvm-install-name-tool"
                   "-DCMAKE_OSX_ARCHITECTURES=${if target.arch == "aarch64" then "arm64" else "x86_64"}"
@@ -878,7 +878,7 @@ TOOLCHAIN
         shellHook = ''
           export CMAKE_PREFIX_PATH="${linuxQt6}"
           export QT_DIR="${linuxQt6}"
-          echo "Silent dev shell"
+          echo "Reckless dev shell"
           echo "  CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH"
         '';
       };

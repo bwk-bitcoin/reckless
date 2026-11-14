@@ -23,13 +23,15 @@
 #include <utility>
 
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 
 namespace keys::modal {
 
 FetchNonces::FetchNonces(KeysModule *module, QString fingerprint, QString descriptor, bool hot)
-    : m_module(module), m_fingerprint(std::move(fingerprint)),
-      m_descriptor(std::move(descriptor)), m_hot(hot) {
+    : m_module(module),
+      m_fingerprint(std::move(fingerprint)),
+      m_descriptor(std::move(descriptor)),
+      m_hot(hot) {
     init();
     doConnect();
     view();
@@ -60,16 +62,18 @@ void FetchNonces::doConnect() {
     connect(m_fetch, &QPushButton::clicked, this, &FetchNonces::onNextClicked, qontrol::UNIQUE);
     connect(m_quantity, &catalog::ValidatedInput::textChanged, this,
             &FetchNonces::onQuantityChanged, qontrol::UNIQUE);
-    connect(m_quantity->input(), &QLineEdit::returnPressed, this,
-            &FetchNonces::onNextClicked, qontrol::UNIQUE);
+    connect(m_quantity->input(), &QLineEdit::returnPressed, this, &FetchNonces::onNextClicked,
+            qontrol::UNIQUE);
 }
 
 void FetchNonces::view() {
     setWindowTitle(TR("keys-fetch-nonces"));
     setHeader(nullptr);
-    setBody((new qontrol::Column)->spacing(resolve(Spacing::M))
+    setBody((new qontrol::Column)
+                ->spacing(resolve(Spacing::M))
                 ->push(new catalog::Field(TR("keys-nonces-quantity"), m_quantity))
-                ->push(m_status)->push(m_error));
+                ->push(m_status)
+                ->push(m_error));
     setFooter(m_actions);
     setWidth(ModalWidth::M);
 }
@@ -94,9 +98,8 @@ void FetchNonces::onNextClicked() {
     m_error->setVisible(false);
     m_status->setVisible(true);
     auto quantity = m_quantity->input()->validator()->locale().toUInt(m_quantity->input()->text());
-    auto *fetch =
-        new flow::LedgerNonces(m_module, device->signer, device->instanceId, m_fingerprint,
-                               m_descriptor, quantity, this);
+    auto *fetch = new flow::LedgerNonces(m_module, device->signer, device->instanceId,
+                                         m_fingerprint, m_descriptor, quantity, this);
     connect(fetch, &flow::LedgerNonces::finished, this, &FetchNonces::onFetched, qontrol::UNIQUE);
     fetch->start();
 }
@@ -116,10 +119,12 @@ void FetchNonces::onFetched(const QString &error) {
 
 void FetchNonces::onQuantityChanged() {
     bool valid = m_quantity->input()->hasAcceptableInput();
-    m_quantity->setState(m_quantity->input()->text().isEmpty()
-                            ? catalog::ValidationMark::State::None
-                            : valid ? catalog::ValidationMark::State::Valid
-                                    : catalog::ValidationMark::State::Invalid);
+    auto state =
+        valid ? catalog::ValidationMark::State::Valid : catalog::ValidationMark::State::Invalid;
+    if (m_quantity->input()->text().isEmpty()) {
+        state = catalog::ValidationMark::State::None;
+    }
+    m_quantity->setState(state);
     m_fetch->setEnabled(!m_fetching && valid);
 }
 
@@ -128,9 +133,9 @@ void FetchNonces::createHot() {
     m_fetch->setEnabled(false);
     m_hot_done = false;
     m_hot_error.clear();
-    auto *unseal = new Unseal(TR("keys-fetch-nonces"), m_fingerprint,
-                              new catalog::Button(TR("keys-fetch-nonces"),
-                                                  catalog::ButtonRole::Primary));
+    auto *unseal =
+        new Unseal(TR("keys-fetch-nonces"), m_fingerprint,
+                   new catalog::Button(TR("keys-fetch-nonces"), catalog::ButtonRole::Primary));
     unseal->setBusy(TR("keys-nonces-fetching"), {});
     connect(unseal, &Unseal::passwordEntered, this, &FetchNonces::onHotPassword, qontrol::UNIQUE);
     m_unseal = unseal;
@@ -150,7 +155,8 @@ void FetchNonces::onHotPassword(const QString &password) {
     m_module->createHotSessions(m_hot_req, m_fingerprint, password, m_descriptor, quantity);
 }
 
-void FetchNonces::onHotCreated(ReqId req_id, bool is_ok, const QString &error, bool wrong_password) {
+void FetchNonces::onHotCreated(ReqId req_id, bool is_ok, const QString &error,
+                               bool wrong_password) {
     if (req_id == 0 || req_id != m_hot_req || m_unseal.isNull()) {
         return;
     }

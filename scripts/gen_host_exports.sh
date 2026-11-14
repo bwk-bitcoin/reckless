@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate a Windows (PE) export .def for the silent host binary.
+# Generate a Windows (PE) export .def for the reckless host binary.
 #
 # Plugins are built as DLLs that link only against the host import library, so a
 # single static Qt lives in the host exe and plugins resolve the host ABI from it.

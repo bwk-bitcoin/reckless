@@ -58,7 +58,7 @@ auto circleX(IconColor color = IconColor::Default) -> QIcon;
 auto puzzle(IconColor color = IconColor::Default) -> QIcon;
 auto users(IconColor color = IconColor::Default) -> QIcon;
 
-// The Silent mark in the accent colour, as the window icon: baked into images at fixed
+// The Reckless mark in the accent colour, as the window icon: baked into images at fixed
 // sizes, since a window manager takes the window icon once, as images. With
 // `premultiply`, each image keeps its premultiplied colours under a straight alpha
 // format, for a platform that hands them on as premultiplied (windowIconPremultiplied()).

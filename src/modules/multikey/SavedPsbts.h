@@ -9,7 +9,7 @@
 #include <QSet>
 #include <QStringList>
 #include <Qontrol>
-#include <silent.h>
+#include <reckless.h>
 
 class MusigAccountController;
 class QDialog;

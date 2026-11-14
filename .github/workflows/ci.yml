@@ -75,13 +75,13 @@ jobs:
             git -C lib/qontrol checkout dfc65d1
             rm -rf lib/qontrol/.git
           fi
-          if [ ! -f lib/include/silent.h ]; then
+          if [ ! -f lib/include/reckless.h ]; then
             bash build.sh
           fi
           cmake -B build .
           # Generate AUTOMOC outputs (e.g. TxFlow.moc) so clang-tidy can resolve
           # the inline-moc includes; the lint configures but never builds.
-          cmake --build build --target silent_autogen
+          cmake --build build --target reckless_autogen
       - name: Lint C++ diff (each commit)
         run: scripts/lint/clang_tidy_diff_commits.sh "$LINT_RANGE"
 
@@ -105,7 +105,7 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - name: tests
-        run: cargo test --manifest-path silent/Cargo.toml
+        run: cargo test --manifest-path reckless/Cargo.toml
 
   build-linux:
     runs-on: ubuntu-latest
@@ -118,7 +118,7 @@ jobs:
       - name: Generate English TS for checker
         run: python3 scripts/i18n/generate_ts.py --out-dir "$RUNNER_TEMP/i18n"
       - name: Check i18n pragma log
-        run: python3 scripts/i18n/check_pragma_log.py --log build-i18n.log --en-ts "$RUNNER_TEMP/i18n/silent_en.ts"
+        run: python3 scripts/i18n/check_pragma_log.py --log build-i18n.log --en-ts "$RUNNER_TEMP/i18n/reckless_en.ts"
 
   build-windows:
     runs-on: ubuntu-latest

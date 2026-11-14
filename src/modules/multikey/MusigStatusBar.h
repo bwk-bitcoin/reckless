@@ -4,7 +4,7 @@
 #include <QString>
 #include <QWidget>
 #include <cstdint>
-#include <silent.h>
+#include <reckless.h>
 
 class MusigAccountController;
 enum class Endpoint : std::uint8_t;

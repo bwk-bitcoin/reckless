@@ -122,13 +122,13 @@ def render_lang(merged: dict[str, tuple[str, str]]) -> str:
 
 
 def sync_all(lang_dir: Path, check: bool) -> bool:
-    en_path = lang_dir / "silent_en.lang"
+    en_path = lang_dir / "reckless_en.lang"
     en_entries = parse_lang(en_path)
     en_map = {msg_id: values[1] for msg_id, values in en_entries.items()}
     clean = True
 
-    for lang_path in sorted(lang_dir.glob("silent_*.lang")):
-        if lang_path.name == "silent_en.lang":
+    for lang_path in sorted(lang_dir.glob("reckless_*.lang")):
+        if lang_path.name == "reckless_en.lang":
             continue
         existing = parse_lang(lang_path)
         merged: dict[str, tuple[str, str]] = {}

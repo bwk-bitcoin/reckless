@@ -116,7 +116,7 @@ struct SignerEntry {
 struct Caller {
     QString moduleId; // the module's meta() "id"
     QString pluginId;
-    // Loaded at run time from a plugin library, not linked into Silent.
+    // Loaded at run time from a plugin library, not linked into Reckless.
     bool external{};
     // The sha256 of the plugin library (hex), computed before it was loaded: a plugin
     // update gives a new one. Empty for an internal module.

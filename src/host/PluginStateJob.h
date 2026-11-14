@@ -3,7 +3,7 @@
 #include <QPointer>
 #include <QString>
 #include <QThread>
-#include <silent.h>
+#include <reckless.h>
 
 enum class PluginStateAction { Scan, Enable, Disable, BeginRemoval, RemoveData };
 

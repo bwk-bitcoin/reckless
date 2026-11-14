@@ -155,7 +155,7 @@ public slots:
         if (dialog == nullptr) {
             return;
         }
-        auto shots = qEnvironmentVariable("SILENT_DELETION_SHOTS");
+        auto shots = qEnvironmentVariable("RECKLESS_DELETION_SHOTS");
         if (!shots.isEmpty() && !m_exposure.ready(dialog)) {
             return;
         }
@@ -233,7 +233,7 @@ public slots:
         if (dialog == nullptr) {
             return;
         }
-        auto shots = qEnvironmentVariable("SILENT_DELETION_SHOTS");
+        auto shots = qEnvironmentVariable("RECKLESS_DELETION_SHOTS");
         if (!shots.isEmpty() && !m_exposure.ready(dialog)) {
             return;
         }
@@ -2040,7 +2040,7 @@ void copyDeletionAccount(const QString &source, const QString &name) {
 
 auto sharedDeletionState() -> QMap<QString, QByteArray> {
     QMap<QString, QByteArray> files;
-    auto root = QDir::homePath() + QStringLiteral("/.silent");
+    auto root = QDir::homePath() + QStringLiteral("/.reckless");
     for (const auto &folder : {QStringLiteral("keys"), QStringLiteral("musig-sessions")}) {
         QDirIterator entries(root + QLatin1Char('/') + folder, QDir::Files,
                              QDirIterator::Subdirectories);
@@ -2247,7 +2247,7 @@ void deletionShutdownFailure(MainWindow &window, IModule *module, const QString 
     registry->deleteInstance(module, name);
     waitFor([controller] { return controller->endpointsStopping(); },
             "deletion passed validation and waits for shutdown");
-    auto root = QDir::homePath() + QStringLiteral("/.silent/") + plugin;
+    auto root = QDir::homePath() + QStringLiteral("/.reckless/") + plugin;
     auto permissions = QFile::permissions(root);
     require(QFile::setPermissions(root, QFileDevice::ReadOwner | QFileDevice::ExeOwner),
             "deny actual shutdown persistence");
@@ -2274,13 +2274,13 @@ void deletionSmoke() {
     MainWindow window;
     AppController::get()->start(&window);
     prepareEndpointAccounts();
-    window.resize(qEnvironmentVariableIsEmpty("SILENT_DELETION_SHOTS") ? 1440 : 1920,
-                  qEnvironmentVariableIsEmpty("SILENT_DELETION_SHOTS") ? 1000 : 1080);
+    window.resize(qEnvironmentVariableIsEmpty("RECKLESS_DELETION_SHOTS") ? 1440 : 1920,
+                  qEnvironmentVariableIsEmpty("RECKLESS_DELETION_SHOTS") ? 1000 : 1080);
     window.show();
     auto *sp = SpModule::get();
     auto *musig = MusigModule::get();
     require(sp != nullptr && musig != nullptr, "both owning modules exist");
-    auto history = QDir::homePath() + QStringLiteral("/.silent/musig-sessions");
+    auto history = QDir::homePath() + QStringLiteral("/.reckless/musig-sessions");
     require(QDir().mkpath(history), "isolated shared signing-history boundary exists");
     QFile sentinel(history + QStringLiteral("/deletion-history-sentinel"));
     require(sentinel.open(QIODevice::WriteOnly | QIODevice::NewOnly) &&
@@ -2317,7 +2317,7 @@ void deletionSmoke() {
                 errors.messages().last().contains(QStringLiteral("locked")),
             "the real generic shell displays both explicit deletion failures");
 #ifdef Q_OS_UNIX
-    auto root = QDir::homePath() + QStringLiteral("/.silent/sp");
+    auto root = QDir::homePath() + QStringLiteral("/.reckless/sp");
     auto permissions = QFile::permissions(root);
     require(QFile::setPermissions(root, QFileDevice::ReadOwner | QFileDevice::ExeOwner),
             "make isolated plugin storage read-only");

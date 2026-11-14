@@ -16,7 +16,7 @@ else
     tag="$(git describe --tags --abbrev=0 2>/dev/null)" || die "No tags found. Pass tag as argument."
 fi
 
-echo "=== Silent Sign Script ==="
+echo "=== Reckless Sign Script ==="
 echo "Tag: $tag"
 echo
 
@@ -30,10 +30,10 @@ gh auth status >/dev/null 2>&1 || die "'gh' not authenticated."
 [[ -d "$STAGING_DIR" ]] || die "Staging directory not found: $STAGING_DIR"
 
 local_files=(
-    "silent-${tag}-linux-x86_64"
-    "silent-${tag}-windows-x86_64.exe"
-    "silent-${tag}-macos-aarch64"
-    "silent-${tag}-macos-x86_64"
+    "reckless-${tag}-linux-x86_64"
+    "reckless-${tag}-windows-x86_64.exe"
+    "reckless-${tag}-macos-aarch64"
+    "reckless-${tag}-macos-x86_64"
 )
 
 for f in "${local_files[@]}"; do

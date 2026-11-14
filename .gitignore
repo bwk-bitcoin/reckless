@@ -11,5 +11,5 @@ i18n/*.ts
 lib/*
 result
 scripts/__pycache__/*
-silent/target/
+reckless/target/
 *.pyc

@@ -36,7 +36,7 @@
 #include <functional>
 #include <type_traits>
 
-#ifdef SILENT_CUSTOM_WIDGET_FIXTURE
+#ifdef RECKLESS_CUSTOM_WIDGET_FIXTURE
 #include "PluginBundleFixture.h"
 #include <QFile>
 #endif
@@ -226,7 +226,7 @@ void sidebarFollowsTheme() {
     theme->setMode(initial);
 }
 
-#ifdef SILENT_CUSTOM_WIDGET_FIXTURE
+#ifdef RECKLESS_CUSTOM_WIDGET_FIXTURE
 auto fixtureModule(PluginRegistry &registry, const QString &id) -> IModule * {
     for (auto *plugin : registry.plugins()) {
         for (auto *module : plugin->modules()) {
@@ -276,7 +276,7 @@ void openRemainingAccount(MainWindow &window, MenuTab &launcher, PluginRegistry 
 }
 
 void customWidget(MainWindow &window) {
-    QFile library(QString::fromUtf8(SILENT_CUSTOM_WIDGET_FIXTURE));
+    QFile library(QString::fromUtf8(RECKLESS_CUSTOM_WIDGET_FIXTURE));
     require(library.open(QIODevice::ReadOnly), "read external widget fixture");
     require(installBundle(QStringLiteral("custom.widget.fixture"),
                           QStringLiteral("Custom widget fixture"), library.readAll())
@@ -346,7 +346,7 @@ void accountNavigationSmoke() {
                 window, QStringLiteral("boundary-policy"), musig);
         }
         unavailablePanels();
-#ifdef SILENT_CUSTOM_WIDGET_FIXTURE
+#ifdef RECKLESS_CUSTOM_WIDGET_FIXTURE
         customWidget(window);
         navigation<AccountWidget, StatusBar>(window, QStringLiteral("boundary-sp"), sp);
         navigation<MusigAccountWidget, MusigStatusBar>(window, QStringLiteral("boundary-policy"),

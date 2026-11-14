@@ -53,4 +53,4 @@ public:
 
 } // namespace backend
 
-Q_DECLARE_INTERFACE(backend::IServiceProvider, "dev.silent.backend.IServiceProvider/1.0")
+Q_DECLARE_INTERFACE(backend::IServiceProvider, "dev.reckless.backend.IServiceProvider/1.0")

@@ -15,7 +15,7 @@
 
 namespace {
 void record(const char *event) {
-    auto *path = std::getenv("SILENT_REMOVAL_SENTINEL");
+    auto *path = std::getenv("RECKLESS_REMOVAL_SENTINEL");
     if (path == nullptr) {
         return;
     }
@@ -124,7 +124,7 @@ public:
     }
 
     void shutdown(ReqId req_id) override {
-        if (std::getenv("SILENT_REMOVAL_REFUSE") != nullptr) {
+        if (std::getenv("RECKLESS_REMOVAL_REFUSE") != nullptr) {
             emit shutdownFinished(req_id, QStringLiteral("deliberate native refusal"));
             return;
         }
@@ -202,7 +202,7 @@ private:
 
 class Q_DECL_HIDDEN RemovalPlugin final : public QObject, public IPlugin {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID SILENT_IPlugin_IID)
+    Q_PLUGIN_METADATA(IID RECKLESS_IPlugin_IID)
     Q_INTERFACES(IPlugin)
 
 public:

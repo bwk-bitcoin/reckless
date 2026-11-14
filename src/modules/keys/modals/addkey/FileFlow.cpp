@@ -135,7 +135,7 @@ void FileFlow::dropEvent(QDropEvent *event) {
     }
 }
 
-// A key file as Silent writes it: version, network, fingerprint, alias, xpubs as
+// A key file as Reckless writes it: version, network, fingerprint, alias, xpubs as
 // path and xpub pairs, routes. Device exports in their own formats are not read.
 void FileFlow::loadFile(const QString &path) {
     if (m_worker != nullptr) {

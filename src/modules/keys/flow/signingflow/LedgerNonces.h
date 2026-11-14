@@ -8,7 +8,7 @@
 #include <QString>
 
 #include <interfaces/types.h>
-#include <silent.h>
+#include <reckless.h>
 
 class ISigner;
 class QThread;
@@ -50,6 +50,7 @@ private:
         std::optional<rust::Box<::LedgerNonceFetch>> fetch;
         PsbtPayloadResult payload;
     };
+
     QPointer<ISigner> m_device;
     QString m_instance_id;
     QString m_fingerprint;

@@ -2,13 +2,13 @@
 """Answers the Coldcard simulator's stories through its own key input.
 
 The mechanism of bwk-hwi's `Approver` (hwi/tests/common/coldcard_sim.rs, phase 28):
-a second, unencrypted link next to silent's encrypted session reads the story on
+a second, unencrypted link next to reckless's encrypted session reads the story on
 screen with `EXEC` and presses keys with `XKEY`. Starting encryption from this
-client would replace silent's session key, so the client and every request are
+client would replace reckless's session key, so the client and every request are
 unencrypted.
 
 The simulator answers the last sender, so a request landing inside a multi-packet
-upload of silent's link (enroll payload, PSBT) breaks both links: like the
+upload of reckless's link (enroll payload, PSBT) breaks both links: like the
 `Approver`, the first request waits UPLOAD_GRACE.
 
 Usage:

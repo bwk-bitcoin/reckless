@@ -33,7 +33,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 
 namespace smoke {
 namespace {
@@ -542,7 +542,7 @@ void selectWhileConnecting(const host::ServiceAssembly &assembly, Answers &answe
     require(electrumConnecting(controller), "the attempt still runs once the selection answered");
 }
 
-// Waits for the attempt on the silent server to fail, Electrum still disconnected.
+// Waits for the attempt on the reckless server to fail, Electrum still disconnected.
 void waitForFailedAttempt(const AccountLifecycle &controller) {
     waitFor(
         [&controller] {

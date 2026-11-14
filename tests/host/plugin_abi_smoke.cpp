@@ -24,7 +24,7 @@
 #include <cstdio>
 #include <cstring>
 #include <elf.h>
-#include <silent.h>
+#include <reckless.h>
 #include <utility>
 
 namespace smoke {
@@ -72,7 +72,7 @@ auto sectionHeaderOffset(const QByteArray &bytes, const QByteArray &name) -> qsi
 
 // Rewrite the compiled image in place so record regressions also pass native admission.
 auto metadataContainer(const QByteArray &record) -> QByteArray {
-    auto bytes = fixtureBytes(SILENT_ABI1_FIXTURE_PATH);
+    auto bytes = fixtureBytes(RECKLESS_ABI1_FIXTURE_PATH);
     auto header = readNative<Elf64_Ehdr>(bytes, 0);
     auto offset = sectionHeaderOffset(bytes, ".note.qt.metadata");
     auto section = readNative<Elf64_Shdr>(bytes, offset);
@@ -140,7 +140,7 @@ void rejectWithoutExecution(const QByteArray &bytes, const QString &sentinel_pat
 
 void redirectedSectionRejectionSmoke(const QByteArray &bytes, const QString &sentinel_path) {
     QCborMap root;
-    root.insert(2, QStringLiteral("dev.silent.IPlugin/1.0"));
+    root.insert(2, QStringLiteral("dev.reckless.IPlugin/1.0"));
     auto replacement = elfMetadataBytes(root);
     auto offset = sectionHeaderOffset(bytes, ".note.qt.metadata");
     auto section = readNative<Elf64_Shdr>(bytes, offset);
@@ -205,11 +205,11 @@ void metadataMappingRejectionSmoke(const QByteArray &bytes, const QString &senti
     rejectWithoutExecution(wrongNote, sentinel_path, QStringLiteral("PT_NOTE location"));
 
     QCborMap innerRoot;
-    innerRoot.insert(2, QStringLiteral("dev.silent.IPlugin/1.0"));
+    innerRoot.insert(2, QStringLiteral("dev.reckless.IPlugin/1.0"));
     auto innerNote = elfMetadataBytes(innerRoot);
     for (int padding = 0; padding < 8; ++padding) {
         QCborMap outerRoot;
-        outerRoot.insert(2, QStringLiteral("dev.silent.IPlugin/7.0"));
+        outerRoot.insert(2, QStringLiteral("dev.reckless.IPlugin/7.0"));
         outerRoot.insert(4, QByteArray(padding, '\0') + innerNote);
         auto nested = metadataContainer(elfMetadataBytes(outerRoot));
         auto section = readNative<Elf64_Shdr>(nested, offset);
@@ -300,7 +300,7 @@ void gnuHashChildCase(const QByteArray &bytes, const QByteArray &table, const QS
     file.close();
     auto sentinel = directory.filePath(QStringLiteral("execution-sentinel"));
     auto environment = QProcessEnvironment::systemEnvironment();
-    environment.insert(QStringLiteral("SILENT_ABI_SENTINEL"), sentinel);
+    environment.insert(QStringLiteral("RECKLESS_ABI_SENTINEL"), sentinel);
     QProcess child;
     child.setProcessEnvironment(environment);
     child.start(QCoreApplication::applicationFilePath(),
@@ -413,7 +413,7 @@ void entryExportRejectionSmoke(const QByteArray &bytes, const QString &sentinel_
 
 void duplicateKeysRejectionSmoke(const QString &sentinel_path) {
     auto iid =
-        QByteArray::fromHex("02") + QCborValue(QStringLiteral("dev.silent.IPlugin/1.0")).toCbor();
+        QByteArray::fromHex("02") + QCborValue(QStringLiteral("dev.reckless.IPlugin/1.0")).toCbor();
     for (const auto &payload :
          {QByteArray::fromHex("a3") + iid + QByteArray::fromHex("04a004a0"),
           QByteArray::fromHex("a3") + iid + QByteArray::fromHex("036161036162"),
@@ -436,7 +436,7 @@ void duplicateKeysRejectionSmoke(const QString &sentinel_path) {
 }
 
 void metadataCandidateSmoke() {
-    auto expected = QStringLiteral("dev.silent.IPlugin/1.0");
+    auto expected = QStringLiteral("dev.reckless.IPlugin/1.0");
     QCborMap root;
     root.insert(2, expected);
     auto regular = metadataBytes(root);
@@ -465,7 +465,7 @@ void metadataCandidateSmoke() {
         }
     }
     QCborMap oldRoot;
-    oldRoot.insert(2, QStringLiteral("dev.silent.IPlugin/4.0"));
+    oldRoot.insert(2, QStringLiteral("dev.reckless.IPlugin/4.0"));
     for (const auto &duplicate :
          {regular + regular, elf + elf, regular + elf, elf + regular,
           metadataBytes(oldRoot) + regular, regular + metadataBytes(oldRoot),
@@ -519,8 +519,8 @@ void metadataCandidateSmoke() {
 }
 
 void metadataRejectionSmoke(const QByteArray &bytes, const QString &sentinel_path) {
-    auto expected = QStringLiteral("dev.silent.IPlugin/1.0");
-    if (pluginMetadataError(bytes, QStringLiteral("dev.silent.IPlugin/4.0")).isEmpty()) {
+    auto expected = QStringLiteral("dev.reckless.IPlugin/1.0");
+    if (pluginMetadataError(bytes, QStringLiteral("dev.reckless.IPlugin/4.0")).isEmpty()) {
         qFatal("ABI 4 expectation must reject an ABI 1 library");
     }
     QCborMap nested;
@@ -589,7 +589,7 @@ void metadataRejectionSmoke(const QByteArray &bytes, const QString &sentinel_pat
          {missing, malformed, invalidCbor, orphan, prefixed, wrongMachine, invalidSections,
           incompatibleQt, incompatibleCpu, malformed + valid, invalidCbor + valid}) {
         rejectWithoutExecution(invalid, sentinel_path,
-                               QStringLiteral("expected dev.silent.IPlugin/1.0"));
+                               QStringLiteral("expected dev.reckless.IPlugin/1.0"));
     }
     for (const auto &invalid : {malformed, invalidCbor}) {
         if (pluginMetadataError(invalid + valid, expected).isEmpty() ||
@@ -604,27 +604,27 @@ const QString ABI1_ID = QStringLiteral("abi1");
 auto abiFixture(int version) -> QByteArray {
     switch (version) {
     case 2:
-        return fixtureBytes(SILENT_ABI2_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI2_FIXTURE_PATH);
     case 3:
-        return fixtureBytes(SILENT_ABI3_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI3_FIXTURE_PATH);
     case 4:
-        return fixtureBytes(SILENT_ABI4_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI4_FIXTURE_PATH);
     case 5:
-        return fixtureBytes(SILENT_ABI5_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI5_FIXTURE_PATH);
     case 6:
-        return fixtureBytes(SILENT_ABI6_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI6_FIXTURE_PATH);
     case 7:
-        return fixtureBytes(SILENT_ABI7_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI7_FIXTURE_PATH);
     case 8:
-        return fixtureBytes(SILENT_ABI8_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI8_FIXTURE_PATH);
     case 9:
-        return fixtureBytes(SILENT_ABI9_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI9_FIXTURE_PATH);
     case 10:
-        return fixtureBytes(SILENT_ABI10_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI10_FIXTURE_PATH);
     case 11:
-        return fixtureBytes(SILENT_ABI11_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI11_FIXTURE_PATH);
     case 12:
-        return fixtureBytes(SILENT_ABI12_FIXTURE_PATH);
+        return fixtureBytes(RECKLESS_ABI12_FIXTURE_PATH);
     default:
         qFatal("no ABI %d fixture", version);
     }
@@ -643,8 +643,9 @@ auto installedLibrary(const QString &plugin_id) -> QByteArray {
 void incompatibleImportSmoke(int version, const QByteArray &installed,
                              const QString &sentinel_path) {
     auto bytes = abiFixture(version);
-    auto found = QStringLiteral("found dev.silent.IPlugin/%1.0").arg(version);
-    rejectWithoutExecution(bytes, sentinel_path, QStringLiteral("expected dev.silent.IPlugin/1.0"));
+    auto found = QStringLiteral("found dev.reckless.IPlugin/%1.0").arg(version);
+    rejectWithoutExecution(bytes, sentinel_path,
+                           QStringLiteral("expected dev.reckless.IPlugin/1.0"));
     rejectWithoutExecution(bytes, sentinel_path, found);
     auto declared = installBundle(ABI1_ID, QStringLiteral("ABI fixture"), bytes);
     if (declared.is_ok || declared.error.empty()) {
@@ -668,7 +669,7 @@ void incompatibleImportSmoke(int version, const QByteArray &installed,
 
 auto pluginGnuHashChild(const QString &path, bool expected_admission) -> int {
     auto bytes = fixtureBytes(qPrintable(path));
-    auto sentinelPath = QString::fromLocal8Bit(qgetenv("SILENT_ABI_SENTINEL"));
+    auto sentinelPath = QString::fromLocal8Bit(qgetenv("RECKLESS_ABI_SENTINEL"));
     if (sentinelPath.isEmpty() || QFile::exists(sentinelPath)) {
         return 1;
     }
@@ -695,7 +696,7 @@ auto pluginGnuHashChild(const QString &path, bool expected_admission) -> int {
 
 // Legacy installed bundles bypassed import admission, so enabling still needs its own gate.
 void legacyPluginAbiSmoke(const QString &plugin_id) {
-    auto sentinelPath = QString::fromLocal8Bit(qgetenv("SILENT_ABI_SENTINEL"));
+    auto sentinelPath = QString::fromLocal8Bit(qgetenv("RECKLESS_ABI_SENTINEL"));
     if (sentinelPath.isEmpty() || QFile::exists(sentinelPath)) {
         qFatal("legacy ABI smoke needs a fresh execution sentinel");
     }
@@ -708,11 +709,11 @@ void legacyPluginAbiSmoke(const QString &plugin_id) {
         qFatal("the legacy bundle must be listed disabled from its sidecar");
     }
     if (enablePluginAndWait(&registry, plugin_id) || registry.isPluginEnabled(plugin_id)) {
-        qFatal("registry must refuse an incompatible ABI library sealed by an earlier Silent");
+        qFatal("registry must refuse an incompatible ABI library sealed by an earlier Reckless");
     }
     auto error = registry.pluginLoadError(plugin_id);
-    if (!error.contains(QStringLiteral("expected dev.silent.IPlugin/1.0")) ||
-        !error.contains(QStringLiteral("found dev.silent.IPlugin/"))) {
+    if (!error.contains(QStringLiteral("expected dev.reckless.IPlugin/1.0")) ||
+        !error.contains(QStringLiteral("found dev.reckless.IPlugin/"))) {
         qFatal("incompatible legacy library must fail at the metadata admission gate: %s",
                qPrintable(error));
     }
@@ -737,16 +738,16 @@ void pluginAbiSmoke() {
         qFatal("ABI fixture directory creation failed");
     }
     auto sentinelPath = directory.filePath(QStringLiteral("execution-sentinel"));
-    auto previousSentinel = qgetenv("SILENT_ABI_SENTINEL");
-    auto hadSentinel = qEnvironmentVariableIsSet("SILENT_ABI_SENTINEL");
-    qputenv("SILENT_ABI_SENTINEL", QFile::encodeName(sentinelPath));
-    auto bytes = fixtureBytes(SILENT_ABI1_FIXTURE_PATH);
+    auto previousSentinel = qgetenv("RECKLESS_ABI_SENTINEL");
+    auto hadSentinel = qEnvironmentVariableIsSet("RECKLESS_ABI_SENTINEL");
+    qputenv("RECKLESS_ABI_SENTINEL", QFile::encodeName(sentinelPath));
+    auto bytes = fixtureBytes(RECKLESS_ABI1_FIXTURE_PATH);
     metadataRejectionSmoke(bytes, sentinelPath);
     metadataMappingRejectionSmoke(bytes, sentinelPath);
     entryExportRejectionSmoke(bytes, sentinelPath);
     gnuHashChildSmoke(bytes);
     duplicateKeysRejectionSmoke(sentinelPath);
-    redirectedSectionRejectionSmoke(fixtureBytes(SILENT_ABI7_FIXTURE_PATH), sentinelPath);
+    redirectedSectionRejectionSmoke(fixtureBytes(RECKLESS_ABI7_FIXTURE_PATH), sentinelPath);
     if (QFile::exists(sentinelPath)) {
         qFatal("rejected metadata must run neither initializer nor constructor");
     }
@@ -780,9 +781,9 @@ void pluginAbiSmoke() {
         qFatal("ABI 1 admission must run the library initializer and root constructor once");
     }
     if (hadSentinel) {
-        qputenv("SILENT_ABI_SENTINEL", previousSentinel);
+        qputenv("RECKLESS_ABI_SENTINEL", previousSentinel);
     } else {
-        qunsetenv("SILENT_ABI_SENTINEL");
+        qunsetenv("RECKLESS_ABI_SENTINEL");
     }
     auto prepared = ::app_begin_plugin_removal(rust::String(ABI1_ID.toStdString()));
     if (!prepared.empty()) {

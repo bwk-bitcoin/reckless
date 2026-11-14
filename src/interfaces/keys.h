@@ -211,4 +211,4 @@ private:
     plugin::Caller m_caller;
 };
 
-Q_DECLARE_INTERFACE(IKeys, "dev.silent.IKeys/1.0")
+Q_DECLARE_INTERFACE(IKeys, "dev.reckless.IKeys/1.0")

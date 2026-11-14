@@ -8,7 +8,7 @@
 #include <QString>
 #include <QStringList>
 
-#include <silent.h>
+#include <reckless.h>
 
 namespace qr {
 

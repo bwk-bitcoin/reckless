@@ -19,7 +19,7 @@ const char *const K_TYPE = "typeIndex";
 // The icon a type's module names in meta(), a puzzle piece for any other.
 auto typeIcon(const IModule *module) -> IconFn {
     auto name = module->meta().value(QStringLiteral("icon"));
-    if (name == QStringLiteral("silent")) {
+    if (name == QStringLiteral("reckless")) {
         return icon::spMark;
     }
     if (name == QStringLiteral("users")) {

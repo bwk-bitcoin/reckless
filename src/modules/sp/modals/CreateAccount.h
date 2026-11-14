@@ -11,7 +11,7 @@
 #include "catalog/form/EndpointRow.h"
 #include <interfaces/keys.h>
 #include <interfaces/types.h>
-#include <silent.h>
+#include <reckless.h>
 
 class QThread;
 

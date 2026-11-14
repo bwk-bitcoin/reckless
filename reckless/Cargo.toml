@@ -1,0 +1,71 @@
+[package]
+name = "reckless"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+doctest = false
+
+[dependencies]
+# When changing rev, also update flake.lock:
+#   nix --extra-experimental-features 'nix-command flakes' flake update bwk
+bwk = { git = "https://github.com/bwk-bitcoin/bwk.git", rev = "4f2ac60a5204e477d9c851b20b65f37ced4b20d5", features = ["musig"] }
+bwk-bup = { git = "https://github.com/bwk-bitcoin/bwk.git", rev = "4f2ac60a5204e477d9c851b20b65f37ced4b20d5", features = ["musig"] }
+bwk-sp = { git = "https://github.com/bwk-bitcoin/bwk.git", rev = "4f2ac60a5204e477d9c851b20b65f37ced4b20d5" }
+bwk-hwi = { git = "https://github.com/bwk-bitcoin/bwk.git", rev = "4f2ac60a5204e477d9c851b20b65f37ced4b20d5", features = ["service", "musig"] }
+bwk-qr = { git = "https://github.com/bwk-bitcoin/bwk.git", rev = "4f2ac60a5204e477d9c851b20b65f37ced4b20d5" }
+bipqr = { git = "https://github.com/pythcoiner/bipqr", rev = "d1a09b4bd33777a813af8c80e5720b91824b6c5f", default-features = false, features = ["bitcoin_0_32"] }
+crossbeam = "0.8"
+# `log` feature: bwk-hwi reports device detection through `tracing`, and this forwards
+# those events into the `log` crate so env_logger prints them. Without it every device
+# that fails to enumerate is dropped silently.
+tracing = { version = "0.1", features = ["log"] }
+fs2 = "0.4"
+bip138 = { version = "=0.2.0", default-features = false, features = ["miniscript_12", "rand"] }
+bitcoin = { version = "0.32", features = ["serde"] }
+base64 = "0.22"
+hex = "0.4"
+# Plugin bundles: the archive reader is in plugin_zip.rs, these inflate and check it.
+flate2 = "1.1"
+crc32fast = "1.4"
+cxx = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_cbor = { version = "0.11", features = ["tags"] }
+object = { version = "0.36", default-features = false, features = ["read", "std"] }
+log = "0.4"
+env_logger = "0.11"
+dirs = "6.0"
+thiserror = "2.0"
+getrandom = "0.2"
+argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
+chacha20poly1305 = "0.10"
+zeroize = "1.8"
+ureq = { version = "3.3", default-features = false, features = ["gzip", "native-tls"] }
+
+[target.'cfg(unix)'.dependencies]
+# Descriptor-relative, no-follow file operations for the plugin storage and durable
+# state replacement: a link planted in the data directory is refused, never followed.
+rustix = { version = "1.1", features = ["fs"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# V4L + MJPEG decode: mingw has no MSMF backend, and MJPEG decoding needs a C
+# toolchain (mozjpeg), so capture is Linux only and every other target gets an
+# explicit error.
+nokhwa = { version = "0.10", default-features = false, features = ["input-v4l", "decoding"] }
+# The same v4l nokhwa captures with: lists only the nodes that capture video.
+v4l = "0.14"
+
+[dev-dependencies]
+blindbitd = { git = "https://github.com/pythcoiner/blindbitd.git", features = ["electrum"] }
+bwk-utils = { git = "https://github.com/bwk-bitcoin/bwk.git", rev = "4f2ac60a5204e477d9c851b20b65f37ced4b20d5", features = ["test"] }
+temp-dir = "0.1"
+
+[build-dependencies]
+cxx-build = "1.0"
+
+# The regtest chain of the device GUI end to end, built with the dev-dependencies.
+[[example]]
+name = "e2e_chain"
+path = "../tests/e2e/devices/chain.rs"

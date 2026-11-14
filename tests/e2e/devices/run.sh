@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Device GUI end to end: the real silent app (the device_e2e probe, built with
-# -DSILENT_BUILD_DEVICE_E2E=ON) on a private Xvfb display, against a regtest chain
+# Device GUI end to end: the real reckless app (the device_e2e probe, built with
+# -DRECKLESS_BUILD_DEVICE_E2E=ON) on a private Xvfb display, against a regtest chain
 # (the e2e_chain example), a Ledger on Speculos (key B, nanosp, app pinned in
-# versions.env) and the Coldcard EDGE simulator (key C), key A hot in silent. It
+# versions.env) and the Coldcard EDGE simulator (key C), key A hot in reckless. It
 # creates a 2-of-3 MuSig2 shared wallet, registers it on both devices, funds it and
 # spends it twice: through the Ledger + Coldcard leaf (with a lost MuSig2 session,
 # the simulator restarted between the rounds) and through the Ledger + hot leaf.
@@ -15,12 +15,12 @@
 # Prerequisites: docker (the Speculos image, and the app builder image when no ELF is
 # given), Xvfb, git, gcc and make, autoconf, automake and libtool (the Coldcard
 # simulator build), SDL2, python3 with venv, curl, cmake, Qt6 dev, a Rust toolchain
-# and the rest of silent's build dependencies, lib/qontrol (`just qontrol`).
+# and the rest of reckless's build dependencies, lib/qontrol (`just qontrol`).
 #
 # Environment:
-#   SILENT_E2E_CACHE      : cache of the Ledger ELF, the Coldcard firmware, the Python
+#   RECKLESS_E2E_CACHE      : cache of the Ledger ELF, the Coldcard firmware, the Python
 #                           venv and the runs (default
-#                           ${XDG_CACHE_HOME:-$HOME/.cache}/silent/e2e-devices).
+#                           ${XDG_CACHE_HOME:-$HOME/.cache}/reckless/e2e-devices).
 #   SPECULOS_ELF          : a prebuilt Ledger Bitcoin Test ELF of LEDGER_APP_VERSION
 #                           for LEDGER_MODEL; copied into the cache, skips the build.
 #   BWK_HWI_DIR           : bwk's hwi crate, whose Speculos cache
@@ -28,10 +28,10 @@
 #                           looked into before building the ELF.
 #   COLDCARD_FIRMWARE_DIR : a Coldcard firmware checkout at COLDCARD_FIRMWARE_COMMIT,
 #                           used in place (its simulator built when it is not).
-#   E2E_SKIP_BUILD=1      : run the silent binaries already built.
+#   E2E_SKIP_BUILD=1      : run the reckless binaries already built.
 #   E2E_DISPLAY           : the first X display number tried (default 90).
 #
-# Outputs: a run directory under $SILENT_E2E_CACHE/runs (printed first) with the
+# Outputs: a run directory under $RECKLESS_E2E_CACHE/runs (printed first) with the
 # probe, chain, Speculos, clicker and simulator logs, the probe's HOME and shots/,
 # one whole window screenshot per step. The script ends with the probe's
 # `failures: N` and exits with its status.
@@ -45,13 +45,13 @@ cd "$ROOT"
 # shellcheck disable=SC1091
 . "$HERE/versions.env"
 
-CACHE="${SILENT_E2E_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/silent/e2e-devices}"
+CACHE="${RECKLESS_E2E_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/reckless/e2e-devices}"
 mkdir -p "$CACHE/runs"
 CACHE="$(cd "$CACHE" && pwd)"
 RUN_DIR="$(mktemp -d -p "$CACHE/runs" run.XXXXXX)"
 echo "==> Run directory $RUN_DIR"
 
-CONTAINER=silent-e2e-speculos
+CONTAINER=reckless-e2e-speculos
 COLDCARD_SOCKET=/tmp/ckcc-simulator.sock
 SPECULOS_API=http://127.0.0.1:5000
 # GCC 14 turns these warnings of the pinned firmware into errors. MicroPython's x86-64
@@ -183,15 +183,15 @@ else
     echo "==> Using the Python venv $VENV"
 fi
 
-# ===== silent =====
+# ===== reckless =====
 
-CHAIN_BIN="$ROOT/silent/target/debug/examples/e2e_chain"
+CHAIN_BIN="$ROOT/reckless/target/debug/examples/e2e_chain"
 PROBE_BIN="$ROOT/build-e2e/device_e2e"
 if [[ "${E2E_SKIP_BUILD:-}" != 1 ]]; then
-    echo "==> Building silent: the e2e_chain example and the device_e2e probe"
-    cargo build --manifest-path silent/Cargo.toml --example e2e_chain
+    echo "==> Building reckless: the e2e_chain example and the device_e2e probe"
+    cargo build --manifest-path reckless/Cargo.toml --example e2e_chain
     # device_e2e depends on RunBeforeBuild, which runs build.sh (the Rust binding).
-    cmake -S . -B build-e2e -DSILENT_BUILD_DEVICE_E2E=ON
+    cmake -S . -B build-e2e -DRECKLESS_BUILD_DEVICE_E2E=ON
     cmake --build build-e2e --target device_e2e -j"${CARGO_BUILD_JOBS:-6}"
 else
     echo "==> E2E_SKIP_BUILD=1: using the built $PROBE_BIN"

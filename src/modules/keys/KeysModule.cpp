@@ -749,7 +749,7 @@ void KeysModule::sign(ReqId req_id, const QString &psbt_v2_hex, const QStringLis
         return;
     }
     // signing_plan() blocks on nothing (no device I/O), so calling it from the GUI
-    // thread is safe: see its doc comment in lib/include/silent.h.
+    // thread is safe: see its doc comment in lib/include/reckless.h.
     auto plan = rust()->signing_plan(rust::String(psbt_v2_hex.toStdString()));
     if (!plan.is_ok) {
         m_bus->deliverError(req_id, toQt(plan.error));
@@ -799,7 +799,7 @@ void KeysModule::signOnDevice(ReqId req_id, const QString &psbt_v2_hex, const QS
         return;
     }
     // signing_plan() blocks on nothing (no device I/O), so calling it from the GUI
-    // thread is safe: see its doc comment in lib/include/silent.h.
+    // thread is safe: see its doc comment in lib/include/reckless.h.
     auto plan = rust()->signing_plan(rust::String(psbt_v2_hex.toStdString()));
     if (!plan.is_ok) {
         m_bus->deliverError(req_id, toQt(plan.error));
@@ -840,7 +840,7 @@ void KeysModule::prepareNonces(ReqId req_id, const QString &psbt_v2_hex, const Q
         return;
     }
     // signing_plan() blocks on nothing (no device I/O), so calling it from the GUI
-    // thread is safe: see its doc comment in lib/include/silent.h.
+    // thread is safe: see its doc comment in lib/include/reckless.h.
     auto plan = rust()->signing_plan(rust::String(psbt_v2_hex.toStdString()));
     if (!plan.is_ok) {
         m_bus->deliverError(req_id, toQt(plan.error));

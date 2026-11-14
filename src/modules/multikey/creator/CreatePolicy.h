@@ -14,7 +14,7 @@
 #include <QStringList>
 #include <cstdint>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 
 class QThread;
 class QWidget;

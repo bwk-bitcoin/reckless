@@ -10,7 +10,7 @@
 #include <QtTypes>
 #include <cstddef>
 #include <cstdint>
-#include <silent.h>
+#include <reckless.h>
 
 #ifdef Q_OS_LINUX
 #include <dlfcn.h>
@@ -49,7 +49,7 @@ auto pluginMetadataError(const QByteArray &bytes, const QString &expected_iid) -
 }
 
 auto installPluginBundle(const QString &path) -> PluginInstallResult {
-    return ::plugin_install(rust::String(path.toStdString()), rust::String(SILENT_IPlugin_IID),
+    return ::plugin_install(rust::String(path.toStdString()), rust::String(RECKLESS_IPlugin_IID),
                             QT_VERSION_MAJOR, QT_VERSION_MINOR, hostArchRequirements());
 }
 
@@ -73,7 +73,7 @@ using PluginInstanceFn = QObject *(*)();
 } // namespace
 
 auto PluginLibrary::load(const QByteArray &bytes, const QString &name) -> bool {
-    m_error = pluginMetadataError(bytes, QString::fromLatin1(SILENT_IPlugin_IID));
+    m_error = pluginMetadataError(bytes, QString::fromLatin1(RECKLESS_IPlugin_IID));
     if (!m_error.isEmpty()) {
         return false;
     }
@@ -147,7 +147,7 @@ auto PluginLibrary::unload() -> bool {
 #else
 
 auto PluginLibrary::load(const QByteArray &bytes, const QString &name) -> bool {
-    m_error = pluginMetadataError(bytes, QString::fromLatin1(SILENT_IPlugin_IID));
+    m_error = pluginMetadataError(bytes, QString::fromLatin1(RECKLESS_IPlugin_IID));
     if (!m_error.isEmpty()) {
         return false;
     }

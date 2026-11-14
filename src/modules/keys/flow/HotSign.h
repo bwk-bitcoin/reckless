@@ -6,7 +6,7 @@
 #include <QString>
 
 #include <interfaces/types.h>
-#include <silent.h>
+#include <reckless.h>
 
 namespace keys {
 class KeysModule;

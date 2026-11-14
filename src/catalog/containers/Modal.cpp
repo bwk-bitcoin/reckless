@@ -15,8 +15,8 @@ namespace catalog {
 
 namespace {
 
-// Enable with QT_LOGGING_RULES="silent.modal.debug=true".
-Q_LOGGING_CATEGORY(lcModal, "silent.modal", QtWarningMsg)
+// Enable with QT_LOGGING_RULES="reckless.modal.debug=true".
+Q_LOGGING_CATEGORY(lcModal, "reckless.modal", QtWarningMsg)
 
 // The window a modal opens over: the active one, else the application's main window,
 // as the active window can be unset when a click does not give the window focus.

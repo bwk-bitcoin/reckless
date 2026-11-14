@@ -1,0 +1,1585 @@
+# Translator-friendly catalog
+# Format: id => "English" => "Translation"
+# Use \n for line breaks
+
+account-type-choice-title => "Account Type · %1" => "Account Type · %1"
+account-type-create => "Create" => "Create"
+account-type-create-sub
+=> "Make a new account from your keys."
+=> "Make a new account from your keys.";;
+account-type-restore => "Restore" => "Restore"
+account-type-restore-sub
+=> "Bring back an account from its backup file."
+=> "Bring back an account from its backup file.";;
+account-type-title => "Account Type" => "Account Type"
+amount-cycle => "Show as BTC / %1 / hidden" => "Mostrar en BTC / %1 / oculto"
+amount-cycle-no-fiat => "Show as BTC / hidden" => "Mostrar en BTC / oculto"
+backup-encrypting => "Encrypting the backup" => "Encrypting the backup"
+backup-encrypting-sub => "This takes a moment." => "This takes a moment."
+backup-excluded
+=> "The backup is not encrypted to these keys, so their holders cannot open it with them: %1"
+=> "The backup is not encrypted to these keys, so their holders cannot open it with them: %1";;
+backup-failed
+=> "The backup could not be made: %1"
+=> "The backup could not be made: %1";;
+backup-file-filter => "Account backup (*.bip138)" => "Account backup (*.bip138)"
+backup-includes-endpoint => "Server: %1" => "Server: %1"
+backup-includes-labels => "Labels: %1" => "Labels: %1"
+backup-includes-policy
+=> "The spending policy (descriptor)"
+=> "The spending policy (descriptor)";;
+backup-includes-scan-start
+=> "Scanning starts at block %1"
+=> "Scanning starts at block %1";;
+backup-includes-sp-descriptor
+=> "The silent payment descriptor, with its scan key: whoever opens the backup sees the account's payments"
+=> "The silent payment descriptor, with its scan key: whoever opens the backup sees the account's payments";;
+backup-includes-tip
+=> "%1 addresses handed out: %2 receive, %3 change"
+=> "%1 addresses handed out: %2 receive, %3 change";;
+backup-kind-segwit => "Segwit" => "Segwit"
+backup-kind-taproot => "Taproot" => "Taproot"
+backup-malformed => "This backup is damaged: %1" => "This backup is damaged: %1"
+backup-requires-key
+=> "The account's signing key, in Keys: the backup holds no secret"
+=> "The account's signing key, in Keys: the backup holds no secret";;
+backup-requires-keys
+=> "The signing keys %1, in Keys: the backup holds no secret"
+=> "The signing keys %1, in Keys: the backup holds no secret";;
+backup-requires-scan
+=> "Its coins and history are found again from the Electrum server"
+=> "Its coins and history are found again from the Electrum server";;
+backup-requires-servers
+=> "Servers: the backup names none, so the restored account uses the ones last used on its network. Change them in its Settings."
+=> "Servers: the backup names none, so the restored account uses the ones last used on its network. Change them in its Settings.";;
+backup-requires-sp-key
+=> "The account's signing key, in Keys, to spend: the backup holds the scan key, not the spending key"
+=> "The account's signing key, in Keys, to spend: the backup holds the scan key, not the spending key";;
+backup-requires-sp-keys
+=> "The signing keys %1, in Keys, to spend: the backup holds the scan key, not the spending key"
+=> "The signing keys %1, in Keys, to spend: the backup holds the scan key, not the spending key";;
+backup-requires-sp-scan
+=> "Its coins and history are found again by scanning from block %1"
+=> "Its coins and history are found again by scanning from block %1";;
+backup-save-failed => "The backup is not saved: %1" => "The backup is not saved: %1"
+backup-save-title => "Save Account Backup" => "Save Account Backup"
+backup-saved => "The backup is saved to %1" => "The backup is saved to %1"
+backup-text-multikey
+=> "The backup is a BIP139 wallet backup encrypted with BIP138. It holds the account's descriptors, servers, address indexes and labels. It is encrypted to the policy's keys: any one of them opens it, from its signing device, its xpub or its mnemonic, and it holds no signing secret. The spending keys are never in a backup."
+=> "The backup is a BIP139 wallet backup encrypted with BIP138. It holds the account's descriptors, servers, address indexes and labels. It is encrypted to the policy's keys: any one of them opens it, from its signing device, its xpub or its mnemonic, and it holds no signing secret. The spending keys are never in a backup.";;
+backup-text-sp
+=> "The backup is a BIP139 wallet backup encrypted with BIP138. It holds the account's descriptors, servers, address indexes and labels, and the account's scan key, to which it is encrypted: only that key opens it, from its key in Keys or its mnemonic, and whoever opens it sees the account's payments. The spending keys are never in a backup."
+=> "The backup is a BIP139 wallet backup encrypted with BIP138. It holds the account's descriptors, servers, address indexes and labels, and the account's scan key, to which it is encrypted: only that key opens it, from its key in Keys or its mnemonic, and whoever opens it sees the account's payments. The spending keys are never in a backup.";;
+backup-title => "Backup Account" => "Backup Account"
+backup-warning-saved-psbts
+=> "Saved PSBTs and signing sessions are not in the backup: a transaction being signed is prepared again."
+=> "Saved PSBTs and signing sessions are not in the backup: a transaction being signed is prepared again.";;
+balance-title => "Balance" => "Saldo"
+balance-unconfirmed => "Unconfirmed" => "Sin confirmar"
+btn-add-a-key => "+ Add a Key" => "NONE"
+btn-add-a-label => "Add a Label" => "NONE"
+btn-add-key => "Add Key" => "NONE"
+btn-add-payment => "+ Add Payment" => "NONE"
+btn-add-route => "Add Route" => "NONE"
+btn-add-this-route => "Add This Route" => "NONE"
+btn-all-settings => "All Settings" => "NONE"
+btn-allow-access => "Allow" => "NONE"
+btn-awaiting-payment => "Addr. awaiting payment (%1)" => "NONE"
+btn-back => "Back" => "NONE"
+btn-backup-account => "Backup Account" => "Backup Account"
+btn-backup-descriptor => "Backup Descriptor" => "Backup Descriptor"
+btn-camera-settings => "Camera Settings" => "NONE"
+btn-check => "Check" => "NONE"
+btn-choose-file => "Choose File…" => "Choose File…"
+btn-connect-blindbit => "Connect Blindbit" => "NONE"
+btn-connect-electrum => "Connect Electrum" => "NONE"
+btn-continue => "Continue" => "NONE"
+btn-copied => "Copied" => "NONE"
+btn-copy-address => "Copy Address" => "NONE"
+btn-copy-to-clipboard => "Copy to Clipboard" => "Copy to Clipboard"
+btn-create => "Create" => "NONE"
+btn-create-account => "+ Create Account" => "+ Create Account"
+btn-delete-wallet => "Delete wallet" => "NONE"
+btn-deny-access => "Deny" => "NONE"
+btn-disable-plugin => "Disable Plugin" => "NONE"
+btn-disconnect-blindbit => "Disconnect Blindbit" => "NONE"
+btn-disconnect-electrum => "Disconnect Electrum" => "NONE"
+btn-dismiss => "Dismiss" => "NONE"
+btn-done => "Done" => "NONE"
+btn-edit-label => "Edit label" => "NONE"
+btn-export-psbt => "Export PSBT…" => "Export PSBT…"
+btn-fetch-xpub => "Fetch Xpub" => "NONE"
+btn-fetch-xpubs-from-the-device => "Fetch Xpubs From the Device" => "NONE"
+btn-forget-access => "Forget" => "NONE"
+btn-generate-new => "Generate New" => "NONE"
+btn-get-descriptor => "Get Descriptor" => "NONE"
+btn-get-segwit => "Segwit" => "Segwit"
+btn-get-silent-payment => "Silent Payment" => "Silent Payment"
+btn-get-taproot => "Taproot" => "Taproot"
+btn-get-xpub => "Get Xpub" => "Get Xpub"
+btn-hide-attempts => "Hide signing attempts" => "Hide signing attempts"
+btn-hide-words => "Hide Words" => "NONE"
+btn-import-psbt => "Import PSBT…" => "Import PSBT…"
+btn-less => "Less" => "NONE"
+btn-load-signed-psbt => "Load Signed PSBT…" => "NONE"
+btn-more => "More" => "NONE"
+btn-move-down => "Move Down" => "NONE"
+btn-move-up => "Move Up" => "NONE"
+btn-next-scan-the-answer => "Next: Scan the Answer" => "NONE"
+btn-open => "Open" => "NONE"
+btn-open-file => "Open File…" => "NONE"
+btn-open-keys-tab => "Open Keys Tab" => "NONE"
+btn-other-signer => "Other Signer" => "NONE"
+btn-paste-from-clipboard => "Paste from Clipboard" => "Paste from Clipboard"
+btn-pick-another-file => "Pick Another File…" => "NONE"
+btn-plugin-access => "Access" => "NONE"
+btn-prepare-nonces => "Prepare Nonces" => "Prepare Nonces"
+btn-qr-settings => "QR Settings" => "QR Settings"
+btn-read-backup => "Read Backup" => "Read Backup"
+btn-register => "Register" => "NONE"
+btn-register-descriptor => "Register Descriptor" => "Register Descriptor"
+btn-remove-key => "Remove Key" => "NONE"
+btn-remove-path => "Remove Path" => "NONE"
+btn-remove-payment => "Remove Payment" => "NONE"
+btn-remove-plugin => "Remove" => "Remove"
+btn-rescan => "Rescan" => "Rescan"
+btn-restore-account => "Restore Account" => "Restore Account"
+btn-retry-disable-plugin => "Retry disable" => "Retry disable"
+btn-reveal-mnemonic => "Reveal Mnemonic" => "NONE"
+btn-save => "Save" => "NONE"
+btn-save-alias => "Save Alias" => "NONE"
+btn-save-backup => "Save Backup" => "Save Backup"
+btn-save-settings => "Save Settings" => "NONE"
+btn-save-spend-path => "Save Path" => "Save Path"
+btn-save-to-file => "Save to File…" => "Save to File…"
+btn-save-unsigned-psbt => "Save Unsigned PSBT…" => "NONE"
+btn-scan-address => "Scan an Address QR Code" => "Scan an Address QR Code"
+btn-scan-again => "Scan Again" => "NONE"
+btn-seal-key => "Seal Key" => "NONE"
+btn-show-attempts => "Show signing attempts" => "Show signing attempts"
+btn-show-mnemonic => "Show Mnemonic" => "NONE"
+btn-show-words => "Show Words" => "NONE"
+btn-sign => "Sign" => "NONE"
+btn-test-ok => "✓ Test" => "NONE"
+btn-try-again => "Try Again" => "NONE"
+btn-unlock => "Unlock" => "NONE"
+coins-date => "Date" => "Fecha"
+coins-height => "Height" => "Altura"
+coins-label => "Label" => "Etiqueta"
+coins-label-failed => "Could not save the label" => "No se pudo guardar la etiqueta"
+coins-outpoint => "OutPoint" => "OutPoint"
+coins-spent => "Spent" => "Gastado"
+coins-title => "Coins" => "Monedas"
+coins-type => "Type" => "Tipo"
+coins-unconfirmed-no-colon => "Unconfirmed" => "Sin confirmar"
+coins-value => "Value" => "Valor"
+common-broadcast => "Broadcast" => "Transmitir"
+common-cancel => "Cancel" => "Cancelar"
+common-clear => "Clear" => "Limpiar"
+common-copy => "Copy" => "Copiar"
+common-delete => "Delete" => "Eliminar"
+common-error => "Error" => "Error"
+common-generate => "Generate" => "Generar"
+common-no => "No" => "No"
+common-proceed => "Proceed" => "Continuar"
+common-test => "Test" => "Probar"
+common-testing => "Testing…" => "Probando..."
+common-yes => "Yes" => "Si"
+confirm-send-broadcasting => "Broadcasting…" => "Transmitiendo..."
+confirm-send-failed => "Broadcast Failed\n\n%1" => "Fallo en la transmision\n\n%1"
+create-account-backend-network => "The server runs on %1, not %2." => "NONE"
+create-account-backends-section => "Backends" => "NONE"
+create-account-electrum => "Electrum:" => "Electrum:"
+create-account-key-no-route
+=> "Only a QR Code or Hot Key route can return a descriptor."
+=> "NONE";;
+create-account-key-route => "Gets the descriptor with %1." => "NONE"
+create-account-key-section => "Key" => "NONE"
+create-account-name => "Account Name:" => "Nombre de cuenta:"
+create-account-name-placeholder => "e.g. savings" => "NONE"
+create-account-no-key-on-title => "No Key on %1" => "NONE"
+create-account-no-key-sub
+=> "An account is created from a key. Register one in the Keys tab first."
+=> "NONE";;
+create-account-no-key-title => "No Key Registered" => "NONE"
+create-account-pick-key => "Pick a key first." => "NONE"
+create-account-reason-backends => "Test both backends first." => "NONE"
+create-account-reason-descriptor
+=> "Get the silent payment descriptor of a key first."
+=> "NONE";;
+create-account-reason-descriptor-network
+=> "The descriptor is for %1, not %2. Get it again."
+=> "NONE";;
+create-account-reason-exists => "An account named “%1” already exists." => "NONE"
+create-account-reason-name => "Enter an account name." => "NONE"
+create-account-reason-spaces => "The account name cannot contain spaces." => "NONE"
+create-account-title => "Create Account" => "Crear cuenta"
+create-account-xpub-invalid
+=> "The key answered with an xpub no descriptor can be built from."
+=> "The key answered with an xpub no descriptor can be built from.";;
+datadir-migration-failed
+=> "Could not move Silent's data"
+=> "No se pudieron mover los datos de Silent";;
+datadir-migration-failed-text
+=> "Reckless could not move your Silent data to its own folder, so it uses Silent's folder as it is for now. Nothing was changed or lost. Close every running copy of Silent and start Reckless again to retry.\n\n%1"
+=> "Reckless no pudo mover sus datos de Silent a su propia carpeta, así que por ahora usa la carpeta de Silent tal como está. No se ha cambiado ni perdido nada. Cierre todas las copias de Silent en ejecución e inicie Reckless de nuevo para reintentarlo.\n\n%1";;
+delete-wallet-confirmation
+=> "Delete wallet “%1”? This cannot be undone."
+=> "Eliminar la cartera '%1'? No se puede deshacer.";;
+delete-wallet-title => "Delete Wallet" => "Eliminar cartera"
+electrum-gave-up-message
+=> "The connection to %1 dropped %2 times in the last minute, so Reckless stopped reconnecting. Check the server, then connect again from the status bar or the Settings."
+=> "The connection to %1 dropped %2 times in the last minute, so Reckless stopped reconnecting. Check the server, then connect again from the status bar or the Settings.";;
+electrum-gave-up-title => "Electrum Disconnected" => "Electrum Disconnected"
+electrum-the-server => "the server" => "the server"
+fee-default => "Default" => "Predeterminado"
+fee-fast => "Fast" => "Rápida"
+fee-low => "Low" => "Baja"
+fee-manual => "Manual" => "Manual"
+fee-medium => "Medium" => "Media"
+fee-smart => "Smart" => "Inteligente"
+flow-camera-contrast => "Contrast:" => "NONE"
+flow-camera-denied-body
+=> "Reckless has no permission to use the camera, or another app is using it. Allow access in the system settings."
+=> "NONE";;
+flow-camera-denied-title => "Camera unavailable" => "NONE"
+flow-camera-failed-body => "Pick another source in Camera Source." => "NONE"
+flow-camera-failed-title => "The camera failed to open" => "NONE"
+flow-camera-none-body => "Connect a camera, then pick it in Camera Source." => "NONE"
+flow-camera-none-title => "No camera found" => "NONE"
+flow-camera-settings-title => "Camera Settings" => "NONE"
+flow-camera-source => "Camera Source:" => "NONE"
+flow-camera-starting => "Starting the camera…" => "NONE"
+flow-fetch-hot-busy => "Getting the descriptor…" => "NONE"
+flow-fetch-hot-prompt
+=> "Enter the password of “%1” to get its silent payment descriptor."
+=> "NONE";;
+flow-fetch-qr-hint
+=> "Scan this code with the device to request its silent payment descriptor."
+=> "NONE";;
+flow-fetch-qr-title => "Show Descriptor Request" => "NONE"
+flow-fetch-scan-hint
+=> "Hold the descriptor code from the device in front of the camera."
+=> "NONE";;
+flow-fetch-scan-title => "Scan Descriptor" => "NONE"
+flow-fetch-sd-title => "Descriptor from SD Card" => "NONE"
+flow-fetch-title => "Get Descriptor" => "NONE"
+flow-fetch-usb-wait
+=> "Approve the silent payment descriptor export on %1."
+=> "NONE";;
+flow-fetch-xpub-hot-busy => "Getting the xpub…" => "Getting the xpub…"
+flow-fetch-xpub-hot-prompt
+=> "Enter the password of “%1” to get its xpub."
+=> "Enter the password of “%1” to get its xpub.";;
+flow-fetch-xpub-qr-hint
+=> "Scan this code with the device to request its xpub."
+=> "Scan this code with the device to request its xpub.";;
+flow-fetch-xpub-qr-title => "Show Xpub Request" => "Show Xpub Request"
+flow-fetch-xpub-scan-hint
+=> "Hold the xpub code from the device in front of the camera."
+=> "Hold the xpub code from the device in front of the camera.";;
+flow-fetch-xpub-scan-title => "Scan Xpub" => "Scan Xpub"
+flow-fetch-xpub-title => "Get Xpub" => "Get Xpub"
+flow-fetch-xpub-usb-wait
+=> "Approve the xpub export on %1."
+=> "Approve the xpub export on %1.";;
+flow-hot-busy-with => "With “%1”." => "NONE"
+flow-no-signer-sign
+=> "No key of this account is registered on this computer. Add one in the Keys tab."
+=> "NONE";;
+flow-no-signer-title => "No Signer Available" => "NONE"
+flow-no-signer-verify
+=> "No key of this account can show addresses. Add a USB or QR route in the Keys tab."
+=> "NONE";;
+flow-nonces-hot-busy
+=> "Preparing the nonce session"
+=> "Preparing the nonce session";;
+flow-nonces-hot-prompt
+=> "Enter the password of “%1” to prepare a nonce session."
+=> "Enter the password of “%1” to prepare a nonce session.";;
+flow-nonces-picker-lead
+=> "One session is prepared for the key, bound to no transaction."
+=> "One session is prepared for the key, bound to no transaction.";;
+flow-nonces-qr-hint
+=> "Scan this code with the signing device to prepare its nonce cache session."
+=> "Scan this code with the signing device to prepare its nonce cache session.";;
+flow-nonces-qr-title => "Prepare the Nonce Cache" => "Prepare the Nonce Cache"
+flow-nonces-scan-hint
+=> "The device shows its prepared answer as a code: scan it to fill the cache."
+=> "The device shows its prepared answer as a code: scan it to fill the cache.";;
+flow-nonces-scan-title => "Scan the Prepared Answer" => "Scan the Prepared Answer"
+flow-nonces-title => "Prepare Nonce Cache" => "Prepare Nonce Cache"
+flow-nonces-unsupported
+=> "This device does not support nonce cache preparation."
+=> "This device does not support nonce cache preparation.";;
+flow-nonces-usb-wait
+=> "Approve the nonce session on %1."
+=> "Approve the nonce session on %1.";;
+flow-other-device-other => "Not a key of this account." => "NONE"
+flow-other-device-sign => "Not needed for this transaction." => "NONE"
+flow-other-devices => "Other Connected Devices" => "NONE"
+flow-password => "Password:" => "NONE"
+flow-password-reason => "Enter the password." => "NONE"
+flow-password-wrong => "Wrong password. Try again." => "NONE"
+flow-plan-failed => "Reckless could not read this transaction." => "NONE"
+flow-qr-contrast-hint
+=> "Background brightness. Raise it if the device misreads the code."
+=> "NONE";;
+flow-qr-density-hint
+=> "Data per frame. Lower it for older cameras; it adds parts."
+=> "NONE";;
+flow-qr-part-pending => "Part – / –" => "NONE"
+flow-qr-rebuild-reason => "Wait for the code to rebuild." => "NONE"
+flow-qr-rebuilding => "Rebuilding the code…" => "NONE"
+flow-qr-settings-title => "QR Settings" => "QR Settings"
+flow-qr-speed => "Speed" => "NONE"
+flow-qr-speed-hint
+=> "Frames per second. Lower it if the device misses parts."
+=> "NONE";;
+flow-scan-bare-sigs-body
+=> "Reckless needs the whole signed transaction (PSBT). On the device, choose to export the signed PSBT, then scan again."
+=> "NONE";;
+flow-scan-bare-sigs-title => "The device returned signatures only" => "NONE"
+flow-scan-other-title => "Could not use this code" => "NONE"
+flow-scan-wrong-request-body
+=> "Scan the code the device showed for this request. If the device still shows an older one, start again on the device."
+=> "NONE";;
+flow-scan-wrong-request-title => "This code answers a different request" => "NONE"
+flow-sd-load-body
+=> "Insert the card in the device, sign, then load %1 back."
+=> "NONE";;
+flow-sd-load-title => "2. Sign on the device, then load the signed file" => "NONE"
+flow-sd-read-error-body
+=> "The file is not a signed transaction for this wallet. Pick the file the device wrote."
+=> "NONE";;
+flow-sd-read-error-title => "Could not read the signed file" => "NONE"
+flow-sd-save-body => "Reckless saves %1. Copy it to the SD card." => "NONE"
+flow-sd-save-title => "1. Save the unsigned transaction" => "NONE"
+flow-sd-write-error-body
+=> "The SD card is full or read-only. Check the card, then try again."
+=> "NONE";;
+flow-sd-write-error-title => "Could not save the file" => "NONE"
+flow-sign-hot-busy => "Signing the transaction…" => "NONE"
+flow-sign-hot-prompt
+=> "Enter the password of “%1” to sign the transaction."
+=> "NONE";;
+flow-sign-picker-lead => "Each key below must sign this transaction." => "NONE"
+flow-sign-qr-hint => "Scan this code with the signing device." => "NONE"
+flow-sign-qr-title => "Show Transaction" => "NONE"
+flow-sign-scan-hint
+=> "Hold the signed transaction code from the device in front of the camera."
+=> "NONE";;
+flow-sign-scan-title => "Scan Signed Transaction" => "NONE"
+flow-sign-sd-title => "Sign with SD Card" => "NONE"
+flow-sign-title => "Sign Transaction" => "NONE"
+flow-sign-usb-wait => "Review the transaction on %1 and approve it." => "NONE"
+flow-signer-disconnected-sub => "Connect and unlock %1." => "NONE"
+flow-signer-first-sub
+=> "Silent payment key. It signs before the other keys."
+=> "NONE";;
+flow-signer-no-hot-sub
+=> "The mnemonic of this key is not stored on this computer."
+=> "NONE";;
+flow-signer-no-route-sub
+=> "None of this key’s routes can sign. Add one in the Keys tab."
+=> "NONE";;
+flow-signer-not-needed
+=> "This key does not sign this transaction."
+=> "This key does not sign this transaction.";;
+flow-signer-ready-sub => "Signs with %1." => "NONE"
+flow-signer-signed-sub => "Signature added." => "NONE"
+flow-signer-unregistered-sub
+=> "This fingerprint is not a key on this computer. Add it in the Keys tab."
+=> "NONE";;
+flow-signer-waiting-sub => "Signs after the silent payment key." => "NONE"
+flow-the-device => "the device" => "NONE"
+flow-unknown-key => "Unknown Key" => "NONE"
+flow-usb-confirm-title => "Confirm on the Device" => "NONE"
+flow-usb-disconnected-body
+=> "%1 was disconnected. Reconnect and unlock it, then try again."
+=> "NONE";;
+flow-usb-disconnected-title => "Device Disconnected" => "NONE"
+flow-usb-failed-body
+=> "%1 stopped responding. Unplug it, plug it back in, then try again."
+=> "NONE";;
+flow-usb-failed-title => "The Device Did Not Answer" => "NONE"
+flow-usb-rejected-body => "%1 declined the request. Nothing was signed." => "NONE"
+flow-usb-rejected-title => "Rejected on the Device" => "NONE"
+flow-verify-error-body
+=> "%1 did not return an answer. The address was not checked."
+=> "NONE";;
+flow-verify-error-title => "Could Not Verify" => "NONE"
+flow-verify-hot-busy => "Checking the address…" => "NONE"
+flow-verify-hot-prompt
+=> "Enter the password of “%1” to check this address."
+=> "NONE";;
+flow-verify-hot-sub
+=> "A hot key has no screen to show the address on."
+=> "A hot key has no screen to show the address on.";;
+flow-verify-key-not-needed
+=> "This key is not a key of this wallet."
+=> "This key is not a key of this wallet.";;
+flow-verify-matched-body
+=> "%1 derived the same address. It belongs to this wallet."
+=> "NONE";;
+flow-verify-matched-title => "Address Confirmed" => "NONE"
+flow-verify-mismatch-body
+=> "%1 did not confirm this address. Do not use it to receive coins."
+=> "NONE";;
+flow-verify-mismatch-title => "Address Does Not Match" => "NONE"
+flow-verify-no-route-sub
+=> "No device of this key can show the address. Add a USB or QR route in the Keys tab."
+=> "No device of this key can show the address. Add a USB or QR route in the Keys tab.";;
+flow-verify-picker-lead => "Pick the device to check this address on." => "NONE"
+flow-verify-qr-hint
+=> "Scan this code with the device. It derives the address and shows it."
+=> "NONE";;
+flow-verify-qr-title => "Show Address Request" => "NONE"
+flow-verify-ready-sub => "Shows the address on %1." => "Shows the address on %1."
+flow-verify-scan-hint
+=> "Hold the answer code from the device in front of the camera."
+=> "NONE";;
+flow-verify-scan-title => "Scan the Device Answer" => "NONE"
+flow-verify-sd-title => "Verify with SD Card" => "NONE"
+flow-verify-title => "Verify Address" => "NONE"
+flow-verify-usb-title => "Check on the Device" => "NONE"
+flow-verify-usb-wait
+=> "Check that %1 shows the same address as below, then confirm on the device."
+=> "NONE";;
+history-amount => "Amount" => "Cantidad"
+history-date => "Date" => "Fecha"
+history-direction => "Direction" => "Direccion"
+history-height => "Height" => "Altura"
+history-incoming => "Incoming" => "Entrante"
+history-label => "Label" => "Etiqueta"
+history-label-failed
+=> "Could not save the label"
+=> "No se pudo guardar la etiqueta";;
+history-outgoing => "Outgoing" => "Saliente"
+history-title => "History" => "Historial"
+history-txid => "TxID" => "TxID"
+history-unconfirmed-no-colon => "Unconfirmed" => "Sin confirmar"
+keys-account-index-tip => "Account index (0–99)" => "NONE"
+keys-account-registration-not-needed => "Not needed" => "NONE"
+keys-accounts => "Registered Accounts" => "NONE"
+keys-accounts-empty => "No account uses this key." => "NONE"
+keys-accounts-module-musig => "MuSig2 Accounts" => "NONE"
+keys-accounts-module-sp => "SP Accounts" => "NONE"
+keys-add-backup-title => "Add a Key · Back Up the Words" => "NONE"
+keys-add-failed => "Could not register the key: %1" => "NONE"
+keys-add-file-title => "Add a Key · Import a File" => "NONE"
+keys-add-hot-title => "Add a Key · Hot Key" => "NONE"
+keys-add-mode-file => "Import a File" => "NONE"
+keys-add-mode-file-sub
+=> "Open a key export from a device (e.g. on an SD card) or a .json key file from Reckless."
+=> "NONE";;
+keys-add-mode-hot => "Hot Key" => "NONE"
+keys-add-mode-hot-sub
+=> "Generate or import a mnemonic, stored on this computer and sealed with a password."
+=> "NONE";;
+keys-add-mode-paste => "Paste Xpub" => "NONE"
+keys-add-mode-paste-sub
+=> "Paste the key with its origin, e.g. [73c5da0a/84'/1'/0']tpubD…"
+=> "NONE";;
+keys-add-mode-qr => "Airgap over QR Code" => "NONE"
+keys-add-mode-qr-sub
+=> "Show a request code to the device, then scan its answer with the camera."
+=> "NONE";;
+keys-add-password-title => "Add a Key · Choose a Password" => "NONE"
+keys-add-paste-title => "Add a Key · Paste Xpub" => "NONE"
+keys-add-qr-title => "Add a Key · QR Code" => "NONE"
+keys-add-review-title => "Add a Key · Review" => "NONE"
+keys-add-scan-hint
+=> "Hold the answer code from the device in front of the camera."
+=> "NONE";;
+keys-add-scan-title => "Add a Key · Scan the Answer" => "NONE"
+keys-add-sealing-title => "Add a Key · Sealing" => "NONE"
+keys-add-title => "Add a Key" => "NONE"
+keys-added-sub => "“%1” (%2) is stored on this computer and ready to sign." => "NONE"
+keys-added-title => "Key Added" => "NONE"
+keys-alias => "Alias:" => "NONE"
+keys-alias-empty => "Enter an alias." => "NONE"
+keys-alias-failed => "Could not rename the key: %1" => "NONE"
+keys-alias-name => "Name the key" => "NONE"
+keys-alias-taken => "Another key is already named “%1”." => "NONE"
+keys-alias-taken-reason => "Another key already has this alias." => "NONE"
+keys-backup-body
+=> "Write them down in order and keep them offline. Anyone holding them holds the coins."
+=> "NONE";;
+keys-backup-reason => "Confirm that you wrote the words down." => "NONE"
+keys-backup-title => "These words are shown once" => "NONE"
+keys-backup-wrote => "I wrote the words down, in order." => "NONE"
+keys-cached-xpubs => "Cached Xpubs" => "NONE"
+keys-check-account-failed
+=> "Could not check this account on the device: %1"
+=> "NONE";;
+keys-device-column => "Device" => "NONE"
+keys-device-not-registered => "Not registered as a key" => "NONE"
+keys-device-registered-as => "Registered as “%1”" => "NONE"
+keys-device-registering => "Registering…" => "NONE"
+keys-devices => "Devices" => "NONE"
+keys-devices-empty-title => "No Device Connected" => "NONE"
+keys-devices-seen => "Devices Seen" => "NONE"
+keys-devices-seen-empty
+=> "No device with this fingerprint has been connected yet."
+=> "NONE";;
+keys-duplicate-body => "Key %1 is already registered as “%2”." => "NONE"
+keys-duplicate-reason => "This key is already registered." => "NONE"
+keys-duplicate-title => "Fingerprint already registered" => "NONE"
+keys-fetch-failed-title => "Could not fetch the xpub" => "NONE"
+keys-fetch-nonces => "Fetch nonces" => "Fetch nonces"
+keys-fetch-reason-account => "Enter an account index (0–99)." => "NONE"
+keys-fetch-reason-cached => "This xpub is already cached." => "NONE"
+keys-fetch-reason-format => "Write the path like m/84'/%1'/0'." => "NONE"
+keys-fetch-reason-path => "Enter a derivation path." => "NONE"
+keys-fetch-title => "Fetch Xpub" => "NONE"
+keys-fetch-xpub-connect => "Connect the device to fetch xpubs" => "NONE"
+keys-fetch-xpub-from => "Fetch xpubs from %1" => "NONE"
+keys-fetch-xpub-hot
+=> "Derive xpubs from the hot key, with its password"
+=> "Derive xpubs from the hot key, with its password";;
+keys-fetch-xpub-qr => "Fetch xpubs over QR codes" => "Fetch xpubs over QR codes"
+keys-fetching-sub => "Confirm on %1 if it asks." => "NONE"
+keys-fetching-title => "Fetching the xpub…" => "NONE"
+keys-file-drop => "Open or drop a file here" => "NONE"
+keys-file-error-title => "Cannot import this file" => "NONE"
+keys-file-filter => "Key file (*.json)" => "NONE"
+keys-file-invalid => "This is not a valid key file." => "NONE"
+keys-file-newer
+=> "This key file was written by a newer version of Reckless. Update Reckless to import it."
+=> "NONE";;
+keys-file-no-fingerprint
+=> "This key file has no fingerprint, so the key cannot be identified."
+=> "NONE";;
+keys-file-other-network
+=> "This key file is for %1, not %2. Switch the network in the Keys tab to import it."
+=> "NONE";;
+keys-file-read-body
+=> "The file is not a key export, or the SD card was removed. Pick the export file again."
+=> "NONE";;
+keys-file-read-title => "Could not read the file" => "NONE"
+keys-file-route
+=> "This key file has a route type Reckless does not know (“%1”). Remove that route from the file, or update Reckless."
+=> "NONE";;
+keys-generate-failed-title => "Could Not Generate the Words" => "NONE"
+keys-hot-generate-12 => "Generate 12 Words" => "NONE"
+keys-hot-generate-12-sub => "A new mnemonic. Enough for most uses." => "NONE"
+keys-hot-generate-24 => "Generate 24 Words" => "NONE"
+keys-hot-generate-24-sub => "A new, longer mnemonic." => "NONE"
+keys-hot-import-sub => "Type an existing mnemonic." => "NONE"
+keys-hot-import-words => "Import Words" => "NONE"
+keys-keys => "Keys" => "NONE"
+keys-keys-empty-title => "No Key on %1" => "NONE"
+keys-module-column => "Module" => "NONE"
+keys-module-not-ready => "The keys module is not ready." => "NONE"
+keys-network => "Network:" => "NONE"
+keys-no-raw-requests => "This signer takes no raw requests." => "NONE"
+keys-no-usable-route => "This key has no usable signing route." => "NONE"
+keys-nonces => "Musig sessions cache" => "Musig sessions cache"
+keys-nonces-available => "%1 available" => "%1 available"
+keys-nonces-connect
+=> "Connect Ledger to fetch nonce sessions."
+=> "Connect Ledger to fetch nonce sessions.";;
+keys-nonces-fetching => "Fetching nonce sessions" => "Fetching nonce sessions"
+keys-nonces-quantity => "Sessions to fetch" => "Sessions to fetch"
+keys-nonces-wait
+=> "Keep Ledger connected until fetching finishes."
+=> "Keep Ledger connected until fetching finishes.";;
+keys-password-choose => "Choose a password." => "NONE"
+keys-password-confirm-field => "Confirm:" => "NONE"
+keys-password-field => "Password:" => "NONE"
+keys-password-lead
+=> "The password seals the mnemonic on this computer. Reckless asks for it each time the key signs."
+=> "NONE";;
+keys-password-must-match => "The two passwords must match." => "NONE"
+keys-password-no-match => "The passwords do not match." => "NONE"
+keys-password-short => "Use at least 8 characters." => "NONE"
+keys-paste-invalid
+=> "Paste the key with its origin, e.g. [73c5da0a/84'/1'/0']tpubD…"
+=> "NONE";;
+keys-paste-placeholder => "[73c5da0a/84'/1'/0']%1…" => "NONE"
+keys-path => "Path:" => "NONE"
+keys-path-type => "Path Type:" => "NONE"
+keys-pick-file => "Pick a key file" => "NONE"
+keys-purpose-48 => "BIP48 · Multisig (48')" => "NONE"
+keys-purpose-49 => "BIP49 · Nested SegWit (49')" => "NONE"
+keys-purpose-84 => "BIP84 · Native SegWit (84')" => "NONE"
+keys-purpose-86 => "BIP86 · Taproot (86')" => "NONE"
+keys-purpose-87 => "BIP87 · Multisig (87')" => "NONE"
+keys-purpose-custom => "Custom Path" => "NONE"
+keys-qr-contrast => "Contrast" => "NONE"
+keys-qr-density => "Density" => "NONE"
+keys-qr-failed-title => "Could Not Build the Request" => "NONE"
+keys-qr-frame-failed => "Could not render this frame: %1" => "NONE"
+keys-qr-part => "Part %1 / %2" => "NONE"
+keys-qr-wrong-kind => "That response does not carry an xpub." => "NONE"
+keys-register-account-connect
+=> "Connect the device to check or register this account."
+=> "NONE";;
+keys-register-account-disconnected
+=> "%1 was disconnected. Reconnect and unlock it, then try again."
+=> "%1 was disconnected. Reconnect and unlock it, then try again.";;
+keys-register-account-failed
+=> "Could not register this account on the device: %1"
+=> "NONE";;
+keys-register-account-no-answer
+=> "%1 could not register the account. Unplug it, plug it back in, then try again."
+=> "%1 could not register the account. Unplug it, plug it back in, then try again.";;
+keys-register-account-on => "Register on %1" => "NONE"
+keys-register-account-refused
+=> "The device did not register this account."
+=> "NONE";;
+keys-register-account-rejected
+=> "%1 declined the account. Nothing was registered."
+=> "%1 declined the account. Nothing was registered.";;
+keys-register-alias => "Alias" => "NONE"
+keys-register-alias-placeholder => "Optional. Leave empty to name it “%1”." => "NONE"
+keys-register-disconnected => "The device was disconnected." => "NONE"
+keys-register-failed-title => "Could not register %1" => "NONE"
+keys-register-title => "Register as Key" => "NONE"
+keys-remove-accounts-body => "%1 will no longer be able to sign." => "NONE"
+keys-remove-accounts-many => "%1 accounts use this key" => "NONE"
+keys-remove-accounts-one => "1 account uses this key" => "NONE"
+keys-remove-failed => "Could not remove the key: %1" => "NONE"
+keys-remove-hot
+=> "The sealed mnemonic is deleted with the key. Without a backup of the words, it cannot be recovered."
+=> "NONE";;
+keys-remove-question => "Remove “%1” (%2) from this computer?" => "NONE"
+keys-remove-route => "Remove Route" => "NONE"
+keys-remove-title => "Remove Key" => "NONE"
+keys-remove-xpub => "Remove Xpub" => "Remove Xpub"
+keys-reveal-busy => "Opening the key…" => "Opening the key…"
+keys-reveal-failed => "Could not open the key: %1" => "NONE"
+keys-reveal-title => "Reveal Mnemonic" => "NONE"
+keys-reveal-warning
+=> "Make sure no one can see the screen. Reckless never asks for these words."
+=> "NONE";;
+keys-reveal-warning-title => "Anyone with these words holds the coins" => "NONE"
+keys-route-failed => "Could not change the routes: %1" => "NONE"
+keys-route-hot => "Hot Key" => "NONE"
+keys-route-last => "A key needs at least one route" => "NONE"
+keys-route-primary-suffix => "%1 (primary)" => "NONE"
+keys-route-qr => "QR Code" => "NONE"
+keys-route-sd => "SD Card" => "NONE"
+keys-route-unavailable => "This signing route is not available yet." => "NONE"
+keys-route-unsupported
+=> "This signing route is not supported for this request."
+=> "NONE";;
+keys-route-usb => "USB" => "NONE"
+keys-routes => "Routes" => "NONE"
+keys-script-p2sh-p2wsh => "1' · P2SH-P2WSH" => "NONE"
+keys-script-p2tr => "3' · P2TR" => "NONE"
+keys-script-p2wsh => "2' · P2WSH" => "NONE"
+keys-sd-filter => "Partially signed transaction (*.psbt)" => "NONE"
+keys-sd-load-title => "Load the signed transaction" => "NONE"
+keys-sd-save-title => "Save the unsigned transaction" => "NONE"
+keys-seal-failed-title => "Could Not Seal the Key" => "NONE"
+keys-sealing-sub
+=> "Encrypting the mnemonic with the password. This takes a few seconds."
+=> "NONE";;
+keys-sealing-title => "Sealing the key…" => "NONE"
+keys-set-nonces => "Set" => "Set"
+keys-sp-descriptor-no-origin
+=> "That descriptor carries no key origin and cannot be used."
+=> "NONE";;
+keys-sp-descriptor-unavailable
+=> "This key cannot return a silent payment descriptor."
+=> "NONE";;
+keys-words-checksum
+=> "These words are not a valid mnemonic. Check each word and their order."
+=> "NONE";;
+keys-words-count => "%1 Words" => "NONE"
+keys-words-missing-many => "%1 words missing." => "NONE"
+keys-words-missing-one => "1 word missing." => "NONE"
+keys-words-unknown-many => "%1 words are not in the word list." => "NONE"
+keys-words-unknown-one => "1 word is not in the word list." => "NONE"
+keys-xpub => "Xpub:" => "NONE"
+keys-xpub-not-cached => "No cached xpub for this derivation path." => "NONE"
+keys-xpub-other-key
+=> "The device answered with the xpub of another key."
+=> "The device answered with the xpub of another key.";;
+keys-xpub-rejected
+=> "%1 declined to share the xpub."
+=> "%1 declined to share the xpub.";;
+keys-xpub-unavailable
+=> "This key has no connected device, QR code or hot key route to get an xpub from."
+=> "This key has no connected device, QR code or hot key route to get an xpub from.";;
+keys-xpub-used => "An account uses this xpub" => "An account uses this xpub"
+keys-xpubs-empty => "No xpub cached yet." => "NONE"
+keys-xpubs-empty-offline
+=> "No xpub cached. Connect the device to fetch them."
+=> "NONE";;
+main-keys-tab => "Keys" => "NONE"
+main-menu-tab => "+" => "+"
+main-settings-tab => "Settings" => "NONE"
+main-window-title
+=> "Reckless - Silent Payments Wallet"
+=> "Reckless - Cartera Silent Payments";;
+musig-account-restore => "Restore Multikey Wallet" => "Restore Multikey Wallet"
+musig-account-type => "Multikey Wallet" => "NONE"
+musig-backend-busy
+=> "The blockchain backend cannot change while the account signs, broadcasts or changes its server."
+=> "The blockchain backend cannot change while the account signs, broadcasts or changes its server.";;
+musig-backend-electrum => "Electrum (built-in)" => "Electrum (built-in)"
+musig-backend-missing
+=> "The blockchain backend %1 is not installed. Install it, or choose another backend."
+=> "The blockchain backend %1 is not installed. Install it, or choose another backend.";;
+musig-backend-no-electrum
+=> "The account syncs from its blockchain backend plugin: it opens no Electrum connection."
+=> "The account syncs from its blockchain backend plugin: it opens no Electrum connection.";;
+musig-backend-save-failed
+=> "Could not save the blockchain backend"
+=> "Could not save the blockchain backend";;
+musig-count-block => "1 block" => "1 block"
+musig-count-blocks => "%1 blocks" => "%1 blocks"
+musig-count-day => "1 day" => "1 day"
+musig-count-days => "%1 days" => "%1 days"
+musig-count-month => "1 month" => "1 month"
+musig-count-months => "%1 months" => "%1 months"
+musig-count-week => "1 week" => "1 week"
+musig-count-weeks => "%1 weeks" => "%1 weeks"
+musig-create-add-path => "Add a Spend Path" => "NONE"
+musig-create-blocks-placeholder => "blocks" => "NONE"
+musig-create-fetch-key => "%1 (%2)" => "NONE"
+musig-create-fetch-lead
+=> "These keys still have to give their account xpub, one window per key."
+=> "NONE";;
+musig-create-fetch-status => "%1 of %2 account xpubs fetched" => "NONE"
+musig-create-height-placeholder => "block height" => "NONE"
+musig-create-key-path => "The first path spends as one key, with no script" => "NONE"
+musig-create-keys => "Keys" => "NONE"
+musig-create-leaves => "%1 of %2 tap leaves" => "NONE"
+musig-create-path-error => "Spend Path %1: %2" => "NONE"
+musig-create-path-title => "Spend Path %1" => "NONE"
+musig-create-path-words => "Spend Path %1: %2" => "NONE"
+musig-create-pick-keys
+=> "Pick the keys of each path."
+=> "Pick the keys of each path.";;
+musig-create-preview => "Policy" => "NONE"
+musig-create-reason-electrum => "Test the Electrum server first." => "NONE"
+musig-create-reason-keys => "Register a key in the Keys tab first." => "NONE"
+musig-create-reason-policy => "Fix the policy first." => "NONE"
+musig-create-reason-verify => "Check the address on a device first." => "NONE"
+musig-create-registering => "Registering with %1" => "NONE"
+musig-create-shape => "Signers:" => "NONE"
+musig-create-signs-every-spend => "Signs every spend" => "NONE"
+musig-create-skip-verify
+=> "No key of this wallet is on a device with a screen (USB or QR): none can show this address. Create the wallet only if you trust this computer."
+=> "NONE";;
+musig-create-skip-verify-title => "The address is not checked" => "NONE"
+musig-create-threshold => "%1 of %2" => "NONE"
+musig-create-timelock => "Timelock:" => "NONE"
+musig-create-title => "Create Multikey Account" => "NONE"
+musig-create-too-many-leaves
+=> "This policy needs %1 tap leaves, at most %2 are allowed: lower a threshold or split the keys over more paths"
+=> "NONE";;
+musig-create-verify-lead
+=> "Optionally, check this address on your signing devices: click a signer."
+=> "NONE";;
+musig-create-verify-lead-unchecked
+=> "This is the first receive address of the wallet."
+=> "NONE";;
+musig-create-verify-match => "The device shows the same address." => "NONE"
+musig-creator-unknown-instance => "Unknown MuSig2 creator entry: %1" => "NONE"
+musig-electrum-lead
+=> "An Electrum server is needed to fetch the on-chain history."
+=> "An Electrum server is needed to fetch the on-chain history.";;
+musig-electrum-own
+=> "A server run by someone else sees every address and transaction of this account."
+=> "A server run by someone else sees every address and transaction of this account.";;
+musig-electrum-own-title
+=> "Use your own Electrum server"
+=> "Use your own Electrum server";;
+musig-electrum-ssl => "SSL:" => "SSL:"
+musig-electrum-verify-certificate => "Verify Certificate:" => "Verify Certificate:"
+musig-electrum-verify-tip
+=> "Turn off for a server with a self-signed certificate."
+=> "Turn off for a server with a self-signed certificate.";;
+musig-instance-not-found => "MuSig2 instance not found: %1" => "NONE"
+musig-key-type-cosigner => "Cosigner" => "NONE"
+musig-key-type-external => "External" => "NONE"
+musig-key-type-internal => "Internal" => "NONE"
+musig-key-type-safety-net => "Safety Net" => "NONE"
+musig-key-type-unknown => "Unknown" => "NONE"
+musig-lock-hint-height => "block %1" => "block %1"
+musig-lock-line-absolute => "From block %1" => "Desde el bloque %1"
+musig-lock-line-date => "From %1" => "From %1"
+musig-lock-line-relative
+=> "%1 after a coin is received"
+=> "%1 after a coin is received";;
+musig-lock-line-renewable => "From block %1, renewable" => "From block %1, renewable"
+musig-lock-line-unset => "Once the timelock is set" => "Once the timelock is set"
+musig-lock-reason-count => "Enter the timelock." => "Enter the timelock."
+musig-lock-reason-date => "Pick the date." => "Pick the date."
+musig-lock-reason-future
+=> "Pick a date in the future."
+=> "Pick a date in the future.";;
+musig-lock-reason-relative-max
+=> "A relative timelock is at most 65535 blocks (about 15 months)."
+=> "A relative timelock is at most 65535 blocks (about 15 months).";;
+musig-lock-reason-tip
+=> "The chain tip is not known yet: this timelock is counted from it."
+=> "The chain tip is not known yet: this timelock is counted from it.";;
+musig-locktime-absolute => "From a block height" => "NONE"
+musig-locktime-date => "Date in the future" => "Date in the future"
+musig-locktime-none => "No timelock" => "NONE"
+musig-locktime-relative => "Relative" => "NONE"
+musig-locktime-renewable => "Absolute renewable" => "NONE"
+musig-menu-coins => "Coins" => "NONE"
+musig-menu-history => "History" => "NONE"
+musig-menu-psbt => "PSBT" => "PSBT"
+musig-menu-receive => "Receive" => "NONE"
+musig-menu-send => "Send" => "NONE"
+musig-menu-settings => "Settings" => "NONE"
+musig-path-all => "All %1" => "All %1"
+musig-path-fingerprint => "Fingerprint" => "Fingerprint"
+musig-path-key => "Key" => "Key"
+musig-path-key-no-musig
+=> "This key's device does not support MuSig2"
+=> "This key's device does not support MuSig2";;
+musig-path-mandatory => "Mandatory" => "Mandatory"
+musig-path-name => "Name:" => "Name:"
+musig-path-name-placeholder => "Optional" => "Optional"
+musig-path-no-key => "No key picked yet" => "No key picked yet"
+musig-path-reason-keys => "Pick at least one key." => "Pick at least one key."
+musig-path-signatures => "Signatures:" => "Signatures:"
+musig-receive-verify-mismatch
+=> "The device showed another address: do not use this one"
+=> "NONE";;
+musig-register-descriptor-title => "Register Descriptor" => "Register Descriptor"
+musig-register-lead
+=> "Click a device to register the account on it."
+=> "Click a device to register the account on it.";;
+musig-register-reason
+=> "%1 devices still to register."
+=> "%1 devices still to register.";;
+musig-register-reason-busy => "Registering…" => "Registering…"
+musig-register-reason-one
+=> "1 device still to register."
+=> "1 device still to register.";;
+musig-register-skip
+=> "Skip: continue without registering every device (register them later from the Keys tab)"
+=> "Skip: continue without registering every device (register them later from the Keys tab)";;
+musig-register-why-disconnected
+=> "Plug it in and unlock it."
+=> "Plug it in and unlock it.";;
+musig-rescan-label => "Rescan from height" => "Rescan from height"
+musig-rescan-placeholder => "Block height" => "Block height"
+musig-rescan-started
+=> "The blockchain backend scans again from block %1."
+=> "The blockchain backend scans again from block %1.";;
+musig-review-backed-up => "Descriptor backed up." => "Descriptor backed up."
+musig-review-backup-excluded
+=> "Left out of the backup, so their holders cannot decrypt it with them: %1"
+=> "Left out of the backup, so their holders cannot decrypt it with them: %1";;
+musig-review-backup-failed => "Could not back the descriptor up to %1: %2" => "NONE"
+musig-review-backup-file => "%1.bip138" => "NONE"
+musig-review-backup-filter => "BIP138 backups (*.bip138)" => "NONE"
+musig-review-checksum => "Checksum" => "NONE"
+musig-review-key-path => "Key path: spends as one key" => "NONE"
+musig-review-leaves => "%1 tap leaves" => "NONE"
+musig-review-mandatory => "signs every spend" => "NONE"
+musig-review-path => "%1: %2" => "%1: %2"
+musig-review-privacy-mode => "Privacy mode" => "NONE"
+musig-review-privacy-tip
+=> "Leaves the common derivation paths out of the backup's clear part: whoever finds the file learns less, a restore then looks for the paths itself."
+=> "Leaves the common derivation paths out of the backup's clear part: whoever finds the file learns less, a restore then looks for the paths itself.";;
+musig-review-reason-backup
+=> "Back up the descriptor first."
+=> "Back up the descriptor first.";;
+musig-review-total-leaves => "%1 tap leaves in total" => "NONE"
+musig-send-after-blocks => "after %1 blocks" => "NONE"
+musig-send-finalize-failed
+=> "Could not finalize the transaction: cancel to restart the signing"
+=> "Could not finalize the transaction: cancel to restart the signing";;
+musig-send-from-height => "from block %1" => "NONE"
+musig-send-key-path => "Key path:" => "NONE"
+musig-send-locked => "(locked)" => "NONE"
+musig-send-no-coins => "No coin to spend yet" => "NONE"
+musig-send-no-keys => "The keys module is not loaded" => "NONE"
+musig-send-no-path => "No spend path for these coins" => "NONE"
+musig-send-path-locked => "This spend path is still locked by its timelock" => "NONE"
+musig-send-session-lost
+=> "A signer no longer holds its round 1 nonce: it restarted, or the transaction changed. Every nonce and partial signature was dropped, sign round 1 again with every cosigner."
+=> "NONE";;
+musig-send-spend-path => "Spend path" => "NONE"
+musig-settings-account => "Account" => "NONE"
+musig-settings-backend => "Blockchain backend" => "Blockchain backend"
+musig-settings-backend-text
+=> "Where this account reads the blockchain: the built-in Electrum server, or a plugin watching its descriptors."
+=> "Where this account reads the blockchain: the built-in Electrum server, or a plugin watching its descriptors.";;
+musig-settings-cosigners => "Cosigners" => "NONE"
+musig-settings-descriptor => "Descriptor" => "NONE"
+musig-settings-devices => "Signing Devices" => "Signing Devices"
+musig-settings-invalid-url => "Invalid Electrum server address" => "NONE"
+musig-settings-save-failed => "Could not save the Electrum server" => "NONE"
+musig-shape-mandatory => "Mandatory keys and others" => "NONE"
+musig-shape-multi => "Several keys" => "NONE"
+musig-shape-single => "One key" => "NONE"
+musig-sign-lead-nonce
+=> "Click each cosigner to prepare its nonce session."
+=> "Click each cosigner to add its nonce.";;
+musig-sign-lead-partial
+=> "Click each cosigner to add its partial signature."
+=> "Click each cosigner to add its partial signature.";;
+musig-sign-lead-single
+=> "Click the cosigner to add its signature."
+=> "Click the cosigner to add its signature.";;
+musig-sign-reason => "%1 cosigners still to go." => "%1 cosigners still to go."
+musig-sign-reason-on-device => "On the device…" => "On the device…"
+musig-sign-reason-one => "1 cosigner still to go." => "1 cosigner still to go."
+musig-sign-reason-signing => "Signing…" => "Signing…"
+musig-sign-session-lost-title
+=> "MuSig2 session missing or mismatch"
+=> "MuSig2 session missing or mismatch";;
+musig-sign-step-nonces => "Nonces" => "Nonces"
+musig-sign-step-partial => "Partial Signatures" => "Partial Signatures"
+musig-sign-title => "Sign" => "Sign"
+musig-sign-why-disconnected
+=> "Its device is not connected: plug it in and unlock it."
+=> "Its device is not connected: plug it in and unlock it.";;
+musig-sign-why-no-route
+=> "No route to this key: no device, QR code or hot key."
+=> "No route to this key: no device, QR code or hot key.";;
+musig-sign-why-not-in-path
+=> "Not a signer of this spend path."
+=> "Not a signer of this spend path.";;
+musig-sign-why-not-in-wallet
+=> "Not a key of this wallet."
+=> "Not a key of this wallet.";;
+musig-sign-why-unsupported
+=> "Its device cannot sign MuSig2."
+=> "Its device cannot sign MuSig2.";;
+musig-span-days => "about %1 days" => "about %1 days"
+musig-span-hours => "about %1 hours" => "about %1 hours"
+musig-span-months => "about %1 months" => "about %1 months"
+musig-step-electrum => "Electrum" => "Electrum"
+musig-step-paths => "Spend Paths" => "Spend Paths"
+musig-step-register => "Register" => "Register"
+musig-step-review => "Review" => "Review"
+musig-step-verify => "Verify" => "Verify"
+musig-step-xpubs => "Xpubs" => "Xpubs"
+musig-unit-blocks => "Blocks" => "Blocks"
+musig-unit-days => "Days" => "Days"
+musig-unit-months => "Months" => "Months"
+musig-unit-weeks => "Weeks" => "Weeks"
+musig-words-after-blocks => "once the coins are %1 blocks old" => "NONE"
+musig-words-after-blocks-one => "once the coins are 1 block old" => "NONE"
+musig-words-all => "%1 sign together" => "NONE"
+musig-words-from-height => "from block %1" => "NONE"
+musig-words-from-height-renewable => "from block %1, renewable" => "NONE"
+musig-words-mandatory => "%1 sign, plus any %2 of %3" => "NONE"
+musig-words-mandatory-one => "%1 signs, plus any %2 of %3" => "NONE"
+musig-words-multi => "Any %1 of %2 sign" => "NONE"
+musig-words-multi-one => "Any 1 of %1 signs" => "NONE"
+musig-words-other => "A custom set of signers" => "NONE"
+musig-words-single => "%1 signs alone" => "NONE"
+musig-words-timelocked => "%1, %2" => "NONE"
+musig-xpubs-lead
+=> "Click a missing key to fetch its xpub."
+=> "Click a missing key to fetch its xpub.";;
+musig-xpubs-reason
+=> "%1 account xpubs still missing."
+=> "%1 account xpubs still missing.";;
+musig-xpubs-reason-one
+=> "1 account xpub still missing."
+=> "1 account xpub still missing.";;
+network-bitcoin => "Bitcoin" => "Bitcoin"
+network-regtest => "Regtest" => "Regtest"
+network-signet => "Signet" => "Signet"
+network-testnet => "Testnet" => "Testnet"
+pill-cached => "Cached" => "Cached"
+pill-checking => "Checking…" => "Checking…"
+pill-confirmed => "Confirmed" => "Confirmado"
+pill-connected => "Connected" => "NONE"
+pill-deprecated => "Deprecated" => "Obsoleto"
+pill-done => "Done" => "NONE"
+pill-failed => "Failed" => "Failed"
+pill-fetched => "Fetched" => "Fetched"
+pill-hot-key => "Hot Key" => "NONE"
+pill-locked => "Locked" => "NONE"
+pill-mismatch => "Mismatch" => "Mismatch"
+pill-missing => "Missing" => "Missing"
+pill-needed => "Needed" => "Needed"
+pill-no-hot-secret => "No Hot Secret" => "NONE"
+pill-no-screen => "No Screen" => "No Screen"
+pill-no-usable-route => "No Usable Route" => "NONE"
+pill-nonce => "Nonce" => "Nonce"
+pill-not-checked => "Not Checked" => "Not Checked"
+pill-not-connected => "Not Connected" => "NONE"
+pill-not-in-path => "Not in Path" => "Not in Path"
+pill-not-in-wallet => "Not in Wallet" => "Not in Wallet"
+pill-not-needed => "Not Needed" => "Not Needed"
+pill-not-registered => "Not Registered" => "NONE"
+pill-not-used => "Not Used" => "NONE"
+pill-offline => "Offline" => "NONE"
+pill-on-device => "On Device…" => "On Device…"
+pill-psbt-confirmed => "Confirmed" => "Confirmado"
+pill-psbt-deprecated => "Deprecated" => "Obsoleto"
+pill-psbt-signing => "Signing" => "Firmando"
+pill-ready => "Ready" => "NONE"
+pill-registered => "Registered" => "NONE"
+pill-registering => "Registering…" => "Registering…"
+pill-signed => "Signed" => "NONE"
+pill-signing => "Signing…" => "Signing…"
+pill-signs-first => "Signs First" => "NONE"
+pill-unconfirmed => "Unconfirmed" => "Sin confirmar"
+pill-unloading => "Unloading…" => "NONE"
+pill-unsupported => "Unsupported" => "NONE"
+pill-used => "Used" => "NONE"
+pill-verified => "Verified" => "Verified"
+pill-waiting => "Waiting" => "NONE"
+plugin-access-accounts => "Accounts" => "NONE"
+plugin-access-accounts-sub
+=> "The name, coins, balance, addresses and descriptor of every account."
+=> "NONE";;
+plugin-access-current => "The version loaded now." => "NONE"
+plugin-access-earlier => "An earlier version." => "NONE"
+plugin-access-flow-failed
+=> "Access answers unavailable"
+=> "Access answers unavailable";;
+plugin-access-flow-retry
+=> "%1. Access controls are unavailable until the saved answers can be checked. Try Again reloads them."
+=> "%1. Access controls are unavailable until the saved answers can be checked. Try Again reloads them.";;
+plugin-access-flow-text
+=> "What %1 may use, for each version of its library you answered. A change applies at once. Forget an answer and Reckless asks again on the plugin's next use."
+=> "NONE";;
+plugin-access-flow-title => "%1 Access" => "NONE"
+plugin-access-keys => "Keys" => "NONE"
+plugin-access-keys-sub
+=> "Your registered keys: signing requests, xpubs and address checks."
+=> "NONE";;
+plugin-access-library => "Library %1…" => "NONE"
+plugin-access-no-account => "The account is gone." => "NONE"
+plugin-access-no-keys => "The keys module is not running." => "NONE"
+plugin-access-none
+=> "No answer kept: Reckless asks on the plugin's next use."
+=> "NONE";;
+plugin-access-prompt-intro => "%1 (%2  v%3) asks to use:" => "NONE"
+plugin-access-prompt-note
+=> "Plugins run inside Reckless: allow only one you trust. The answer is kept for this version of the plugin, an update asks again. Change it in Settings, Plugin Manager, Access."
+=> "NONE";;
+plugin-access-prompt-title => "Allow Plugin Access?" => "NONE"
+plugin-access-read-failed
+=> "Could not read plugin access"
+=> "Could not read plugin access";;
+plugin-access-read-failed-text
+=> "Access for %1 could not be checked: %2. This request was refused. Unlock or restore access, then request it again."
+=> "Access for %1 could not be checked: %2. This request was refused. Unlock or restore access, then request it again.";;
+plugin-access-refused-account
+=> "This plugin may not use your accounts. Allow it in Settings, Plugin Manager, Access."
+=> "NONE";;
+plugin-access-refused-keys
+=> "This plugin may not use your keys. Allow it in Settings, Plugin Manager, Access."
+=> "NONE";;
+plugin-access-save-failed
+=> "Could not confirm access answers"
+=> "Could not confirm access answers";;
+plugin-access-save-failed-text
+=> "Could not confirm saving access for %1: %2. This request was refused. Retry the request to read the saved answers."
+=> "Could not confirm saving access for %1: %2. This request was refused. Retry the request to read the saved answers.";;
+plugin-access-state => "Saved Data" => "NONE"
+plugin-access-state-sub
+=> "Its own data, kept encrypted with Reckless's. A new version of the plugin asks again."
+=> "NONE";;
+plugin-access-unasked => "Not asked yet: %1." => "NONE"
+psbt-attempt-active => "Attempt %1, active" => "Attempt %1, active"
+psbt-attempt-archived => "Attempt %1, archived" => "Attempt %1, archived"
+psbt-broadcast => "Broadcast, unconfirmed" => "Broadcast, unconfirmed"
+psbt-confirmed => "Confirmed at height %1" => "Confirmed at height %1"
+psbt-conflict => "Conflicting transaction: %1" => "Conflicting transaction: %1"
+psbt-delete-message
+=> "This transaction is not confirmed. Delete its saved signing progress? This does not cancel a broadcast transaction."
+=> "This transaction is not confirmed. Delete its saved signing progress? This does not cancel a broadcast transaction.";;
+psbt-delete-title => "Delete saved PSBT?" => "Delete saved PSBT?"
+psbt-empty
+=> "No saved PSBTs. Transactions are saved when prepared for signing."
+=> "No saved PSBTs. Transactions are saved when prepared for signing.";;
+psbt-export-copied => "Copied to the clipboard" => "Copied to the clipboard"
+psbt-export-message
+=> "Save the PSBT as a base64 .psbt file, or copy its base64 text to the clipboard, to sign it in another wallet or hand it to a cosigner."
+=> "Save the PSBT as a base64 .psbt file, or copy its base64 text to the clipboard, to sign it in another wallet or hand it to a cosigner.";;
+psbt-export-save-failed => "The PSBT is not saved: %1" => "The PSBT is not saved: %1"
+psbt-export-save-title => "Save PSBT" => "Save PSBT"
+psbt-export-saved => "Saved to %1" => "Saved to %1"
+psbt-export-title => "Export PSBT" => "Export PSBT"
+psbt-finalized => "Finalized, ready to broadcast" => "Finalized, ready to broadcast"
+psbt-import-clipboard-empty
+=> "The clipboard holds no text"
+=> "The clipboard holds no text";;
+psbt-import-failed
+=> "The PSBT is not imported: %1"
+=> "The PSBT is not imported: %1";;
+psbt-import-merged
+=> "This transaction is already saved: the signatures and nonces of the PSBT are merged into it."
+=> "This transaction is already saved: the signatures and nonces of the PSBT are merged into it.";;
+psbt-import-message
+=> "Import a PSBT in base64 from a .psbt file or the clipboard. It must spend this account's coins."
+=> "Import a PSBT in base64 from a .psbt file or the clipboard. It must spend this account's coins.";;
+psbt-import-open-title => "Open PSBT" => "Open PSBT"
+psbt-import-saved
+=> "Imported: the PSBT is in the list, ready to sign."
+=> "Imported: the PSBT is in the list, ready to sign.";;
+psbt-import-title => "Import PSBT" => "Import PSBT"
+psbt-last-edited => "Last Edited" => "Última edición"
+psbt-reset => "Reset" => "Restablecer"
+psbt-reset-confirm => "Yes, reset" => "Sí, restablecer"
+psbt-reset-message
+=> "This starts a new signing session for the same transaction and resets active nonces and partial signatures. All participants must use the new attempt. The current PSBT and its baseline will be archived first, but consumed or retired nonce secrets cannot be restored. Reset signing?"
+=> "Esto inicia una nueva sesión de firma para la misma transacción y restablece los nonces y las firmas parciales activos. Todos los participantes deben usar el nuevo intento. Primero se archivarán el PSBT actual y su versión inicial, pero los secretos de nonces consumidos o retirados no pueden recuperarse. ¿Restablecer la firma?";;
+psbt-reset-title => "Reset signing?" => "¿Restablecer la firma?"
+psbt-retry-save => "Retry saving" => "Retry saving"
+psbt-save-warning
+=> "The latest transaction progress is not persisted. You can continue signing or broadcasting. %1"
+=> "The latest transaction progress is not persisted. You can continue signing or broadcasting. %1";;
+psbt-session-restart-needed
+=> "A signer cannot safely resume its saved nonce session. Choose Reset to archive the current attempt and retire its nonce session before starting again for the same transaction. Consumed or retired nonces cannot be reused."
+=> "Un firmante no puede reanudar de forma segura su sesión de nonces guardada. Elija Restablecer para archivar el intento actual y retirar su sesión de nonces antes de comenzar de nuevo para la misma transacción. Los nonces consumidos o retirados no pueden reutilizarse.";;
+psbt-show-confirmed => "Show confirmed transactions" => "Show confirmed transactions"
+psbt-signed => "Signed" => "Firmado"
+psbt-signing => "Signing in progress" => "Signing in progress"
+psbt-status => "Status" => "Status"
+psbt-transaction => "Transaction" => "Transaction"
+receive-addresses => "Addresses" => "Direcciones"
+receive-awaiting-segwit
+=> "Segwit Addresses Awaiting Payment"
+=> "Direcciones Segwit esperando pago";;
+receive-awaiting-taproot
+=> "Taproot Addresses Awaiting Payment"
+=> "Direcciones Taproot esperando pago";;
+receive-index => "Index" => "NONE"
+receive-label-placeholder => "Address label" => "Etiqueta de direccion"
+receive-no-previous-addresses
+=> "No previous addresses."
+=> "No hay direcciones anteriores.";;
+receive-segwit-address => "Segwit Address:" => "Direccion Segwit:"
+receive-show-qr => "Show QR code" => "NONE"
+receive-silent-payment-address
+=> "Silent Payment Address:"
+=> "Silent Payment Address:";;
+receive-taproot-address => "Taproot Address:" => "Direccion Taproot:"
+receive-title => "Receive" => "Recibir"
+receive-verify-tooltip => "Verify on signing device" => "NONE"
+receive-verify-unavailable
+=> "No signing device is available for address verification in this build."
+=> "No hay un dispositivo de firma disponible para verificar direcciones en esta compilacion.";;
+restore-airgap-help
+=> "Using an air-gapped device? Export the xpub from your device, then paste it or import its file. If you do not know its derivation path, try the following:"
+=> "Using an air-gapped device? Export the xpub from your device, then paste it or import its file. If you do not know its derivation path, try the following:";;
+restore-busy-sub => "This takes a few seconds." => "This takes a few seconds."
+restore-choose-file => "Choose the backup file." => "Choose the backup file."
+restore-device-description
+=> "Plug in and unlock a signing device belonging to this account to decrypt the backup."
+=> "Plug in and unlock a signing device belonging to this account to decrypt the backup.";;
+restore-device-failed
+=> "Failed to decrypt the file with this device"
+=> "Failed to decrypt the file with this device";;
+restore-device-no-scan-key
+=> "Gives no silent payment scan key"
+=> "This device cannot give the silent payment scan key that opens this backup";;
+restore-device-trying
+=> "Trying to decrypt with this device…"
+=> "Trying to decrypt with this device…";;
+restore-device-unlock
+=> "Please unlock or open the app on the device"
+=> "Please unlock or open the app on the device";;
+restore-done
+=> "%1 is restored. Open it from the account list."
+=> "%1 is restored. Open it from the account list.";;
+restore-enter-name => "Name the account." => "Name the account."
+restore-failed
+=> "The account is not restored: %1"
+=> "The account is not restored: %1";;
+restore-file-field => "Backup:" => "Backup:"
+restore-file-filter
+=> "Backups (*.bip138 *.json *.txt);;All files (*)"
+=> "Backups (*.bip138 *.json *.txt);;All files (*)";;
+restore-file-text
+=> "Choose the account's backup file: a BIP139 wallet backup or a descriptor, encrypted with BIP138 or not."
+=> "Choose the account's backup file: a BIP139 wallet backup or a descriptor, encrypted with BIP138 or not.";;
+restore-import-xpub-title => "Open an Xpub File" => "Open an Xpub File"
+restore-includes => "In the Backup" => "In the Backup"
+restore-invalid-descriptor
+=> "The file has been read but its descriptor is not one a Reckless account takes."
+=> "The file has been read but its descriptor is not one a Reckless account takes.";;
+restore-invalid-mnemonic => "Invalid mnemonic" => "Invalid mnemonic"
+restore-invalid-type
+=> "The file has been decrypted but the content type is not supported."
+=> "The file has been decrypted but the content type is not supported.";;
+restore-invalid-xpub => "Invalid xpub" => "Invalid xpub"
+restore-key-ask => "Ask for its scan key" => "Ask this key for its scan key"
+restore-key-failed
+=> "Its scan key cannot decrypt this file"
+=> "Its scan key cannot decrypt this file";;
+restore-keys-text
+=> "This backup opens only with the account's silent payment scan key, which no signing device gives: ask its key in Keys for it, or enter the key's mnemonic under Other options."
+=> "This backup opens only with the account's silent payment scan key, which no signing device gives: ask its key in Keys for it, or enter the key's mnemonic under Other options.";;
+restore-locked
+=> "None of the keys given opens this backup."
+=> "None of the keys given opens this backup.";;
+restore-mnemonic-ack => "I understand the risk" => "I understand the risk"
+restore-mnemonic-cannot-decrypt
+=> "Mnemonic is valid but cannot decrypt the file"
+=> "Mnemonic is valid but cannot decrypt the file";;
+restore-mnemonic-field => "Mnemonic:" => "Mnemonic:"
+restore-mnemonic-warning
+=> "UNSAFE: this option is not secure. Entering a mnemonic on a computer may result in theft of the funds."
+=> "UNSAFE: this option is not secure. I understand that entering a mnemonic on a computer may result in theft of my funds.";;
+restore-name-field => "Name:" => "Name:"
+restore-network-field => "Network:" => "Network:"
+restore-no-file => "No file chosen" => "No file chosen"
+restore-open-failed => "The file is not read: %1" => "The file is not read: %1"
+restore-open-title => "Open Account Backup" => "Open Account Backup"
+restore-opened-device => "Decrypted with %1 %2" => "Decrypted with %1 %2"
+restore-opened-mnemonic
+=> "Decrypted with the mnemonic given"
+=> "Decrypted with the mnemonic given";;
+restore-opened-xpub
+=> "Decrypted with the xpub given"
+=> "Decrypted with the xpub given";;
+restore-other-options => "Other options" => "Other options"
+restore-reading => "Reading the backup" => "Reading the backup"
+restore-requirements => "Restoring Needs" => "Restoring Needs"
+restore-restoring => "Restoring the account" => "Restoring the account"
+restore-scan-key-help
+=> "This backup opens only with the account's silent payment scan key, which no xpub gives: ask its key in Keys for it above, or enter the key's mnemonic below. Its scan path:"
+=> "This backup opens only with the account's silent payment scan key, which no xpub gives: ask its key in Keys for it above, or enter the key's mnemonic below. Its scan path:";;
+restore-title => "Restore Account" => "Restore Account"
+restore-unknown-format
+=> "This file is not a backup Reckless reads: expected a BIP138 encrypted backup of a BIP139 wallet backup or of a descriptor, a BIP139 wallet backup or a descriptor."
+=> "This file is not a backup Reckless reads: expected a BIP138 encrypted backup of a BIP139 wallet backup or of a descriptor, a BIP139 wallet backup or a descriptor.";;
+restore-xpub-cannot-decrypt
+=> "Xpub is valid but cannot decrypt this file"
+=> "Xpub is valid but cannot decrypt this file";;
+restore-xpub-field => "Xpub:" => "Xpub:"
+restore-xpub-file-field => "Xpub file:" => "Xpub file:"
+route-primary-tooltip => "%1 · Primary" => "NONE"
+scan-progress-done => "All %1 parts received" => "NONE"
+scan-progress-parts => "%1 of %2 parts" => "NONE"
+scan-progress-waiting => "Waiting for the first part…" => "NONE"
+send-action-send => "Send" => "Enviar"
+send-address => "Address:" => "Direccion:"
+send-address-reuse-warning
+=> "Address Reuse Warning"
+=> "Advertencia de reutilizacion de direccion";;
+send-amount => "Amount:" => "Cantidad:"
+send-amount-to-select => "Remaining to select:" => "Restante por seleccionar:"
+send-auto-coin-selection => "Auto coin selection" => "Seleccion automatica de coins"
+send-fee-absolute-unit => "sats" => "sats"
+send-fee-rate-label => "Fee rate" => "Tasa de comision"
+send-fee-rate-unit => "sats/vb" => "sats/vb"
+send-inputs => "Coins selection" => "Entradas"
+send-inputs-already-spent
+=> "Input(s) already spent:\n%1"
+=> "Input(s) already spent:\n%1";;
+send-inputs-selected-many => "Coins · %1 selected" => "Monedas (%1 seleccionadas)"
+send-inputs-selected-one => "Coins · 1 selected" => "Monedas (1 seleccionada)"
+send-invalid-transaction-template
+=> "Invalid transaction template."
+=> "Invalid transaction template.";;
+send-label => "Description:" => "Etiqueta:"
+send-max => "MAX" => "MAX"
+send-no-account-loaded => "No account loaded." => "No hay cuenta cargada."
+send-placeholder-address => "Address" => "Direccion"
+send-placeholder-amount => "0.002" => "0.002"
+send-placeholder-label => "Label" => "Etiqueta"
+send-prepare-failed => "Prepare Failed" => "Preparacion fallida"
+send-proceed-anyway => "Proceed anyway?" => "Continuar de todos modos?"
+send-recipients => "Payments" => "Destinatarios"
+send-scan-address-hint
+=> "Show the address QR code to the camera."
+=> "Show the address QR code to the camera.";;
+send-scan-address-title => "Scan Address" => "Scan Address"
+send-sent-message
+=> "The transaction was broadcast."
+=> "The transaction was broadcast.";;
+send-sent-title => "Transaction Sent" => "Transaction Sent"
+send-signing-failed => "Signing failed." => "Fallo al firmar."
+send-summary-change => "Change" => "Cambio"
+send-summary-fee => "Network fee" => "Tarifa de red"
+send-summary-sending => "Sending" => "Enviando"
+send-summary-total => "Total" => "Total"
+send-summary-usd-placeholder => "0.00" => "0.00"
+send-total-selected => "Total selected:" => "Total seleccionado:"
+send-transaction-invalid
+=> "Transaction is not valid"
+=> "La transaccion no es valida";;
+send-transaction-state-lost
+=> "Transaction state lost."
+=> "Estado de la transaccion perdido.";;
+send-transaction-title => "Transaction" => "Transaccion"
+send-validation-error => "Validation Error" => "Error de validacion"
+settings-backend-info => "Backend Info:" => "Info del backend:"
+settings-backup => "Backup" => "Backup"
+settings-backup-text-multikey
+=> "Saves this account to a file encrypted with BIP138: its descriptors, servers, address indexes and labels. It opens with any one of the policy's keys and holds no signing secret. The spending keys are never in it: they stay in Keys."
+=> "Saves this account to a file encrypted with BIP138: its descriptors, servers, address indexes and labels. It opens with any one of the policy's keys and holds no signing secret. The spending keys are never in it: they stay in Keys.";;
+settings-backup-text-sp
+=> "Saves this account to a file encrypted with BIP138: its descriptors, servers, address indexes and labels. It holds the account's scan key and opens only with it, from its key in Keys or its mnemonic. The spending keys are never in it: they stay in Keys."
+=> "Saves this account to a file encrypted with BIP138: its descriptors, servers, address indexes and labels. It holds the account's scan key and opens only with it, from its key in Keys or its mnemonic. The spending keys are never in it: they stay in Keys.";;
+settings-blindbit-address => "BlindBit URL" => "URL de BlindBit"
+settings-blindbit-url => "BlindBit URL:" => "URL de BlindBit:"
+settings-block-height => "Block Height:" => "Altura de bloque:"
+settings-capabilities => "Capabilities:" => "Capacidades:"
+settings-capabilities-template
+=> "Tweaks Only: %1\nFull Basic: %2\nFull + Dust Filter: %3\nCut-Through + Dust Filter: %4"
+=> "Solo Tweaks: %1\nBasico completo: %2\nCompleto + filtro de polvo: %3\nCut-through + filtro de polvo: %4";;
+settings-connection => "Connection" => "Conexion"
+settings-disable-account-one => "1 open account closes" => "NONE"
+settings-disable-account-one-text
+=> "%1 comes from this plugin and will close. Enable the plugin again to reopen it."
+=> "NONE";;
+settings-disable-accounts => "%1 open accounts close" => "NONE"
+settings-disable-accounts-text
+=> "%1 come from this plugin and will close. Enable the plugin again to reopen them."
+=> "NONE";;
+settings-disable-no-account => "No open account uses this plugin." => "NONE"
+settings-disable-question
+=> "Disable “%1” (%2)? Reckless stops all of its modules and unloads it."
+=> "NONE";;
+settings-disable-refused => "Could not disable %1" => "NONE"
+settings-disable-refused-text
+=> "The plugin refused to unload. It stays enabled. Close its accounts, then try again."
+=> "NONE";;
+settings-disable-themes
+=> "Its themes (%1) are removed. If one is in use, Reckless switches to Light."
+=> "NONE";;
+settings-disable-title => "Disable Plugin" => "NONE"
+settings-electrum-address => "Electrum Address" => "Dirección de Electrum"
+settings-electrum-height => "Electrum Block Height:" => "Electrum Block Height:"
+settings-electrum-server => "Electrum Server:" => "Servidor Electrum:"
+settings-extension-settings => "Extension Settings" => "Ajustes de extensiones"
+settings-failed-start-electrum
+=> "Failed to start electrum"
+=> "Failed to start electrum";;
+settings-failed-start-scanner
+=> "Failed to start scanner"
+=> "Failed to start scanner";;
+settings-fee-mode => "Fee mode" => "Modo de comisión"
+settings-fee-source => "Provider" => "Proveedor"
+settings-fees => "Transaction fees" => "Comisiones de transacción"
+settings-general => "General" => "General"
+settings-height => "Height %1" => "Altura %1"
+settings-language => "Language:" => "Idioma:"
+settings-language-saved
+=> "Language saved. Restart Reckless to apply it everywhere."
+=> "NONE";;
+settings-network => "Network:" => "Red:"
+settings-no-account-loaded => "No account loaded" => "No hay cuenta cargada"
+settings-placeholder-blindbit
+=> "https://blindbit.example.com"
+=> "https://blindbit.example.com";;
+settings-placeholder-electrum
+=> "host:port (e.g. 127.0.0.1:50001)"
+=> "host:port (e.g. 127.0.0.1:50001)";;
+settings-plugin-add-failed => "Could not add the plugin" => "NONE"
+settings-plugin-added => "%1 added, off: turn it on to load it." => "NONE"
+settings-plugin-bookkeeping-pending
+=> "Bundle and private data were removed. Grant and settings cleanup is pending. Use Remove to finish."
+=> "Bundle and private data were removed. Grant and settings cleanup is pending. Use Remove to finish.";;
+settings-plugin-bundle-pending
+=> "Private data was removed. Installed bundle cleanup is pending. Use Remove to retry."
+=> "Private data was removed. Installed bundle cleanup is pending. Use Remove to retry.";;
+settings-plugin-disabled
+=> "%1 was disabled. Its saved data was kept."
+=> "%1 was disabled. Its saved data was kept.";;
+settings-plugin-drop
+=> "Drop a plugin ZIP bundle on this window to add it. Any filename or extension is accepted; loose libraries, JSON files and folders are not. Built-in modules are not listed here."
+=> "NONE";;
+settings-plugin-manager => "Plugin Manager" => "Gestor de plugins"
+settings-plugin-not-reckless => "This library is not a Reckless plugin." => "NONE"
+settings-plugin-removal-interrupted
+=> "Removal was interrupted. Private data may already be cleared. Use Remove to finish cleanup."
+=> "Removal was interrupted. Private data may already be cleared. Use Remove to finish cleanup.";;
+settings-plugin-removed
+=> "%1 was removed with its saved state and accounts."
+=> "%1 was removed with its saved state and accounts.";;
+settings-plugin-removing
+=> "Removing %1. Waiting for shutdown and private-data cleanup."
+=> "Removing %1. Waiting for shutdown and private-data cleanup.";;
+settings-plugin-state-read-failed
+=> "Could not read pending plugin removals"
+=> "Could not read pending plugin removals";;
+settings-plugin-state-read-failed-text
+=> "Plugin controls are unavailable until application state can be read. Unlock or restore access, then try again. Known removal records have been kept. %1"
+=> "Plugin controls are unavailable until application state can be read. Unlock or restore access, then try again. Known removal records have been kept. %1";;
+settings-plugin-stop-failed
+=> "Plugin shutdown or removal failed"
+=> "Plugin shutdown or removal failed";;
+settings-plugin-stop-interrupted
+=> "Removal stopped before private cleanup. Use Remove to finish shutdown and deletion."
+=> "Removal stopped before private cleanup. Use Remove to finish shutdown and deletion.";;
+settings-plugin-stopping
+=> "Unavailable during shutdown or removal. After an error, use Remove to retry cleanup."
+=> "Unavailable during shutdown or removal. After an error, use Remove to retry cleanup.";;
+settings-plugin-updated
+=> "%1 updated: it loads the new version once turned off and on again."
+=> "NONE";;
+settings-price-currency => "Currency" => "Currency"
+settings-price-none => "None" => "None"
+settings-price-source => "Source" => "Source"
+settings-price-unavailable => "%1 (unavailable)" => "%1 (unavailable)"
+settings-prices => "Price feed" => "Price feed"
+settings-remove-plugin => "Remove" => "Remove"
+settings-remove-question => "Remove %1?" => "Remove %1?"
+settings-remove-warning
+=> "This permanently deletes the installed plugin and all of its saved state and accounts. There is no keep-data option. Reinstalling starts with empty data. Shared signer keys and other plugins' accounts are not deleted."
+=> "This permanently deletes the installed plugin and all of its saved state and accounts. There is no keep-data option. Reinstalling starts with empty data. Shared signer keys and other plugins' accounts are not deleted.";;
+settings-section-belongs
+=> "These settings belong to %1. Changes apply when you leave this page."
+=> "NONE";;
+settings-section-fallback => "Section %1" => "Seccion %1"
+settings-section-from => "From %1." => "NONE"
+settings-theme => "Theme:" => "Tema:"
+settings-theme-dark => "Dark" => "Oscuro"
+settings-theme-light => "Light" => "Claro"
+settings-theme-provided-by => "Provided by %1." => "NONE"
+settings-title => "Settings" => "Ajustes"
+sp-account-restore
+=> "Restore Silent Payment Wallet"
+=> "Restore Silent Payment Wallet";;
+sp-account-type => "Silent Payment Wallet" => "Silent Payment Wallet"
+sp-instance-not-found
+=> "SP instance not found: %1"
+=> "Instancia SP no encontrada: %1";;
+state-choice-device => "Signing Device" => "NONE"
+state-choice-device-sub
+=> "Plug it in and unlock it at every start. The key is derived on the device and never stored."
+=> "NONE";;
+state-choice-password => "Password" => "NONE"
+state-choice-password-sub
+=> "Type it at every start. Forget it and the accounts and keys kept here are lost."
+=> "NONE";;
+state-clear-text
+=> "Reckless found data it did not encrypt: %1. Reckless now encrypts everything it keeps and does not convert older data. Move ~/.reckless/ away or delete it, then start Reckless again."
+=> "NONE";;
+state-clear-title => "Unencrypted Data Found" => "NONE"
+state-device-confirm => "Confirm on Your Device" => "NONE"
+state-device-confirm-sub => "Reckless asks %1 for the key at %2." => "NONE"
+state-device-failed => "The device did not give the key: %1" => "NONE"
+state-device-pick => "Pick a ready device." => "NONE"
+state-device-text
+=> "Plug in the device, unlock it and open its Bitcoin app, then pick it."
+=> "NONE";;
+state-device-title => "Protect Reckless · Signing Device" => "NONE"
+state-device-unreachable
+=> "The device did not take the request. Unplug it and try again."
+=> "NONE";;
+state-no-device => "No Device Connected" => "NONE"
+state-no-device-sub => "Plug in your signing device and unlock it." => "NONE"
+state-password-sealing => "Sealing the Key" => "NONE"
+state-password-sealing-sub
+=> "Encrypting the key with the password. This takes a few seconds."
+=> "NONE";;
+state-password-text
+=> "The password opens Reckless at every start. If you forget it, Reckless cannot open what it keeps here: wipe ~/.reckless/ and start again."
+=> "NONE";;
+state-password-title => "Protect Reckless · Password" => "NONE"
+state-setup-text
+=> "Reckless encrypts everything it keeps on this computer: accounts, keys and settings. Pick what unlocks it at every start. It cannot be changed later."
+=> "NONE";;
+state-setup-title => "Protect Reckless" => "NONE"
+state-unlock-device-text
+=> "Plug in the signing device Reckless was protected with, unlock it and open its Bitcoin app: Reckless asks it for its key."
+=> "NONE";;
+state-unlock-password-text => "Enter the password that unlocks Reckless." => "NONE"
+state-unlock-title => "Unlock Reckless" => "NONE"
+state-unlock-wrong-key
+=> "No connected device's key opens Reckless. Plug in the device Reckless was protected with."
+=> "NONE";;
+state-unlocking => "Unlocking" => "NONE"
+state-unlocking-sub
+=> "Opening the key with the password. This takes a few seconds."
+=> "NONE";;
+state-unreadable-title => "Reckless Cannot Start" => "NONE"
+status-backend => "Blockchain from %1" => "Blockchain from %1"
+status-backend-connected => "Connected to %1" => "Connected to %1"
+status-backend-disconnected => "%1 disconnected" => "%1 disconnected"
+status-backend-missing => "%1 not installed" => "%1 not installed"
+status-connected-blindbit
+=> "Connected to blindbit-oracle at %1"
+=> "Connected to blindbit-oracle at %1";;
+status-connected-electrum
+=> "Connected to electrum at %1"
+=> "Conectado a Electrum en %1";;
+status-connecting => "Connecting..." => "Conectando..."
+status-disconnected => "Disconnected" => "Desconectado"
+status-disconnecting => "Disconnecting..." => "Desconectando..."
+status-electrum-disconnected => "Electrum disconnected" => "Electrum desconectado"
+status-electrum-unused
+=> "Not used: no segwit or taproot address"
+=> "Not used: no segwit or taproot address";;
+status-not-configured => "Not configured" => "No configurado"
+status-scanning => "Scanning..." => "Escaneando..."
+status-scanning-progress => "Scanning... %1 / %2" => "Escaneando... %1 / %2"
+status-synced-watching
+=> "Synced at block %1 - Watching..."
+=> "Synced at block %1 - Watching...";;
+time-ago-days => "%1 days ago" => "hace %1 días"
+time-ago-days-one => "1 day ago" => "hace 1 día"
+time-ago-hours => "%1 hours ago" => "hace %1 horas"
+time-ago-hours-one => "1 hour ago" => "hace 1 hora"
+time-ago-months => "%1 months ago" => "hace %1 meses"
+time-ago-months-one => "1 month ago" => "hace 1 mes"
+time-ago-under-hour => "less than an hour ago" => "hace menos de una hora"
+time-ago-years => "%1 years ago" => "hace %1 años"
+time-ago-years-one => "1 year ago" => "hace 1 año"
+tx-confirmations => "%1 confirmations" => "%1 confirmaciones"
+tx-confirmations-one => "1 confirmation" => "1 confirmación"
+tx-details-change => "Change" => "Cambio"
+tx-details-failed
+=> "Could not load the transaction"
+=> "No se pudo cargar la transacción";;
+tx-details-fee-rate => "%1 sat/vB" => "%1 sat/vB"
+tx-details-fees => "Fees" => "Tarifas"
+tx-details-inputs => "Inputs" => "Entradas"
+tx-details-loading => "Loading transaction…" => "Cargando la transacción…"
+tx-details-moved => "Moved" => "Movido"
+tx-details-output-total => "Output total" => "Total de salidas"
+tx-details-outputs => "Outputs" => "Salidas"
+tx-details-received => "Received" => "Recibido"
+tx-details-sent => "Sent" => "Enviado"
+tx-details-size => "Size" => "Tamaño"
+tx-details-status => "Status" => "Estado"
+tx-details-title => "Transaction" => "Transacción"
+tx-details-total => "Total" => "Total"
+tx-details-txid => "Transaction ID" => "ID de transacción"
+tx-details-version => "Version" => "Versión"
+tx-details-version-lock => "%1 · lock %2" => "%1 · bloqueo %2"
+tx-details-vsize => "%1 vB" => "%1 vB"
+tx-direction-received => "Received" => "Recibido"
+tx-direction-self => "Sent to self" => "Enviado a uno mismo"
+tx-direction-sent => "Sent" => "Enviado"
+tx-direction-unknown => "Unknown" => "Desconocido"
+tx-label-failed => "Could not save the label" => "No se pudo guardar la etiqueta"
+tx-status-block => "Block %1" => "Bloque %1"
+tx-status-broadcast => "Broadcast, unconfirmed" => "Transmitida, sin confirmar"
+tx-status-confirmed => "%1 conf. · block %2" => "%1 conf. · bloque %2"
+tx-status-mempool => "In the mempool" => "En la mempool"
+tx-status-not-broadcast => "Not broadcast" => "No transmitida"
+tx-status-not-in-history
+=> "Not in the account history"
+=> "No está en el historial de la cuenta";;
+tx-status-unverified => "%1 · unverified" => "%1 · sin verificar"
+tx-status-verify-failed => "%1 · verification failed" => "%1 · verificación fallida"
+tx-unconfirmed => "Unconfirmed" => "Sin confirmar"
+tx-unknown => "Unknown" => "Desconocido"
+txflow-change => "CHANGE" => "CAMBIO"
+txflow-change-addr => "(returned to your wallet)" => "(devuelto a tu monedero)"
+txflow-change-title => "Change" => "Cambio"
+txflow-empty
+=> "Enter a payment amount to preview the transaction shape."
+=> "Introduce un importe para previsualizar la forma de la transaccion.";;
+txflow-fee => "FEE" => "TARIFA"
+txflow-fee-addr => "(paid to miners)" => "(pagado a los mineros)"
+txflow-fee-title => "Network fee" => "Tarifa de red"
+txflow-input-count-one => "1 input" => "1 entrada"
+txflow-input-n => "Input #%1" => "Entrada #%1"
+txflow-inputs-count => "%1 inputs" => "%1 entradas"
+txflow-legend-change => "change" => "cambio"
+txflow-legend-fee => "fee" => "tarifa"
+txflow-legend-recipient => "recipient" => "destinatario"
+txflow-output-count-one => "1 output" => "1 salida"
+txflow-output-n => "Output #%1" => "Salida #%1"
+txflow-outputs-count => "%1 outputs" => "%1 salidas"
+txflow-recipient => "RECIPIENT" => "DESTINATARIO"

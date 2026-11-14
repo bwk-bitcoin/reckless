@@ -13,25 +13,25 @@ std::atomic<bool> released{false};
 std::atomic<bool> appState{false};
 } // namespace
 
-extern "C" void silentTestFsyncArm() {
+extern "C" void recklessTestFsyncArm() {
     appState.store(false);
     released.store(false);
     held.store(false);
     armed.store(true);
 }
 
-extern "C" void silentTestAppStateFsyncArm() {
+extern "C" void recklessTestAppStateFsyncArm() {
     appState.store(true);
     released.store(false);
     held.store(false);
     armed.store(true);
 }
 
-extern "C" auto silentTestFsyncHeld() -> bool {
+extern "C" auto recklessTestFsyncHeld() -> bool {
     return held.load();
 }
 
-extern "C" void silentTestFsyncRelease() {
+extern "C" void recklessTestFsyncRelease() {
     released.store(true);
 }
 

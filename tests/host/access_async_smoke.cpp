@@ -34,7 +34,7 @@
 #include <cstdio>
 #include <dlfcn.h>
 #include <memory>
-#include <silent.h>
+#include <reckless.h>
 #include <sys/file.h>
 
 namespace smoke {
@@ -107,7 +107,7 @@ void saveStateAnswer(const QString &id, const QString &hash, PluginGrant grant) 
 }
 
 auto prepareFixture(MainWindow *window) -> IModule * {
-    QFile fixture(QStringLiteral(SILENT_REMOVAL_FIXTURE));
+    QFile fixture(QStringLiteral(RECKLESS_REMOVAL_FIXTURE));
     require(fixture.open(QIODevice::ReadOnly), "the native fixture library opens");
     auto bytes = fixture.readAll();
     auto id = QStringLiteral("removal.fixture");
@@ -221,7 +221,7 @@ void checkRemovalMarker(uint64_t session, const QString &handle, const QString &
 } // namespace
 
 void AppStateLock::hold() {
-    m_file.setFileName(QDir::homePath() + QStringLiteral("/.silent/app.lock"));
+    m_file.setFileName(QDir::homePath() + QStringLiteral("/.reckless/app.lock"));
     require(m_file.open(QIODevice::ReadWrite), "the real app.lock opens");
     require(::flock(m_file.handle(), LOCK_EX) == 0, "the test holds the real app.lock");
 }
@@ -382,9 +382,9 @@ void accessAsyncSmoke() {
 void publicationHeartbeatSmoke() {
     using Action = void (*)();
     using Held = bool (*)();
-    auto arm = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "silentTestFsyncArm"));
-    auto held = reinterpret_cast<Held>(dlsym(RTLD_DEFAULT, "silentTestFsyncHeld"));
-    auto release = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "silentTestFsyncRelease"));
+    auto arm = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "recklessTestFsyncArm"));
+    auto held = reinterpret_cast<Held>(dlsym(RTLD_DEFAULT, "recklessTestFsyncHeld"));
+    auto release = reinterpret_cast<Action>(dlsym(RTLD_DEFAULT, "recklessTestFsyncRelease"));
     require(arm != nullptr && held != nullptr && release != nullptr,
             "run with LD_PRELOAD pointing to libfsync_hold_shim.so");
     MainWindow window;
@@ -418,7 +418,7 @@ void publicationHeartbeatSmoke() {
             .toString()
             .isEmpty(),
         "the pre-removal private tree has a durable seeded file");
-    auto path = QDir::homePath() + QStringLiteral("/.silent/removal.fixture/tree.bip138");
+    auto path = QDir::homePath() + QStringLiteral("/.reckless/removal.fixture/tree.bip138");
     QFile original(path);
     require(original.open(QIODevice::ReadOnly), "the existing private tree is readable");
     auto before = original.readAll();
@@ -439,7 +439,7 @@ void publicationHeartbeatSmoke() {
         QThread::msleep(1);
     }
     require(held(), "the accepted writer reached fsync inside real publication");
-    QFile staging(QDir::homePath() + QStringLiteral("/.silent/removal.fixture/tree.tmp"));
+    QFile staging(QDir::homePath() + QStringLiteral("/.reckless/removal.fixture/tree.tmp"));
     require(staging.size() > 0, "ciphertext was written before the held fsync");
     require(writer->isRunning(), "the accepted writer has not finished its held publication");
     closeWaitingOwners(registry);

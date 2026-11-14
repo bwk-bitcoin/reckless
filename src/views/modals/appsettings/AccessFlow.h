@@ -3,7 +3,7 @@
 #include <QHash>
 #include <QString>
 #include <cstdint>
-#include <silent.h>
+#include <reckless.h>
 
 #include "views/modals/AppSettings.h"
 

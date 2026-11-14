@@ -21,7 +21,7 @@
 #include <QTimer>
 #include <algorithm>
 #include <common.h>
-#include <silent.h>
+#include <reckless.h>
 #include <string>
 
 namespace smoke {
@@ -54,7 +54,7 @@ auto lists(const ExampleInstances &instances, const QString &id) -> bool {
 // The sealed legacy blobs by file name. The opaque names and contents are only
 // compared, never read.
 auto legacyBlobs() -> QMap<QString, QByteArray> {
-    QDir directory(QDir::home().filePath(QStringLiteral(".silent/plugin-state")));
+    QDir directory(QDir::home().filePath(QStringLiteral(".reckless/plugin-state")));
     QMap<QString, QByteArray> blobs;
     for (const auto &name : directory.entryList(QDir::Files | QDir::Hidden)) {
         QFile file(directory.filePath(name));
@@ -116,13 +116,13 @@ void requireLoadedAbi(PluginRegistry *registry) {
             continue;
         }
         auto *object = dynamic_cast<QObject *>(plugin);
-        require(object != nullptr && object->qt_metacast(SILENT_IPlugin_IID) != nullptr &&
-                    object->qt_metacast("dev.silent.IPlugin/7.0") == nullptr &&
-                    object->qt_metacast("dev.silent.IPlugin/8.0") == nullptr &&
-                    object->qt_metacast("dev.silent.IPlugin/9.0") == nullptr &&
-                    object->qt_metacast("dev.silent.IPlugin/10.0") == nullptr &&
-                    object->qt_metacast("dev.silent.IPlugin/11.0") == nullptr &&
-                    object->qt_metacast("dev.silent.IPlugin/12.0") == nullptr,
+        require(object != nullptr && object->qt_metacast(RECKLESS_IPlugin_IID) != nullptr &&
+                    object->qt_metacast("dev.reckless.IPlugin/7.0") == nullptr &&
+                    object->qt_metacast("dev.reckless.IPlugin/8.0") == nullptr &&
+                    object->qt_metacast("dev.reckless.IPlugin/9.0") == nullptr &&
+                    object->qt_metacast("dev.reckless.IPlugin/10.0") == nullptr &&
+                    object->qt_metacast("dev.reckless.IPlugin/11.0") == nullptr &&
+                    object->qt_metacast("dev.reckless.IPlugin/12.0") == nullptr,
                 "the loaded example plugin exposes ABI 1 only");
         return;
     }
@@ -331,7 +331,7 @@ void exampleStorageSmoke(const QString &bundle) {
     require(blobs.size() == 1, "the seeding step left the example plugin's legacy blob");
     install(bundle);
     auto library = installedLibrary();
-    require(pluginMetadataError(library, QStringLiteral(SILENT_IPlugin_IID)).isEmpty(),
+    require(pluginMetadataError(library, QStringLiteral(RECKLESS_IPlugin_IID)).isEmpty(),
             "the sealed example library declares plugin ABI 1, read without loading it");
     auto hash = sha256(library);
     allowSavedData(hash);

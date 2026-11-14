@@ -1,7 +1,7 @@
-// Device GUI end to end (tests/e2e/devices/run.sh): the real silent app on a private
+// Device GUI end to end (tests/e2e/devices/run.sh): the real reckless app on a private
 // Xvfb display (QT_QPA_PLATFORM=xcb) against a regtest chain (the e2e_chain example),
 // a Ledger on Speculos (key B) and the Coldcard simulator (key C), with key A hot in
-// silent. A 2-of-3 MuSig2 shared wallet is created, registered on both devices,
+// reckless. A 2-of-3 MuSig2 shared wallet is created, registered on both devices,
 // funded, and spent twice: through the Ledger + Coldcard leaf (with a lost session,
 // the Coldcard simulator restarted between round 1 and round 2) and through the
 // Ledger + hot leaf. The Ledger is approved by ledger_clicker.py through the Speculos
@@ -1869,11 +1869,11 @@ void addSteps() {
                             .arg(gSince.elapsed()));
             // A link dead with no close (sleep, NAT, wifi lost): only the keepalive's
             // unanswered ping can tell.
-            check(chain("relay mute") == "muted", "the relay went silent");
+            check(chain("relay mute") == "muted", "the relay went reckless");
             gSince.start();
         });
     step(
-        "electrum silent death seen", [] { return !electrumUp(); },
+        "electrum reckless death seen", [] { return !electrumUp(); },
         [] {
             check(gSince.elapsed() < KEEPALIVE_DETECT_MS,
                   QStringLiteral("the dead link was caught in %1 ms").arg(gSince.elapsed()));
@@ -1960,8 +1960,8 @@ auto openStateWithColdcard() -> bool {
     QString path = QString::fromStdString(std::string(info.path));
     check(info.exists && info.device && path.startsWith(QStringLiteral("m/138'/1936225652'/")),
           "the device path " + path + " is read from unlock.bip138");
-    check(!QFile::exists(QDir::homePath() + "/.silent/unlock.json"), "no unlock.json");
-    QFile checkFile(QDir::homePath() + "/.silent/unlock.bip138");
+    check(!QFile::exists(QDir::homePath() + "/.reckless/unlock.json"), "no unlock.json");
+    QFile checkFile(QDir::homePath() + "/.reckless/unlock.bip138");
     checkFile.open(QIODevice::ReadOnly);
     QByteArray sealed = checkFile.readAll();
     check(sealed.startsWith("BIP138") && !sealed.contains(coldcardFp.toLatin1()),

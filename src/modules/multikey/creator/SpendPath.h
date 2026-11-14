@@ -9,7 +9,7 @@
 #include <QStringList>
 #include <cstdint>
 #include <optional>
-#include <silent.h>
+#include <reckless.h>
 
 namespace musig::modal {
 
