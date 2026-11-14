@@ -48,6 +48,7 @@ public slots:
     void onDeviceAddressDisplayed(ReqId req_id, const QString &address);
     void onDeviceError(std::optional<ReqId> req_id, const QString &message, plugin::SignError kind);
     void onInstanceRemoved(const QString &id);
+    void onRefusedCloseClicked();
 
 protected:
     // The view on display: Back and the primary action act on it.
@@ -63,6 +64,10 @@ protected:
     [[nodiscard]] auto viewUsb() -> QWidget *;
     void showUsb();
     void showUsbError(UsbError error);
+    // The device declined the request itself (ws-plaude/silent#126): the request is
+    // over, the caller has DeviceRefused with the user-declined code, and the window
+    // shows why with Close only.
+    void showRefused();
     void hideUsb();
     void releaseDevice();
 
@@ -84,6 +89,8 @@ private:
     catalog::ChunkedAddress *m_usb_address = nullptr;
     catalog::ModalActions *m_usb_actions = nullptr;
     catalog::Button *m_usb_retry = nullptr;
+    catalog::ModalActions *m_refused_actions = nullptr;
+    catalog::Button *m_refused_close = nullptr;
 
     VerifyResultView *m_result = nullptr;
 };

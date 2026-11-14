@@ -139,12 +139,17 @@ void UsbRouteFlow::initUsb() {
     m_usb_actions->setBack(hasPicker() ? catalog::ModalActions::Back::OtherSigner
                                        : catalog::ModalActions::Back::None);
     m_usb_actions->addAction(m_usb_retry);
+    m_refused_close = catalog::btnClose();
+    m_refused_actions = new catalog::ModalActions;
+    m_refused_actions->addAction(m_refused_close);
 }
 
 void UsbRouteFlow::connectUsb() {
     connect(m_usb_actions, &catalog::ModalActions::backClicked, this, &UsbRouteFlow::onBackClicked,
             qontrol::UNIQUE);
     connect(m_usb_retry, &QPushButton::clicked, this, &UsbRouteFlow::onNextClicked,
+            qontrol::UNIQUE);
+    connect(m_refused_close, &QPushButton::clicked, this, &UsbRouteFlow::onRefusedCloseClicked,
             qontrol::UNIQUE);
     connect(Host::get()->events(), &HostEvents::instanceRemoved, this,
             &UsbRouteFlow::onInstanceRemoved, qontrol::UNIQUE);
@@ -191,9 +196,21 @@ void UsbRouteFlow::showUsbError(UsbError error) {
     emit viewChanged(copy().usbTitle, ModalWidth::S);
 }
 
+void UsbRouteFlow::showRefused() {
+    emit refused(TR("flow-usb-rejected-body").arg(deviceLabel()), plugin::DEVICE_USER_DECLINED);
+    showUsbError(UsbError::Rejected);
+    viewSlots()->setFooter(m_refused_actions);
+}
+
+void UsbRouteFlow::onRefusedCloseClicked() {
+    // The caller already has the refusal: closing only ends the window.
+    emit cancelled();
+}
+
 void UsbRouteFlow::hideUsb() {
     viewSlots()->keep(m_usb_step);
     viewSlots()->keep(m_usb_actions);
+    viewSlots()->keep(m_refused_actions);
 }
 
 void UsbRouteFlow::releaseDevice() {
@@ -282,6 +299,10 @@ void UsbRouteFlow::onDeviceSignFailed(UsbError error, const QString &message,
         emit failed(message, kind);
         return;
     }
+    if (error == UsbError::Rejected) {
+        showRefused();
+        return;
+    }
     showUsbError(error);
     if (error == UsbError::Failed && !message.isEmpty()) {
         m_usb_status->setSubtitle(message);
@@ -320,6 +341,10 @@ void UsbRouteFlow::onDeviceError(std::optional<ReqId> req_id, const QString &mes
     // Refusing to confirm an address is the device's answer that it does not match.
     if (request().context == Context::Verify && error == UsbError::Rejected) {
         showVerifyResult(SigningFlow::VerifyResult::Mismatch);
+        return;
+    }
+    if (error == UsbError::Rejected) {
+        showRefused();
         return;
     }
     showUsbError(error);

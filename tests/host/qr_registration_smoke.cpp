@@ -4,12 +4,21 @@
 // ws-plaude/silent#125: the window does not block the rest of the app, one at a time.
 // ws-plaude/silent#115: checkDescriptorRegistered on a QR key shows the registration
 // check there too, never a "disconnected" error about a device that has no connection.
+// ws-plaude/silent#126: a device's refusal, over QR codes or USB, reaches the caller
+// through the keys window as DeviceRefused with the device's own code.
+#include "catalog/Button.h"
+#include "interfaces/host.h"
+#include "interfaces/instance.h"
+#include "interfaces/signer.h"
 #include "modules/keys/KeysModule.h"
 #include "modules/keys/flow/SigningFlow.h"
 #include "qr/QrDisplay.h"
+#include "qr/QrEngine.h"
+#include "qr/QrTypes.h"
 #include "theme/Theme.h"
 
 #include <QApplication>
+#include <QByteArray>
 #include <QElapsedTimer>
 #include <QList>
 #include <QObject>
@@ -131,12 +140,243 @@ void checkWindow(BusSpy &spy, keys::flow::SigningFlow *flow, const QString &titl
     spy.cancelled = 0;
 }
 
+// A bipqr error response (ENCODING.md, Error response body): MAGIC, VERSION 1, the
+// response-error MSG_TYPE of `type`, the echoed REQUEST_ID, ERROR and ERROR_MESSAGE.
+auto errorResponse(quint8 type, quint16 request_id, quint8 code, const QByteArray &message)
+    -> QByteArray {
+    QByteArray bytes("BIPXXX");
+    bytes.append(char(0x01));
+    bytes.append(char(0xC0 | type));
+    bytes.append(char(request_id >> 8));
+    bytes.append(char(request_id & 0xFF));
+    bytes.append(char(code));
+    bytes.append(char(message.size()));
+    bytes.append(message);
+    return bytes;
+}
+
+auto button(QWidget *window, const QString &text) -> catalog::Button * {
+    for (auto *candidate : window->findChildren<catalog::Button *>()) {
+        if (candidate->text() == text && candidate->isVisible()) {
+            return candidate;
+        }
+    }
+    return nullptr;
+}
+
+// After a refusal the window shows why with Close alone; closing it answers nothing
+// more, as the caller already has the refusal.
+void closeRefused(BusSpy &spy, keys::flow::SigningFlow *flow) {
+    require(button(flow, QStringLiteral("Close")) != nullptr &&
+                button(flow, QStringLiteral("Try Again")) == nullptr,
+            "a refused request shows Close, never a retry");
+    QPointer<keys::flow::SigningFlow> closed = flow;
+    button(flow, QStringLiteral("Close"))->click();
+    pump(200);
+    require(closed.isNull() && spy.cancelled == 0 && spy.errors == 1,
+            "closing a refused request's window answers nothing more");
+}
+
+// A QR device refusing the registration, through the window's own decoding of its
+// reply: the request's id is the module's first, 1.
+void qrRefusal(quint8 code, const QByteArray &message) {
+    auto module = std::make_unique<keys::KeysModule>();
+    module->setNetwork(Network::Regtest);
+    // The keys store is on disk: the key an earlier case added goes first.
+    (void)module->rust()->remove_key(FINGERPRINT, true);
+    require(module->rust()->add_key(FINGERPRINT, "QR device").is_ok &&
+                module->rust()->add_route(FINGERPRINT, KeyRouteKind::Qr).is_ok,
+            "the QR key is added");
+    BusSpy spy;
+    QObject::connect(module->bus(), &keys::KeysBus::cancelled, &spy, &BusSpy::onCancelled,
+                     qontrol::UNIQUE);
+    QObject::connect(module->bus(), &keys::KeysBus::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
+    module->registerDescriptor(51, QString::fromLatin1(FINGERPRINT), QString::fromLatin1(POLICY));
+    auto *flow = waitForFlow();
+    require(flow != nullptr, "the registration opens its QR window");
+    auto *engine = flow->findChild<qr::QrEngine *>();
+    require(engine != nullptr, "the QR window decodes the device's replies");
+    // Another request's id is not this request's answer: the scan goes on.
+    engine->response({.payload = errorResponse(0x03, 0x0002, code, message)});
+    pump(100);
+    require(spy.errors == 0 && openFlows().size() == 1,
+            "a refusal of another request leaves this one outstanding");
+    engine->response({.payload = errorResponse(0x03, 0x0001, code, message)});
+    pump(100);
+    require(spy.errors == 1 && spy.lastKind == plugin::SignError::DeviceRefused &&
+                spy.lastCode == code,
+            "a QR device's refusal reaches the caller at once with its code");
+    closeRefused(spy, flow);
+}
+
+// A USB device the user declines the request on, inside the keys window.
+class DecliningSigner final : public ISigner {
+public:
+    int xpubCalls = 0;
+
+    [[nodiscard]] auto implemented() const -> bool override {
+        return true;
+    }
+
+    [[nodiscard]] auto id() const -> QString override {
+        return QStringLiteral("declining");
+    }
+
+    [[nodiscard]] auto fingerprint() const -> QString override {
+        return QString::fromLatin1(FINGERPRINT);
+    }
+
+    [[nodiscard]] auto walletName() const -> QString override {
+        return {};
+    }
+
+    [[nodiscard]] auto brand() const -> QString override {
+        return QStringLiteral("fixture");
+    }
+
+    [[nodiscard]] auto model() const -> QString override {
+        return {};
+    }
+
+    [[nodiscard]] auto serial() const -> QString override {
+        return {};
+    }
+
+    [[nodiscard]] auto state() const -> plugin::SignerState override {
+        return plugin::SignerState::Ready;
+    }
+
+    [[nodiscard]] auto stateDetail() const -> QString override {
+        return {};
+    }
+
+    [[nodiscard]] auto capabilities() const -> plugin::SignerCapabilities override {
+        return {};
+    }
+
+    auto init() -> ReqId override {
+        return 0;
+    }
+
+    auto info() -> ReqId override {
+        return 0;
+    }
+
+    auto getXpub([[maybe_unused]] const QString &path) -> ReqId override {
+        ++xpubCalls;
+        return 7;
+    }
+
+    auto isDescriptorRegistered([[maybe_unused]] const QString &descriptor) -> ReqId override {
+        return 0;
+    }
+
+    auto registerDescriptor([[maybe_unused]] const QString &descriptor) -> ReqId override {
+        return 0;
+    }
+
+    auto signWithDescriptor([[maybe_unused]] const QString &psbt_base64,
+                            [[maybe_unused]] const QString &descriptor) -> ReqId override {
+        return 0;
+    }
+
+    auto displayAddress([[maybe_unused]] const QString &descriptor,
+                        [[maybe_unused]] const QString &path,
+                        [[maybe_unused]] const QString &address) -> ReqId override {
+        return 0;
+    }
+
+    auto raw([[maybe_unused]] const QByteArray &request) -> ReqId override {
+        return 0;
+    }
+};
+
+class DeviceInstance final : public QObject, public IInstance {
+    Q_OBJECT
+    Q_INTERFACES(IInstance)
+
+public:
+    DecliningSigner device;
+
+    [[nodiscard]] auto id() const -> QString override {
+        return QStringLiteral("declining-device");
+    }
+
+    void stop() override {
+    }
+
+    auto account() -> IAccount * override {
+        return nullptr;
+    }
+
+    auto feed() -> IFeed * override {
+        return nullptr;
+    }
+
+    auto signer() -> ISigner * override {
+        return &device;
+    }
+
+    auto theme() -> IThemeProvider * override {
+        return nullptr;
+    }
+};
+
+void usbRefusal() {
+    auto module = std::make_unique<keys::KeysModule>();
+    module->setNetwork(Network::Regtest);
+    // The keys store is on disk: the key an earlier case added goes first.
+    (void)module->rust()->remove_key(FINGERPRINT, true);
+    require(module->rust()->add_key(FINGERPRINT, "USB device").is_ok &&
+                module->rust()->add_route(FINGERPRINT, KeyRouteKind::Usb).is_ok,
+            "the USB key is added");
+    DeviceInstance instance;
+    Host::get()->registerInstance(instance.id(), &instance, module.get());
+    pump(50);
+    BusSpy spy;
+    QObject::connect(module->bus(), &keys::KeysBus::cancelled, &spy, &BusSpy::onCancelled,
+                     qontrol::UNIQUE);
+    QObject::connect(module->bus(), &keys::KeysBus::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
+    module->fetchXpub(52, QString::fromLatin1(FINGERPRINT), QStringLiteral("m/86'/1'/0'"));
+    auto *flow = waitForFlow();
+    require(flow != nullptr, "the xpub fetch opens the keys window on the USB device");
+    pump(100);
+    require(instance.device.xpubCalls == 1, "the window asks the device");
+    emit instance.device.error(7, QStringLiteral("User refused the request"),
+                               plugin::SignError::Other);
+    pump(100);
+    require(spy.errors == 1 && spy.lastKind == plugin::SignError::DeviceRefused &&
+                spy.lastCode == plugin::DEVICE_USER_DECLINED,
+            "a USB device the user declined on answers DeviceRefused 0x01 at once");
+    closeRefused(spy, flow);
+    Host::get()->removeInstance(instance.id(), module.get());
+    pump(50);
+}
+
+// Reckless's own failures keep their kinds, with no device code.
+void ownFailures() {
+    auto module = std::make_unique<keys::KeysModule>();
+    module->setNetwork(Network::Regtest);
+    BusSpy spy;
+    QObject::connect(module->bus(), &keys::KeysBus::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
+    module->registerDescriptor(53, QStringLiteral("00000000"), QStringLiteral("not a descriptor"));
+    pump(50);
+    require(spy.errors == 1 && spy.lastKind == plugin::SignError::Other && spy.lastCode == 0,
+            "a registration Reckless cannot make is Other, with no device code");
+    module->bus()->sign(54, static_cast<plugin::Network>(99), QString(), {}, QString(), QString());
+    pump(50);
+    require(spy.errors == 2 && spy.lastKind == plugin::SignError::InvalidRequest &&
+                spy.lastCode == 0,
+            "an invalid request is InvalidRequest, with no device code");
+}
+
 } // namespace
 
 void qrRegistrationSmoke() {
     Theme::get()->apply();
     auto module = std::make_unique<keys::KeysModule>();
     module->setNetwork(Network::Regtest);
+    (void)module->rust()->remove_key(FINGERPRINT, true);
     require(module->rust()->add_key(FINGERPRINT, "QR device").is_ok, "the QR key is added");
     require(module->rust()->add_route(FINGERPRINT, KeyRouteKind::Qr).is_ok,
             "the key's QR route is added");
@@ -178,6 +418,11 @@ void qrRegistrationSmoke() {
                                       plugin::DEVICE_USER_DECLINED) &&
             !plugin::musigSessionLost(plugin::SignError::Other, 0),
         "a device's 0x0D and Reckless's own lost session both restart the attempt");
+
+    qrRefusal(plugin::DEVICE_USER_DECLINED, "registration was declined");
+    qrRefusal(0xFF, "device is locked");
+    usbRefusal();
+    ownFailures();
 }
 
 } // namespace smoke
