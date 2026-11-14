@@ -874,3 +874,54 @@ fn usb_merge_keeps_the_gathered_nonces() {
         "expected the device's nonce merged next to the one already gathered"
     );
 }
+
+// ws-plaude/silent#119: a MuSig2 PSBT no Reckless attempt coordinated carries no attempt
+// id: round 1 takes the device's public nonces, round 2 its partial signatures once every
+// nonce is in, and a partial over an incomplete transcript is still refused.
+#[test]
+fn an_external_musig_psbt_signs_in_two_rounds_without_an_attempt_id() {
+    let mut external = musig_psbt();
+    external.proprietary.clear();
+
+    let mut round_one = external.clone();
+    add_nonce(&mut round_one, key_a(), 1);
+    let merged = merge_signatures_bytes(&v2_bytes(&external), &v0_bytes(&round_one))
+        .expect("round 1 takes the device's public nonce");
+    let merged = PsbtV2::deserialize(&merged).expect("merged PSBT");
+    assert_eq!(
+        nonces_of(&merged.inputs[0].psbt),
+        BTreeSet::from([(key_a(), 1)]),
+        "the device's nonce is merged"
+    );
+
+    let mut early = external.clone();
+    add_nonce(&mut early, key_a(), 1);
+    add_partial_sig(&mut early, key_a(), 3);
+    let result = merge_signatures_bytes(&v2_bytes(&external), &v0_bytes(&early));
+    assert!(
+        matches!(result, Err(Error::MusigAttemptUnproven)),
+        "a partial before every nonce is known stays refused: {result:?}"
+    );
+
+    let mut complete = external.clone();
+    add_nonce(&mut complete, key_a(), 1);
+    add_nonce(&mut complete, key_b(), 2);
+    let mut round_two = complete.clone();
+    add_partial_sig(&mut round_two, key_a(), 3);
+    let merged = merge_signatures_bytes(&v2_bytes(&complete), &v0_bytes(&round_two))
+        .expect("round 2 takes the partial over the complete transcript");
+    let merged = PsbtV2::deserialize(&merged).expect("merged PSBT");
+    assert_eq!(
+        partial_sig_count(&merged.inputs[0].psbt),
+        1,
+        "the partial is merged"
+    );
+
+    let mut changed = round_two.clone();
+    add_nonce(&mut changed, key_b(), 9);
+    let result = merge_signatures_bytes(&v2_bytes(&complete), &v0_bytes(&changed));
+    assert!(
+        matches!(result, Err(Error::MusigTranscriptMismatch)),
+        "a changed nonce is still refused: {result:?}"
+    );
+}

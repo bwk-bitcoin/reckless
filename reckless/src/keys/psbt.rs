@@ -831,7 +831,41 @@ fn check_musig_merge(original: &PsbtV2, signed: &Psbt) -> Result<(), Error> {
         }
         let adds_fields = incoming.iter().any(|entry| !current.contains(entry));
         if !proven && adds_fields {
-            check_unmarked_musig_answer(original, signed)?;
+            if expected.is_none() {
+                check_external_musig_answer(original, &current, &incoming)?;
+            } else {
+                check_unmarked_musig_answer(original, signed)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// An answer to a MuSig2 PSBT Reckless did not coordinate, so with no attempt id to
+/// prove it (ws-plaude/silent#119): it is checked against the PSBT itself. While the
+/// nonce transcript is incomplete (round 1) it may only add public nonces; once it is
+/// complete (round 2) its partial signatures need every nonce echoed unchanged.
+fn check_external_musig_answer(
+    original: &PsbtV2,
+    current: &[(bitcoin::psbt::raw::Key, Vec<u8>)],
+    incoming: &[(bitcoin::psbt::raw::Key, Vec<u8>)],
+) -> Result<(), Error> {
+    if !musig_nonces_complete(original)? {
+        let adds_partial = incoming.iter().any(|entry| {
+            entry.0.type_value == PSBT_IN_MUSIG2_PARTIAL_SIG && !current.contains(entry)
+        });
+        return if adds_partial {
+            Err(Error::MusigAttemptUnproven)
+        } else {
+            Ok(())
+        };
+    }
+    for entry in current
+        .iter()
+        .filter(|entry| entry.0.type_value == PSBT_IN_MUSIG2_PUB_NONCE)
+    {
+        if !incoming.contains(entry) {
+            return Err(Error::MusigAttemptUnproven);
         }
     }
     Ok(())
