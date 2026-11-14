@@ -10,7 +10,7 @@
 #include "views/modals/AppSettings.h"
 #include "views/modals/RemovePlugin.h"
 #include "views/modals/appsettings/AccessFlow.h"
-#include "views/modals/appsettings/DisableFlow.h"
+#include "views/modals/DisablePlugin.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -178,6 +178,46 @@ signals:
 };
 
 // The removal confirmation while it runs over the window, if it does.
+// The disable confirmation while it runs over the window, if it does (ws-plaude/silent#124).
+auto disableModal() -> modal::DisablePlugin * {
+    auto *modal = qobject_cast<modal::DisablePlugin *>(QApplication::activeModalWidget());
+    return modal != nullptr && modal->isVisible() ? modal : nullptr;
+}
+
+// Runs a step on the disable confirmation once its exec() shows it; the step closes it.
+class DisableModalStep final : public QObject {
+    Q_OBJECT
+
+public:
+    explicit DisableModalStep(std::function<void(modal::DisablePlugin *)> step)
+        : m_step(std::move(step)) {
+        connect(&m_timer, &QTimer::timeout, this, &DisableModalStep::onTick, qontrol::UNIQUE);
+        m_timer.start(10);
+    }
+
+    [[nodiscard]] auto ran() const -> bool {
+        return m_ran;
+    }
+
+public slots:
+
+    void onTick() {
+        auto *modal = disableModal();
+        if (modal == nullptr) {
+            return;
+        }
+        m_timer.stop();
+        m_ran = true;
+        m_step(modal);
+        require(disableModal() == nullptr, "the step closes the disable confirmation");
+    }
+
+private:
+    std::function<void(modal::DisablePlugin *)> m_step;
+    QTimer m_timer;
+    bool m_ran = false;
+};
+
 auto removeModal() -> modal::RemovePlugin * {
     auto *modal = qobject_cast<modal::RemovePlugin *>(QApplication::activeModalWidget());
     return modal != nullptr && modal->isVisible() ? modal : nullptr;
@@ -817,12 +857,25 @@ void pluginRemovalUiSmoke(const QString &shots) {
             emit native.releaseWorker();
         }
     }
-    qputenv("RECKLESS_REMOVAL_REFUSE", "1");
+    // ws-plaude/silent#124: the confirmation is a modal over Settings; Cancel leaves the
+    // plugin enabled and its toggle on.
+    DisableModalStep cancelled([&](modal::DisablePlugin *modal) {
+        require(modal->isWindow() && !settings->isAncestorOf(modal) && settings->isVisible() &&
+                    modal->windowTitle() == QStringLiteral("Disable Plugin"),
+                "the disable confirmation is a modal over Settings");
+        click(modal, QStringLiteral("Cancel"));
+    });
     mouseClick(visibleToggle(settings, id));
-    auto *disableFlow = settings->findChild<modal::DisableFlow *>();
-    require(disableFlow != nullptr, "real disable confirmation opens");
+    require(cancelled.ran(), "turning the toggle off opens the disable confirmation");
+    QCoreApplication::processEvents();
+    require(registry->isPluginEnabled(id) && visibleToggle(settings, id)->isChecked(),
+            "Cancel leaves the plugin enabled and its toggle on");
+    qputenv("RECKLESS_REMOVAL_REFUSE", "1");
     PluginStopProbe disabledFailure(registry, id);
-    click(disableFlow, QStringLiteral("Disable Plugin"));
+    DisableModalStep refused(
+        [&click](modal::DisablePlugin *modal) { click(modal, QStringLiteral("Disable Plugin")); });
+    mouseClick(visibleToggle(settings, id));
+    require(refused.ran(), "real disable confirmation opens");
     require(disabledFailure.wait().contains(QStringLiteral("deliberate native refusal")),
             "failed disable shows the actual native error");
     waitForStop(registry, id);
@@ -862,11 +915,11 @@ void pluginRemovalUiSmoke(const QString &shots) {
     }
     capture(QStringLiteral("issue71-enabled-wip.png"));
     require(!removeButton()->isEnabled(), "Remove is disabled while the plugin is enabled");
-    mouseClick(visibleToggle(settings, id));
-    disableFlow = settings->findChild<modal::DisableFlow *>();
-    require(disableFlow != nullptr, "disabling before removal opens its confirmation");
     PluginStopProbe disabledFirst(registry, id);
-    click(disableFlow, QStringLiteral("Disable Plugin"));
+    DisableModalStep disabled(
+        [&click](modal::DisablePlugin *modal) { click(modal, QStringLiteral("Disable Plugin")); });
+    mouseClick(visibleToggle(settings, id));
+    require(disabled.ran(), "disabling before removal opens its confirmation");
     require(disabledFirst.wait().isEmpty(), "the plugin disables before removal");
     waitForStop(registry, id);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);

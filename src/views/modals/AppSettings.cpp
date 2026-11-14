@@ -1,8 +1,8 @@
 #include "AppSettings.h"
 
+#include "DisablePlugin.h"
 #include "RemovePlugin.h"
 #include "appsettings/AccessFlow.h"
-#include "appsettings/DisableFlow.h"
 #include "appsettings/SectionFlow.h"
 
 #include "AppController.h"
@@ -704,14 +704,11 @@ void AppSettings::openFlow(AppSettingsFlow *flow) {
     connect(m_flow, &AppSettingsFlow::viewChanged, this, &AppSettings::onFlowViewChanged,
             qontrol::UNIQUE);
     connect(m_flow, &AppSettingsFlow::back, this, &AppSettings::onFlowBack, qontrol::UNIQUE);
-    connect(m_flow, &AppSettingsFlow::confirmed, this, &AppSettings::onFlowConfirmed,
-            qontrol::UNIQUE);
     m_slots->setPage(m_flow);
     m_flow->start();
 }
 
 void AppSettings::closeFlow() {
-    m_disabling_id.clear();
     if (m_flow == nullptr) {
         return;
     }
@@ -852,8 +849,26 @@ void AppSettings::onPluginToggled(bool enabled) {
     m_plugin_notice->setVisible(false);
     m_plugin_result->setVisible(false);
     if (!enabled) {
-        m_disabling_id = id;
-        openFlow(new DisableFlow(m_plugin_registry, id, m_plugin_meta.value(id), m_theme_plugin));
+        // Confirmed in a modal over the tab (ws-plaude/silent#124). Cancel or closing
+        // it leaves the plugin enabled: its toggle shows it again.
+        QStringList themes;
+        for (auto it = m_theme_plugin.constBegin(); it != m_theme_plugin.constEnd(); ++it) {
+            if (it.value() == id) {
+                themes.append(it.key());
+            }
+        }
+        themes.sort();
+        auto *modal = new DisablePlugin(id, m_plugin_registry->pluginName(id),
+                                        m_plugin_meta.value(id),
+                                        m_plugin_registry->pluginAccountNames(id), themes);
+        m_disable_modal = modal;
+        m_disable_confirmed = false;
+        connect(modal, &DisablePlugin::confirmed, this, &AppSettings::onPluginDisableConfirmed,
+                qontrol::UNIQUE);
+        AppController::execModal(modal);
+        if (!m_disable_confirmed) {
+            onPluginsChanged();
+        }
         return;
     }
     // A plugin that fails to load gets its error row; a loaded one rebuilds the rows
@@ -946,6 +961,10 @@ void AppSettings::onPluginsChanged() {
         if (m_remove_modal != nullptr) {
             m_remove_modal->setEnabled(false);
             m_remove_modal->reject();
+        }
+        if (m_disable_modal != nullptr) {
+            m_disable_modal->setEnabled(false);
+            m_disable_modal->reject();
         }
         if (m_flow != nullptr) {
             m_flow->setEnabled(false);
@@ -1108,18 +1127,13 @@ void AppSettings::onFlowBack() {
     closeFlow();
 }
 
-void AppSettings::onFlowConfirmed() {
+void AppSettings::onPluginDisableConfirmed(const QString &plugin_id) {
+    m_disable_confirmed = true;
     if (m_plugin_registry == nullptr || !m_plugin_registry->pluginRemovalReadError().isEmpty()) {
-        m_disabling_id.clear();
-        showMain();
-        closeFlow();
         onPluginsChanged();
         return;
     }
-    QString id = m_disabling_id;
-    showMain();
-    closeFlow();
-    requestPluginDisable(id);
+    requestPluginDisable(plugin_id);
 }
 
 void AppSettings::requestPluginDisable(const QString &id) {

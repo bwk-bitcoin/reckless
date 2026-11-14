@@ -278,8 +278,6 @@ set(RECKLESS_APP_SOURCES
     src/views/modals/AppSettings.cpp
     src/views/modals/appsettings/AccessFlow.h
     src/views/modals/appsettings/AccessFlow.cpp
-    src/views/modals/appsettings/DisableFlow.h
-    src/views/modals/appsettings/DisableFlow.cpp
     src/views/modals/appsettings/SectionFlow.h
     src/views/modals/appsettings/SectionFlow.cpp
     src/modules/sp/modals/CreateAccount.h
@@ -338,6 +336,8 @@ set(RECKLESS_APP_SOURCES
     src/modules/sp/SpSigning.cpp
     src/views/modals/ConfirmDelete.h
     src/views/modals/ConfirmDelete.cpp
+    src/views/modals/DisablePlugin.h
+    src/views/modals/DisablePlugin.cpp
     src/views/modals/RemovePlugin.h
     src/views/modals/RemovePlugin.cpp
     src/views/modals/PluginAccessPrompt.h

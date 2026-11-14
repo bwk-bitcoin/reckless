@@ -41,13 +41,14 @@ class IThemeProvider;
 namespace modal {
 
 class AppSettingsFlow;
+class DisablePlugin;
 class RemovePlugin;
 
 // The global Settings, the page of the Settings tab right of Keys
 // (ws-plaude/silent#46): General, Plugin Manager and Extension Settings on the main
-// view; disabling a plugin, a plugin's access and a module's settings section are
-// flows shown in its place, each with its way back. Removing a plugin is confirmed in
-// a modal over the tab (ws-plaude/silent#108).
+// view; a plugin's access and a module's settings section are flows shown in its
+// place, each with its way back. Removing and disabling a plugin are confirmed in a
+// modal over the tab (ws-plaude/silent#108, #124).
 class AppSettings : public QWidget {
     Q_OBJECT
 
@@ -78,7 +79,7 @@ public slots:
     void onThemePalette(ReqId req_id, theme::Palette palette);
     void onFlowViewChanged(const QString &title, ModalWidth width);
     void onFlowBack();
-    void onFlowConfirmed();
+    void onPluginDisableConfirmed(const QString &plugin_id);
     void onPriceSourcesChanged();
     void onPriceSourceActivated(int index);
     void onPriceCurrencyActivated(int index);
@@ -174,7 +175,9 @@ private:
     Host *m_host = nullptr;
     HostEvents *m_host_events = nullptr;
     QHash<QString, QString> m_plugin_meta;
-    QString m_disabling_id;
+    // The disable confirmation while it runs over the tab, and whether it was confirmed.
+    QPointer<DisablePlugin> m_disable_modal;
+    bool m_disable_confirmed = false;
     // The removal confirmation while it runs over the tab.
     QPointer<RemovePlugin> m_remove_modal;
     QSet<QString> m_stopping_theme_plugins;
@@ -209,8 +212,6 @@ signals:
     void viewChanged(const QString &title, ModalWidth width);
     // Back left the flow: AppSettings shows its main view again.
     void back();
-    // The flow's action is confirmed: AppSettings carries it out.
-    void confirmed();
 
 protected:
     [[nodiscard]] auto viewSlots() const -> catalog::ViewSlots *;
