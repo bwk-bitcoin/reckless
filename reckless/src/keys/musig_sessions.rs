@@ -374,6 +374,21 @@ impl From<RetiredAttemptInternal> for RetiredAttempt {
 }
 
 impl Cache {
+    /// Whether `binding`'s attempt can no longer sign: retired, or an allocation of it
+    /// consumed or failed, and none still active on any route (ws-plaude/silent#136).
+    pub(crate) fn spent(&self, binding: [u8; 32]) -> bool {
+        let of_binding = || {
+            self.allocated
+                .iter()
+                .filter(move |entry| entry.binding == binding)
+        };
+        if of_binding().any(|entry| entry.state == AllocationState::Active) {
+            return false;
+        }
+        self.retired.iter().any(|entry| entry.binding == binding)
+            || of_binding().any(|entry| entry.state != AllocationState::Active)
+    }
+
     pub(crate) fn is_retired(&self, binding: [u8; 32], provider: RouteKind) -> bool {
         self.retired
             .iter()
@@ -778,6 +793,60 @@ pub(crate) fn attempt_id(
                 .map_err(|_| "invalid MuSig signing attempt ID".to_string())
         })
         .transpose()
+}
+
+/// ws-plaude/silent#136: a transaction whose MuSig2 attempt for this key was consumed,
+/// failed or retired could never be signed again, its binding never active again. On a
+/// clean round 1 (no MuSig2 nonce or partial signature in the PSBT at all), such a
+/// transaction gets a fresh attempt id: a new binding, so a new allocation with fresh
+/// nonces, the spent one left as it is. A late answer to the spent attempt still points
+/// at its binding and stays refused. A PSBT that already carries contributions, or
+/// whose attempt is still active, is left alone. True when the attempt was renewed.
+pub fn restart_spent_attempt(
+    fingerprint: Fingerprint,
+    policies: &[String],
+    psbt: &mut Psbt,
+) -> Result<bool, String> {
+    restart_spent_attempt_at(
+        &datadir().join("musig-sessions"),
+        fingerprint,
+        policies,
+        psbt,
+    )
+}
+
+pub(crate) fn restart_spent_attempt_at(
+    root: &Path,
+    fingerprint: Fingerprint,
+    policies: &[String],
+    psbt: &mut Psbt,
+) -> Result<bool, String> {
+    for input in &psbt.inputs {
+        let nonces = musig_input_pub_nonces(input).map_err(|e| e.to_string())?;
+        let partials = bwk::bwk_tx::bwk_psbt::musig::musig_input_partial_sigs(input)
+            .map_err(|e| e.to_string())?;
+        if !nonces.is_empty() || !partials.is_empty() {
+            return Ok(false);
+        }
+    }
+    let store = LockedCache::open(root, fingerprint)?;
+    for policy_text in policies {
+        let Ok(policy) = descriptor(policy_text) else {
+            continue;
+        };
+        if own_slots(psbt, &policy, fingerprint)
+            .map_err(|e| e.to_string())?
+            .is_empty()
+        {
+            continue;
+        }
+        let binding = binding(psbt, &policy, fingerprint)?;
+        if store.state.spent(binding) {
+            start_attempt(psbt)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub fn start_attempt(psbt: &mut Psbt) -> Result<(), String> {
@@ -1398,9 +1467,9 @@ mod tests {
             musig_sessions::{
                 binding, can_publish, check_round2, count, descriptor, expression_slots, finish_at,
                 owned_expressions, prepare_at, prepare_request_at, refresh_at, restart_at,
-                session_key, signing_status, start_attempt, synthetic, AllocationState, Fetch,
-                LockedCache, SessionSource, Signing, SigningError, FETCH_FEE_SATS, FUNDING_SATS,
-                MAX_INPUT, SNAPSHOTS,
+                restart_spent_attempt_at, session_key, signing_status, start_attempt, synthetic,
+                AllocationState, Fetch, LockedCache, SessionSource, Signing, SigningError,
+                FETCH_FEE_SATS, FUNDING_SATS, MAX_INPUT, SNAPSHOTS,
             },
             record::{DeviceRecord, KeyRecord, RouteKind},
             store::KeyStore,
@@ -1501,6 +1570,90 @@ mod tests {
             1,
             "inactive queue still retained"
         );
+    }
+
+    /// ws-plaude/silent#136: a transaction whose attempt was consumed or failed signs
+    /// again in a fresh attempt, with fresh nonces, on a clean round 1; a late answer to
+    /// the spent attempt stays refused, and an active attempt is kept.
+    #[test]
+    fn a_spent_attempt_restarts_on_a_clean_round_one_and_its_late_answer_stays_refused() {
+        for spent in [AllocationState::Consumed, AllocationState::Invalid] {
+            let tmp = TempDir::new().expect("temp directory");
+            let root = tmp.path().join("musig-sessions");
+            let policy = policy(false, 0);
+            let policies = vec![policy.text.clone()];
+            fetch_sessions(&root, &policy, 2, 1);
+            let clean = real(&policy, 0, 0, 1);
+            let first = publish(&root, &policy, clean.clone());
+
+            // Still active: the transaction keeps its attempt.
+            let mut kept = clean.clone();
+            assert!(
+                !restart_spent_attempt_at(&root, policy.fingerprint, &policies, &mut kept)
+                    .expect("check an active attempt"),
+                "an active attempt is kept"
+            );
+            assert_eq!(kept, clean, "an active attempt's PSBT is left as it is");
+
+            // The attempt is spent: the same transaction was refused forever.
+            let mut store = LockedCache::open(&root, policy.fingerprint).expect("store");
+            let mut next = store.state.clone();
+            next.allocated[0].state = spent;
+            store.save(next).expect("spend the attempt");
+            drop(store);
+            assert!(
+                matches!(
+                    prepare_at(&root, policy.fingerprint, &policy.text, &v2(clean.clone())),
+                    Err(SigningError::SessionLost(message)) if message.contains("no longer active")
+                ),
+                "the spent binding itself still refuses"
+            );
+
+            // A clean round 1 renews it: a new attempt id, a new binding, fresh nonces.
+            let mut renewed = clean.clone();
+            assert!(
+                restart_spent_attempt_at(&root, policy.fingerprint, &policies, &mut renewed)
+                    .expect("renew the spent attempt"),
+                "a spent attempt is renewed on a clean round 1"
+            );
+            let parsed = descriptor(&policy.text).expect("policy");
+            assert_ne!(
+                binding(&renewed, &parsed, policy.fingerprint).expect("new binding"),
+                binding(&clean, &parsed, policy.fingerprint).expect("old binding"),
+                "the renewed attempt has its own binding"
+            );
+            let second = publish(&root, &policy, renewed);
+            let nonces = |bytes: &[u8]| {
+                let real = PsbtV2::deserialize(bytes)
+                    .expect("v2")
+                    .into_bitcoin_psbt()
+                    .expect("psbt");
+                musig_input_pub_nonces(&real.inputs[0]).expect("nonces")
+            };
+            assert!(
+                !nonces(&second).is_empty() && nonces(&second) != nonces(&first),
+                "the renewed attempt publishes fresh nonces, never the spent ones"
+            );
+
+            // A late round 2 for the spent attempt still points at it: refused.
+            assert!(
+                matches!(
+                    prepare_at(&root, policy.fingerprint, &policy.text, &first),
+                    Err(SigningError::SessionLost(_))
+                ),
+                "an answer to the spent attempt stays refused"
+            );
+            // A PSBT that carries nonces is never renewed.
+            let mut contributed = PsbtV2::deserialize(&first)
+                .expect("v2")
+                .into_bitcoin_psbt()
+                .expect("psbt");
+            assert!(
+                !restart_spent_attempt_at(&root, policy.fingerprint, &policies, &mut contributed)
+                    .expect("check a PSBT with nonces"),
+                "a PSBT with MuSig2 contributions keeps its attempt"
+            );
+        }
     }
 
     fn key(seed: u8) -> (String, Fingerprint) {

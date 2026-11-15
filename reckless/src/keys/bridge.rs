@@ -610,6 +610,64 @@ impl KeysModule {
         }
     }
 
+    /// `psbt_v2_hex` with a fresh MuSig2 attempt id when its attempt for the key is
+    /// spent (consumed, failed or retired) and it is a clean round 1, else as it is
+    /// (ws-plaude/silent#136). The signing call then allocates fresh nonces.
+    pub fn renew_spent_musig_attempt(
+        &self,
+        fingerprint: &str,
+        psbt_v2_hex: &str,
+    ) -> ffi::SignResult {
+        let Some(manager) = self.inner.as_ref() else {
+            return failed_sign(&self.error);
+        };
+        let fp = match parse_fingerprint(fingerprint) {
+            Ok(fp) => fp,
+            Err(e) => return failed_sign(&e),
+        };
+        let bytes = match hex::decode(psbt_v2_hex) {
+            Ok(bytes) => bytes,
+            Err(e) => return failed_sign(&format!("invalid psbt hex: {e}")),
+        };
+        let unchanged = || ffi::SignResult {
+            is_ok: true,
+            error: String::new(),
+            wrong_password: false,
+            musig_session: false,
+            psbt_v2_hex: psbt_v2_hex.to_string(),
+        };
+        let policies: Vec<String> = manager
+            .registered_descriptors(fp)
+            .iter()
+            .filter(|entry| entry.descriptor.contains("musig("))
+            .map(|entry| entry.descriptor.clone())
+            .collect();
+        if policies.is_empty() {
+            return unchanged();
+        }
+        let Ok(v2) = psbt::parse_v2(&bytes) else {
+            return unchanged();
+        };
+        // A PSBT whose outputs are still to derive is no MuSig2 round yet.
+        let Ok(mut real) = v2.into_bitcoin_psbt() else {
+            return unchanged();
+        };
+        match musig_sessions::restart_spent_attempt(fp, &policies, &mut real) {
+            Ok(false) => unchanged(),
+            Ok(true) => match bwk::bwk_tx::bwk_psbt::PsbtV2::from_bitcoin_psbt(real)
+                .map_err(|e| e.to_string())
+                .and_then(|v2| v2.serialize().map_err(|e| e.to_string()))
+            {
+                Ok(renewed) => ffi::SignResult {
+                    psbt_v2_hex: hex::encode(renewed),
+                    ..unchanged()
+                },
+                Err(e) => failed_sign(&format!("cannot renew the MuSig2 attempt: {e}")),
+            },
+            Err(e) => failed_sign(&format!("cannot renew the MuSig2 attempt: {e}")),
+        }
+    }
+
     pub fn key_descriptors(&self, fingerprint: &str) -> Vec<ffi::KeyDescriptor> {
         let Some(manager) = self.inner.as_ref() else {
             log::error!("KeysModule::key_descriptors(): {}", self.error);

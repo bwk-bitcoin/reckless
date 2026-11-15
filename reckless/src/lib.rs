@@ -2855,6 +2855,14 @@ mod ffi {
             descriptor: &str,
         ) -> KeyOpResult;
         fn key_descriptors(self: &KeysModule, fingerprint: &str) -> Vec<KeyDescriptor>;
+        /// `psbt_v2_hex` with a fresh MuSig2 attempt id when the key's attempt for it is
+        /// consumed, failed or retired and the PSBT is a clean round 1, else unchanged
+        /// (ws-plaude/silent#136). Touches the key's MuSig2 session store; GUI thread.
+        fn renew_spent_musig_attempt(
+            self: &KeysModule,
+            fingerprint: &str,
+            psbt_v2_hex: &str,
+        ) -> SignResult;
         /// One entry per descriptor of the key, matched against the accounts in one
         /// discovery pass.
         fn key_accounts(self: &KeysModule, fingerprint: &str) -> Vec<KeyAccount>;

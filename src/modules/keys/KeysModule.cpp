@@ -767,12 +767,22 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
     flow->activateWindow();
 }
 
-void KeysModule::sign(ReqId req_id, const QString &psbt_v2_hex, const QStringList &descriptors,
-                      const QString &wallet_name, const QString &fingerprint, bool nonce_stage) {
+void KeysModule::sign(ReqId req_id, const QString &requested_psbt_v2_hex,
+                      const QStringList &descriptors, const QString &wallet_name,
+                      const QString &fingerprint, bool nonce_stage) {
     if (rust() == nullptr) {
         m_bus->deliverError(req_id, TR("keys-module-not-ready"));
         return;
     }
+    // A transaction whose MuSig2 attempt for this key is spent signs in a fresh attempt
+    // (ws-plaude/silent#136): the PSBT carries its new attempt id from here on.
+    auto renewed = rust()->renew_spent_musig_attempt(
+        rust::Str(fingerprint.toStdString()), rust::Str(requested_psbt_v2_hex.toStdString()));
+    if (!renewed.is_ok) {
+        m_bus->deliverError(req_id, toQt(renewed.error));
+        return;
+    }
+    const QString psbt_v2_hex = toQt(renewed.psbt_v2_hex);
     // signing_plan() blocks on nothing (no device I/O), so calling it from the GUI
     // thread is safe: see its doc comment in lib/include/reckless.h.
     auto plan = rust()->signing_plan(rust::String(psbt_v2_hex.toStdString()));
@@ -819,12 +829,21 @@ void KeysModule::sign(ReqId req_id, const QString &psbt_v2_hex, const QStringLis
                .routes = routes}));
 }
 
-void KeysModule::signOnDevice(ReqId req_id, const QString &psbt_v2_hex, const QString &descriptor,
-                              const QString &fingerprint) {
+void KeysModule::signOnDevice(ReqId req_id, const QString &requested_psbt_v2_hex,
+                              const QString &descriptor, const QString &fingerprint) {
     if (rust() == nullptr) {
         m_bus->deliverError(req_id, TR("keys-module-not-ready"));
         return;
     }
+    // A transaction whose MuSig2 attempt for this key is spent signs in a fresh attempt
+    // (ws-plaude/silent#136): the PSBT carries its new attempt id from here on.
+    auto renewed = rust()->renew_spent_musig_attempt(
+        rust::Str(fingerprint.toStdString()), rust::Str(requested_psbt_v2_hex.toStdString()));
+    if (!renewed.is_ok) {
+        m_bus->deliverError(req_id, toQt(renewed.error));
+        return;
+    }
+    const QString psbt_v2_hex = toQt(renewed.psbt_v2_hex);
     // signing_plan() blocks on nothing (no device I/O), so calling it from the GUI
     // thread is safe: see its doc comment in lib/include/reckless.h.
     auto plan = rust()->signing_plan(rust::String(psbt_v2_hex.toStdString()));

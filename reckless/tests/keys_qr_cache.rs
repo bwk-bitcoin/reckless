@@ -539,3 +539,101 @@ fn a_devices_refusal_of_a_cached_signing_request_keeps_its_code() {
         check_refusal(decoded, code, &a.fingerprint().to_string(), &policy);
     }
 }
+
+// ===== A spent attempt signs again (ws-plaude/silent#136) =====
+
+const MNEMONIC_K: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+     abandon abandon abandon abandon abandon abandon abandon abandon agent";
+const MNEMONIC_L: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo when";
+
+/// The cached one-round signing request of `psbt` by `signer`, from its device's cache.
+fn cached_request(
+    module: &mut reckless::KeysModule,
+    signer: &HotSigner,
+    other: &HotSigner,
+    policy: &str,
+    psbt: &str,
+) -> reckless::QrMessageResult {
+    let routes = vec![
+        reckless::MusigSignerRoute {
+            fingerprint: signer.fingerprint().to_string(),
+            route: KeyRouteKind::Qr,
+        },
+        reckless::MusigSignerRoute {
+            fingerprint: other.fingerprint().to_string(),
+            route: KeyRouteKind::Qr,
+        },
+    ];
+    let signing =
+        reckless::qr_musig_sign_material(&signer.fingerprint().to_string(), policy, psbt, routes);
+    module.qr_request_sign_musig(signing)
+}
+
+#[test]
+fn a_cached_spend_signed_before_signs_again_in_a_fresh_attempt() {
+    let dir = datadir();
+    assert!(dir.exists(), "the datadir fixture is set");
+    let (a, b) = signers_on(MNEMONIC_K, MNEMONIC_L);
+    let policy = account_policy(&a, &b);
+    let fingerprint = a.fingerprint().to_string();
+    let mut module = reckless::new_keys_module(FfiNetwork::Regtest);
+    let added = module.add_key(&fingerprint, "QR device");
+    assert!(added.is_ok, "add the key: {}", added.error);
+    let registered = module.register_descriptor(&fingerprint, &policy);
+    assert!(
+        registered.is_ok,
+        "register the wallet: {}",
+        registered.error
+    );
+    let mut device_a = peer(&a);
+    let mut device_b = peer(&b);
+    // The request takes a session of each signer.
+    prepare_cached_session(&mut module, &mut device_a, &a, &policy);
+    prepare_cached_session(&mut module, &mut device_b, &b, &policy);
+    let fixture = FundedAttempt::named(&policy, "renew");
+    let active = fixture.account.active_attempt();
+    assert!(active.is_ok, "the active attempt is open: {}", active.error);
+    let psbt = active.psbt_v2_hex.clone();
+
+    // The first spend consumes its allocation.
+    let message = cached_request(&mut module, &a, &b, &policy, &psbt);
+    assert!(message.is_ok, "the first request: {}", message.error);
+    let decoded = module.qr_decode_response(&answer(&mut device_a, &message.payload));
+    let accepted = reckless::qr_musig_accept(decoded, &fingerprint, &policy);
+    assert!(accepted.is_ok, "the first spend signs: {}", accepted.error);
+
+    // The same transaction again: its spent attempt refuses, as before.
+    let again = cached_request(&mut module, &a, &b, &policy, &psbt);
+    assert!(!again.is_ok, "the spent attempt itself still refuses");
+
+    // Each device prepares its next session.
+    prepare_cached_session(&mut module, &mut device_a, &a, &policy);
+    prepare_cached_session(&mut module, &mut device_b, &b, &policy);
+    // Renewed for a clean round 1: a fresh attempt, signed from the next cached session.
+    let renewed = module.renew_spent_musig_attempt(&fingerprint, &psbt);
+    assert!(renewed.is_ok, "renew the attempt: {}", renewed.error);
+    assert_ne!(
+        renewed.psbt_v2_hex, psbt,
+        "the PSBT carries a new attempt id"
+    );
+    let message = cached_request(&mut module, &a, &b, &policy, &renewed.psbt_v2_hex);
+    assert!(message.is_ok, "the renewed request: {}", message.error);
+    // Its allocation is active now: asked again, it is kept, not renewed.
+    let kept = module.renew_spent_musig_attempt(&fingerprint, &renewed.psbt_v2_hex);
+    assert!(
+        kept.is_ok && kept.psbt_v2_hex == renewed.psbt_v2_hex,
+        "an active attempt is kept"
+    );
+    let decoded = module.qr_decode_response(&answer(&mut device_a, &message.payload));
+    let accepted = reckless::qr_musig_accept(decoded, &fingerprint, &policy);
+    assert!(
+        accepted.is_ok && !accepted.psbt_v2_hex.is_empty(),
+        "the renewed attempt signs: {}",
+        accepted.error
+    );
+
+    // The old attempt stays spent: a request for it is still refused.
+    let late = cached_request(&mut module, &a, &b, &policy, &psbt);
+    assert!(!late.is_ok, "a request for the spent attempt stays refused");
+    fixture.finish();
+}
