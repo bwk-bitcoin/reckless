@@ -8,6 +8,8 @@
 // through the keys window as DeviceRefused with the device's own code.
 // ws-plaude/silent#134: the caller of a keys call gets each bipqr request shown and
 // each reply read, refused ones included; no other caller does.
+// ws-plaude/silent#135: on the MuSig2 QR routes, a device's own refusal reaches the
+// caller as DeviceRefused with its code, its 0x0D included.
 #include "AppController.h"
 #include "MockPlugin.h"
 #include "catalog/Button.h"
@@ -360,6 +362,20 @@ void usbRefusal() {
     pump(50);
 }
 
+// A registered built-in module, the callers' as a plugin's would be.
+auto callerModule() -> IModule * {
+    static IModule *module = nullptr;
+    if (module == nullptr) {
+        if (AppController::get() == nullptr) {
+            AppController::init();
+        }
+        auto plugin = std::make_unique<MockPlugin>();
+        module = plugin->module();
+        AppController::get()->registerBuiltinPlugin(std::move(plugin));
+    }
+    return module;
+}
+
 // The bipqr exchanges a keys caller receives.
 class ExchangeSpy final : public QObject {
     Q_OBJECT
@@ -388,18 +404,8 @@ void qrExchanges(bool device_refuses) {
             "the QR key is added");
     auto *host = dynamic_cast<HostImpl *>(Host::get());
     require(host != nullptr, "the real host");
-    // The callers are a registered built-in module, as a plugin's would be.
-    static IModule *callerModule = nullptr;
-    if (callerModule == nullptr) {
-        if (AppController::get() == nullptr) {
-            AppController::init();
-        }
-        auto plugin = std::make_unique<MockPlugin>();
-        callerModule = plugin->module();
-        AppController::get()->registerBuiltinPlugin(std::move(plugin));
-    }
-    host::KeysHandle caller(host, callerModule, module->bus());
-    host::KeysHandle other(host, callerModule, module->bus());
+    host::KeysHandle caller(host, callerModule(), module->bus());
+    host::KeysHandle other(host, callerModule(), module->bus());
     ExchangeSpy mine;
     ExchangeSpy theirs;
     QObject::connect(&caller, &IKeys::exchange, &mine, &ExchangeSpy::onExchange, qontrol::UNIQUE);
@@ -458,6 +464,115 @@ void qrExchanges(bool device_refuses) {
         open->reject();
         pump(200);
     }
+}
+
+// A funded attempt of POLICY spending one MuSig2 input, as reckless/tests/keys_qr_cache.rs
+// builds it (FundedAttempt): its PSBT v2, for the signing plan of the MuSig2 routes.
+const char *const MUSIG_ATTEMPT_PSBT =
+    "70736274ff010204020000000103040000000001040101010501020106010001fb040200000019fc16524543"
+    "4b4c4553535f4d555349475f415454454d50540020a2083e66371469b91844a18d4d649af739dfb9e4ab5596"
+    "aa3b1bbe0a8142963b0001012ba086010000000000225120b18e7f13c7db58ca6f755ccd7541149a4e7edda1"
+    "f041013256641845a4cc9b64010e204941a4208eb4762c85643079a865a08efbfecef62fd2fc78bc0184b8b8"
+    "cb0d2a010f040000000001100400000000211608c426b56c36540026267f37e3ca01126ac96da1e2c704836a"
+    "76a7b78dc935901100b8688df157000080010000800000008021164fa60842fe43fd476291703aa69974a232"
+    "2e835f37c6acd4f22d4b152f15039b110073c5da0a5700008001000080000000802116f3b2fc338d232bb46b"
+    "e409bda6356529592783a0a8a2b86ce4da3ce2a87978c70d002e36efc30000000001000000011720f3b2fc33"
+    "8d232bb46be409bda6356529592783a0a8a2b86ce4da3ce2a87978c7221a021e4240bacca55cb106a7546000"
+    "c79549350df61064a51d2d6154f57bec0d75fb420208c426b56c36540026267f37e3ca01126ac96da1e2c704"
+    "836a76a7b78dc93590024fa60842fe43fd476291703aa69974a2322e835f37c6acd4f22d4b152f15039b0001"
+    "030878e6000000000000010422512015c21d32164c3c90f423cd5ff5db0f17f59a999d40b67bcca892e4f7cb"
+    "2424140105204080b32bf5b80bbe6ddc54488bf5f28306c8dad596dfeedf0d11707e617b1ffa210708c426b5"
+    "6c36540026267f37e3ca01126ac96da1e2c704836a76a7b78dc935901100b8688df157000080010000800000"
+    "008021074080b32bf5b80bbe6ddc54488bf5f28306c8dad596dfeedf0d11707e617b1ffa0d002e36efc30100"
+    "00000100000021074fa60842fe43fd476291703aa69974a2322e835f37c6acd4f22d4b152f15039b110073c5"
+    "da0a5700008001000080000000802208021e4240bacca55cb106a7546000c79549350df61064a51d2d6154f5"
+    "7bec0d75fb420208c426b56c36540026267f37e3ca01126ac96da1e2c704836a76a7b78dc93590024fa60842"
+    "fe43fd476291703aa69974a2322e835f37c6acd4f22d4b152f15039b00010308409c00000000000001042251"
+    "204121b67d9fa26ed1eed5264219c418e35b7f663010b44813328e8d462548c0b000";
+
+// The request shown last, among the call's exchanges (ws-plaude/silent#134).
+auto lastRequest(const QList<plugin::KeyExchange> &seen) -> QByteArray {
+    for (auto it = seen.crbegin(); it != seen.crend(); ++it) {
+        if (it->direction == plugin::ExchangeDirection::Request) {
+            return it->bytes;
+        }
+    }
+    return {};
+}
+
+// A MuSig2 call on a QR key, through IKeys, refused by its device with `code`: on the
+// nonce cache route (`cache`, the key's device advertising the cache bit, a nonce
+// preparation) or on round 1 of the two-round signing.
+void qrMusigRefusal(bool cache, quint8 code) {
+    auto module = std::make_unique<keys::KeysModule>();
+    module->setNetwork(Network::Regtest);
+    (void)module->rust()->remove_key(FINGERPRINT, true);
+    require(module->rust()->add_key(FINGERPRINT, "QR device").is_ok &&
+                module->rust()->add_route(FINGERPRINT, KeyRouteKind::Qr).is_ok &&
+                module->rust()->register_descriptor(FINGERPRINT, POLICY).is_ok,
+            "the QR key holds the MuSig2 wallet");
+    if (cache) {
+        auto recorded = module->rust()->record_device(LiveDevice{
+            .device_id = "qr-device",
+            .fingerprint = FINGERPRINT,
+            .kind = "qr",
+            .brand = "fixture",
+            .model = "",
+            .serial = "",
+            .module = "qr",
+            .version = "1.0",
+            .capabilities = (1U << 0) | (1U << 1) | (1U << 3) | (1U << 4),
+        });
+        require(recorded.is_ok, "the key's QR device advertises the nonce cache");
+    }
+    auto *host = dynamic_cast<HostImpl *>(Host::get());
+    require(host != nullptr, "the real host");
+    host::KeysHandle caller(host, callerModule(), module->bus());
+    ExchangeSpy exchanges;
+    QObject::connect(&caller, &IKeys::exchange, &exchanges, &ExchangeSpy::onExchange,
+                     qontrol::UNIQUE);
+    BusSpy spy;
+    QObject::connect(&caller, &IKeys::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
+    auto req = caller.newRequest();
+    const auto psbt = QString::fromLatin1(MUSIG_ATTEMPT_PSBT);
+    if (cache) {
+        caller.prepareNonces(req, plugin::Network::Regtest, psbt, QString::fromLatin1(POLICY),
+                             QString::fromLatin1(FINGERPRINT));
+    } else {
+        caller.sign(req, plugin::Network::Regtest, psbt, {QString::fromLatin1(POLICY)}, QString(),
+                    QString::fromLatin1(FINGERPRINT));
+    }
+    auto *flow = waitForFlow();
+    require(flow != nullptr, "the MuSig2 call opens the key's QR window");
+    // The window starts its route once it is shown.
+    pump(200);
+    auto *engine = flow->findChild<qr::QrEngine *>();
+    require(engine != nullptr, "the QR window decodes the device's replies");
+    QElapsedTimer shown;
+    shown.start();
+    while (lastRequest(exchanges.seen).isEmpty() && shown.elapsed() < 10000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    const auto request = lastRequest(exchanges.seen);
+    require(request.size() > 10, "the window shows its bipqr request");
+    const auto type = static_cast<quint8>(request.at(7)) & 0x3F;
+    require(cache ? type == 0x06 : type == 0x05,
+            "a nonce preparation on the cache route, a Signing request on round 1");
+    const auto id = static_cast<quint16>((static_cast<quint8>(request.at(8)) << 8) |
+                                         static_cast<quint8>(request.at(9)));
+    engine->response({.payload = errorResponse(type, id, code, "refused by the device")});
+    QElapsedTimer answered;
+    answered.start();
+    while (spy.errors == 0 && answered.elapsed() < 10000) {
+        QApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    require(spy.errors == 1 && spy.lastKind == plugin::SignError::DeviceRefused &&
+                spy.lastCode == code,
+            "the caller gets the device's refusal as DeviceRefused with its code");
+    for (auto *open : openFlows()) {
+        open->reject();
+    }
+    pump(200);
 }
 
 // Reckless's own failures keep their kinds, with no device code.
@@ -532,6 +647,11 @@ void qrRegistrationSmoke() {
     ownFailures();
     qrExchanges(false);
     qrExchanges(true);
+    for (bool cache : {true, false}) {
+        for (quint8 code : {plugin::DEVICE_MUSIG_SESSION, plugin::DEVICE_USER_DECLINED}) {
+            qrMusigRefusal(cache, code);
+        }
+    }
 }
 
 } // namespace smoke
