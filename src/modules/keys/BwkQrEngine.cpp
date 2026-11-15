@@ -220,7 +220,7 @@ void BwkQrEngine::acceptMusig(rust::Box<::QrResponse> decoded) {
             ::qr_musig_accept(rust::Box<::QrResponse>::from_raw(decoded), fingerprint, policy);
         // NOLINTNEXTLINE(performance-no-int-to-ptr)
         emit musigAccepted(accepted.is_ok, KeysModule::toQt(accepted.error), accepted.musig_session,
-                           KeysModule::toQt(accepted.psbt_v2_hex));
+                           KeysModule::toQt(accepted.psbt_v2_hex), accepted.device_code);
     });
     connect(thread, &QThread::finished, thread, &QObject::deleteLater, qontrol::UNIQUE);
     thread->start();
@@ -252,12 +252,22 @@ void BwkQrEngine::onMusigSignReady(quintptr material) {
 }
 
 void BwkQrEngine::onMusigAccepted(bool is_ok, const QString &message, bool musig_session,
-                                  const QString &psbt_v2_hex) {
+                                  const QString &psbt_v2_hex, quint8 device_code) {
     if (m_cancelled) {
         return;
     }
     if (!is_ok) {
-        emit error(musig_session ? qr::QrError::MusigSession : qr::QrError::RequestFailed, message);
+        // The device's own refusal carries its code (ws-plaude/silent#135): its 0x0D is
+        // a lost session, which the route answers DeviceRefused 0x0D; any other code is
+        // its refusal of the request. Reckless's own session failures keep MusigSession.
+        if (device_code == plugin::DEVICE_MUSIG_SESSION) {
+            emit error(qr::QrError::MusigSession, message, device_code);
+        } else if (device_code != 0) {
+            emit error(qr::QrError::DeviceRefused, message, device_code);
+        } else {
+            emit error(musig_session ? qr::QrError::MusigSession : qr::QrError::RequestFailed,
+                       message);
+        }
         return;
     }
     if (psbt_v2_hex.isEmpty()) {

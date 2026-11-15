@@ -563,6 +563,18 @@ fn sent_psbt(message: &[u8]) -> Result<Psbt, Error> {
     }
 }
 
+/// The device's bipqr error code when `payload` is its error response, as a MuSig2
+/// answer handed to the cache may be (ws-plaude/silent#135).
+pub fn device_error_code(payload: &[u8]) -> Option<u8> {
+    match decode(payload) {
+        Ok(Message::Response(Response {
+            body: response::Body::Error(error),
+            ..
+        })) => Some(u8::from(error.error)),
+        _ => None,
+    }
+}
+
 /// A decoded and validated signing-flow QR response.
 #[derive(Debug)]
 pub enum QrResponse {

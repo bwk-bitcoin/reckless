@@ -1027,6 +1027,7 @@ pub fn qr_musig_accept(
         error,
         musig_session,
         psbt_v2_hex: String::new(),
+        device_code: 0,
     };
     let Ok(fingerprint) = Fingerprint::from_str(fingerprint) else {
         return failed(format!("invalid key fingerprint: {fingerprint}"), false);
@@ -1038,13 +1039,22 @@ pub fn qr_musig_accept(
         Ok(_) => return failed("expected a cached MuSig answer".to_string(), false),
         Err(error) => return failed(error.to_string(), false),
     };
+    // The device's own error response still goes to the cache, which drops the session
+    // it names; its code reaches the caller with the refusal (ws-plaude/silent#135).
+    let device_code = qr::device_error_code(&answer.payload);
     let signed = match musig_sessions::accept_answer(fingerprint, policy, answer) {
         Ok(signed) => signed,
         Err(error) => {
-            return failed(
+            let mut result = failed(
                 error.to_string(),
                 matches!(error, musig_sessions::SigningError::SessionLost(_)),
-            )
+            );
+            if let Some(code) = device_code {
+                // The device refused: its refusal, not Reckless's own session state.
+                result.device_code = code;
+                result.musig_session = false;
+            }
+            return result;
         }
     };
     let psbt_v2_hex = match signed.map(bwk::bwk_tx::bwk_psbt::PsbtV2::from_bitcoin_psbt) {
@@ -1064,6 +1074,7 @@ pub fn qr_musig_accept(
         error: String::new(),
         musig_session: false,
         psbt_v2_hex,
+        device_code: 0,
     }
 }
 

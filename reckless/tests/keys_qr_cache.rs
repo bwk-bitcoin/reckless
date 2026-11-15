@@ -232,11 +232,16 @@ struct FundedAttempt {
 
 impl FundedAttempt {
     fn new(policy: &str) -> Self {
+        Self::named(policy, "attempt")
+    }
+
+    /// A config of its own name, for a case running beside the others.
+    fn named(policy: &str, tag: &str) -> Self {
         assert!(
             reckless::validate_musig_descriptor(policy.to_string()).is_ok,
             "the account policy is accepted"
         );
-        let name = format!("qr_cache_attempt_{}", std::process::id());
+        let name = format!("qr_cache_{tag}_{}", std::process::id());
         let config = reckless::new_config(
             name.clone(),
             FfiNetwork::Regtest,
@@ -410,4 +415,127 @@ fn accept_signed_progress_reports_the_allocation_right_after_it_succeeds() {
         "the attempt reads the allocation back"
     );
     fixture.finish();
+}
+
+// ===== A device's own refusal (ws-plaude/silent#135) =====
+
+// Pairs of their own, so these cases' caches never mix with the others'.
+const MNEMONIC_G: &str =
+    "jelly better achieve collect unaware mountain thought cargo oxygen act hood bridge";
+const MNEMONIC_H: &str = "gravity machine north sort system female filter attitude volume fold \
+     club stay feature office ecology stable narrow fog";
+const MNEMONIC_I: &str = "hamster diagram private dutch cause delay private meat slide toddler \
+     razor book happy fancy gospel tennis maple dilemma loan word shrug inflict delay length";
+const MNEMONIC_J: &str = "scheme spot photo card baby mountain device kick cradle pact join borrow";
+
+/// The device's error response to the wire request it was shown.
+fn refusal(payload: &[u8], error: response::Error) -> Vec<u8> {
+    let request = wire_request(payload);
+    encode_response(&bipqr::ll::Response {
+        id: request.id,
+        body: response::Body::Error(response::ErrorBody {
+            message_type: request.body.message_type(),
+            error,
+            message: "refused by the device".to_string(),
+        }),
+    })
+    .expect("encode the refusal")
+}
+
+/// The device's refusal reaches the caller with its code, whichever way it goes: its
+/// 0x0D goes to the cache, which drops the session it names, and comes back with the
+/// code; any other refusal is the session's own, the request ended with the code.
+fn check_refusal(decoded: Box<reckless::QrResponse>, code: u8, fingerprint: &str, policy: &str) {
+    if code != 0x0d {
+        assert!(!decoded.is_ok(), "the session refuses the answer at once");
+        assert_eq!(
+            (decoded.error_kind(), decoded.device_error_code()),
+            (reckless::QrErrorKind::DeviceRefused, code),
+            "the device's refusal keeps its code: {}",
+            decoded.get_error()
+        );
+        return;
+    }
+    assert!(
+        decoded.is_ok(),
+        "a device's lost session goes to the cache: {}",
+        decoded.get_error()
+    );
+    let accepted = reckless::qr_musig_accept(decoded, fingerprint, policy);
+    assert!(!accepted.is_ok, "a refusal prepares or signs nothing");
+    assert_eq!(
+        (accepted.device_code, accepted.musig_session),
+        (code, false),
+        "the device's 0x0D keeps its code, not Reckless's own lost session: {}",
+        accepted.error
+    );
+}
+
+#[test]
+fn a_devices_refusal_of_a_nonce_preparation_keeps_its_code() {
+    let dir = datadir();
+    assert!(dir.exists(), "the datadir fixture is set");
+    let (a, b) = signers_on(MNEMONIC_G, MNEMONIC_H);
+    let policy = account_policy(&a, &b);
+    let fingerprint = a.fingerprint().to_string();
+    let mut module = reckless::new_keys_module(FfiNetwork::Regtest);
+    for (error, code) in [
+        (response::Error::MusigSession, 0x0d),
+        (response::Error::UserDeclined, 0x01),
+    ] {
+        let material = reckless::qr_musig_prepare_material(&fingerprint, &policy);
+        let message = module.qr_request_prepare_musig(material);
+        assert!(message.is_ok, "the prepare request: {}", message.error);
+        let decoded = module.qr_decode_response(&refusal(&message.payload, error));
+        check_refusal(decoded, code, &fingerprint, &policy);
+    }
+    // Reckless's own failure, an answer no device sent, keeps no code.
+    let material = reckless::qr_musig_prepare_material(&fingerprint, &policy);
+    let message = module.qr_request_prepare_musig(material);
+    assert!(message.is_ok, "the prepare request: {}", message.error);
+    let decoded = module.qr_decode_response(b"not a protocol message");
+    let accepted = reckless::qr_musig_accept(decoded, &fingerprint, &policy);
+    assert!(!accepted.is_ok && accepted.device_code == 0);
+}
+
+#[test]
+fn a_devices_refusal_of_a_cached_signing_request_keeps_its_code() {
+    let dir = datadir();
+    assert!(dir.exists(), "the datadir fixture is set");
+    let (a, b) = signers_on(MNEMONIC_I, MNEMONIC_J);
+    let policy = account_policy(&a, &b);
+    let mut module = reckless::new_keys_module(FfiNetwork::Regtest);
+    let mut device_a = peer(&a);
+    let mut device_b = peer(&b);
+    for (error, code) in [
+        (response::Error::MusigSession, 0x0d),
+        (response::Error::UserDeclined, 0x01),
+    ] {
+        prepare_cached_session(&mut module, &mut device_a, &a, &policy);
+        prepare_cached_session(&mut module, &mut device_b, &b, &policy);
+        let fixture = FundedAttempt::named(&policy, "refusal");
+        let active = fixture.account.active_attempt();
+        assert!(active.is_ok, "the active attempt is open: {}", active.error);
+        let routes = vec![
+            reckless::MusigSignerRoute {
+                fingerprint: a.fingerprint().to_string(),
+                route: KeyRouteKind::Qr,
+            },
+            reckless::MusigSignerRoute {
+                fingerprint: b.fingerprint().to_string(),
+                route: KeyRouteKind::Qr,
+            },
+        ];
+        let signing = reckless::qr_musig_sign_material(
+            &a.fingerprint().to_string(),
+            &policy,
+            &active.psbt_v2_hex,
+            routes,
+        );
+        let message = module.qr_request_sign_musig(signing);
+        assert!(message.is_ok, "the signature request: {}", message.error);
+        // The one-round request of the nonce cache, refused by the device.
+        let decoded = module.qr_decode_response(&refusal(&message.payload, error));
+        check_refusal(decoded, code, &a.fingerprint().to_string(), &policy);
+    }
 }

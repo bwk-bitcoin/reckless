@@ -33,7 +33,7 @@ signals:
     void musigPrepareReady(quintptr material);
     void musigSignReady(quintptr material);
     void musigAccepted(bool is_ok, const QString &message, bool musig_session,
-                       const QString &psbt_v2_hex);
+                       const QString &psbt_v2_hex, quint8 device_code);
 
 public slots:
     void response(const qr::QrResponse &response) override;
@@ -41,7 +41,7 @@ public slots:
     void onMusigPrepareReady(quintptr material);
     void onMusigSignReady(quintptr material);
     void onMusigAccepted(bool is_ok, const QString &message, bool musig_session,
-                         const QString &psbt_v2_hex);
+                         const QString &psbt_v2_hex, quint8 device_code);
 
 protected:
     // Hands the session's request on, or says why it could not be built.

@@ -15,6 +15,8 @@
 #include <memory>
 #include <utility>
 
+#include <QByteArray>
+
 namespace smoke {
 namespace {
 
@@ -72,16 +74,41 @@ public:
         return m_count;
     }
 
+    [[nodiscard]] auto kind() const -> qr::QrError {
+        return m_kind;
+    }
+
+    [[nodiscard]] auto code() const -> quint8 {
+        return m_code;
+    }
+
 public slots:
 
-    // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-    void onError([[maybe_unused]] qr::QrError kind, [[maybe_unused]] const QString &message) {
+    void onError(qr::QrError kind, [[maybe_unused]] const QString &message, quint8 device_code) {
         ++m_count;
+        m_kind = kind;
+        m_code = device_code;
     }
 
 private:
     int m_count = 0;
+    qr::QrError m_kind = qr::QrError::RequestFailed;
+    quint8 m_code = 0;
 };
+
+// The device's bipqr error response to `request` (ENCODING.md): MAGIC, VERSION 1, the
+// response-error MSG_TYPE of the request's TYPE, its REQUEST_ID, ERROR, ERROR_MESSAGE.
+auto refusal(const QByteArray &request, quint8 code) -> QByteArray {
+    QByteArray message("refused by the device");
+    QByteArray bytes("BIPXXX");
+    bytes.append(char(0x01));
+    bytes.append(char(0xC0 | (static_cast<quint8>(request.at(7)) & 0x3F)));
+    bytes.append(request.mid(8, 2));
+    bytes.append(char(code));
+    bytes.append(char(message.size()));
+    bytes.append(message);
+    return bytes;
+}
 
 // Spins the event loop until `done` holds or the budget runs out.
 void waitUntil(const std::function<bool()> &done) {
@@ -131,6 +158,26 @@ void qrCacheExchangeSmoke() {
     waitUntil([&errors] { return errors.count() > 0; });
     require(errors.count() == 1, "the refused answer delivers an error outcome");
     require(requests.count() == 1, "a refused answer never issues another request");
+
+    // ws-plaude/silent#135: the device's own error response to a nonce preparation
+    // reaches the route with its code: its 0x0D as a lost session with the code (the
+    // route then answers DeviceRefused 0x0D), its 0x01 as its refusal.
+    for (auto [code, kind] : {std::pair{quint8(0x0D), qr::QrError::MusigSession},
+                              std::pair{quint8(0x01), qr::QrError::DeviceRefused}}) {
+        RequestSpy asked;
+        QObject::connect(&engine, &qr::QrEngine::request, &asked, &RequestSpy::onRequest,
+                         qontrol::UNIQUE);
+        auto before = errors.count();
+        engine.prepareMusig(QString::fromLatin1(FINGERPRINT), QString::fromLatin1(POLICY));
+        waitUntil([&asked] { return asked.count() > 0; });
+        require(asked.count() == 1 && asked.payload().startsWith("BIPXXX"),
+                "a new preparation request");
+        engine.response({.payload = refusal(asked.payload(), code)});
+        waitUntil([&errors, before] { return errors.count() > before; });
+        require(errors.count() == before + 1 && errors.kind() == kind && errors.code() == code,
+                "the device's refusal keeps its kind and code");
+        QObject::disconnect(&engine, &qr::QrEngine::request, &asked, &RequestSpy::onRequest);
+    }
 }
 
 } // namespace smoke

@@ -1330,6 +1330,9 @@ mod ffi {
         /// The session the attempt was bound to is gone and signing must restart.
         pub musig_session: bool,
         pub psbt_v2_hex: String,
+        /// The device's bipqr error code when the answer was its own error response
+        /// (ws-plaude/silent#135), 0 otherwise: 0x0D its lost session, 0x01 a decline.
+        pub device_code: u8,
     }
 
     #[derive(Debug, Clone)]
