@@ -446,6 +446,26 @@ pub fn qr_ready(fingerprint: Fingerprint, policy_text: &str, real: &Psbt) -> Res
     Ok(false)
 }
 
+/// Whether this attempt holds an active QR cache allocation, its nonces taken from a
+/// prepared session (read from the in-memory snapshot only). A round 2 whose nonces
+/// came from a normal round 1 has none, and signs by the normal request
+/// (ws-plaude/silent#138).
+pub fn qr_allocated(
+    fingerprint: Fingerprint,
+    policy_text: &str,
+    real: &Psbt,
+) -> Result<bool, String> {
+    let parsed = descriptor(policy_text)?;
+    let binding = binding(real, &parsed, fingerprint)?;
+    let Some(state) = crate::keys::musig_sessions::snapshot(fingerprint) else {
+        return Ok(false);
+    };
+    Ok(!state.is_retired(binding, RouteKind::Qr)
+        && state.allocated.iter().any(|allocation| {
+            allocation.binding == binding && allocation.provider == RouteKind::Qr
+        }))
+}
+
 /// Takes the oldest prepared session covering the transaction for this attempt and
 /// inserts its nonces. Nothing is visible until the allocation is durable, and a
 /// taken session never returns to availability. Idempotent on the active allocation.

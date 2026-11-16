@@ -109,6 +109,11 @@ pub struct SigningCandidate {
     /// The key's route supports transaction-independent cache preparation. False for
     /// a QR key whose recorded device does not advertise the cache capability.
     pub cache_supported: bool,
+    /// A QR key signs this PSBT on its device's cache route: every MuSig policy it
+    /// still owes nonces for has a prepared session or an allocation, and every one it
+    /// owes only partial signatures for holds this attempt's allocation. A round 2
+    /// after a normal round 1 takes the normal request (ws-plaude/silent#138).
+    pub cache_route: bool,
 }
 
 /// What the signer picker is built from for one PSBT.
@@ -472,6 +477,38 @@ impl KeyManager {
         Ok(!pending || ready)
     }
 
+    /// Whether a QR key's signing of `real` belongs on its cache route: a pending
+    /// round 1 needs a prepared session or an allocation, a pending round 2 needs this
+    /// attempt's allocation. Nothing pending is no cache route.
+    fn qr_cache_route(
+        fingerprint: Fingerprint,
+        real: &Psbt,
+        policies: &BTreeMap<String, MusigStatus>,
+    ) -> Result<bool, Error> {
+        let mut pending = false;
+        for (policy, status) in policies {
+            let Some(own) = status
+                .cosigners
+                .iter()
+                .find(|own| own.fingerprint == fingerprint)
+            else {
+                continue;
+            };
+            let ready = if own.nonces < own.expected {
+                musig_sessions::qr_ready(fingerprint, policy, real)
+            } else if own.partial_sigs < own.expected {
+                musig_sessions::qr_allocated(fingerprint, policy, real)
+            } else {
+                continue;
+            };
+            if !ready.map_err(Error::State)? {
+                return Ok(false);
+            }
+            pending = true;
+        }
+        Ok(pending)
+    }
+
     /// Whether the USB provider already holds an allocation bound to this attempt.
     fn usb_allocation(&self, fingerprint: Fingerprint, policy: &str, real: &Psbt) -> bool {
         let Ok(parsed) = musig_sessions::descriptor(policy) else {
@@ -644,6 +681,7 @@ impl KeyManager {
             signatures_done: false,
             cache_ready: true,
             cache_supported: true,
+            cache_route: false,
         };
         let Some(record) = record else {
             return candidate;
@@ -1192,6 +1230,9 @@ impl KeyManagerImpl for KeyManager {
                 )?;
                 candidate.cache_supported =
                     self.cache_support(candidate.fingerprint, candidate.route);
+                candidate.cache_route = candidate.route == Some(RouteKind::Qr)
+                    && candidate.cache_supported
+                    && Self::qr_cache_route(candidate.fingerprint, &real, &policies)?;
                 let cached = round1
                     && candidate.route == Some(RouteKind::Usb)
                     && candidate.device_id.is_empty();

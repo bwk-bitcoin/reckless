@@ -1313,6 +1313,9 @@ mod ffi {
         pub cache_ready: bool,
         /// The key's route supports transaction-independent cache preparation.
         pub cache_supported: bool,
+        /// A QR key signs this PSBT on its device's cache route; a round 2 after a
+        /// normal round 1 does not (ws-plaude/silent#138).
+        pub cache_route: bool,
     }
 
     /// One pending signer's plan route, for the first signature request to take

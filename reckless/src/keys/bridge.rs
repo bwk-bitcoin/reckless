@@ -2281,6 +2281,7 @@ fn to_ffi_signing_candidate(candidate: &SigningCandidate) -> ffi::SigningCandida
         signatures_done: candidate.signatures_done,
         cache_ready: candidate.cache_ready,
         cache_supported: candidate.cache_supported,
+        cache_route: candidate.cache_route,
     }
 }
 

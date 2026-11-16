@@ -14,7 +14,7 @@ pub use crate::keys::{
     musig_sessions::{
         hot_provider::{create_hot, first_request_hot, publish_hot, sign_hot_session},
         qr_provider::{
-            accept_answer, prepare_material, qr_ready, sign_material, QrMusigAnswer,
+            accept_answer, prepare_material, qr_allocated, qr_ready, sign_material, QrMusigAnswer,
             QrPreparationMaterial, QrSigningMaterial,
         },
     },

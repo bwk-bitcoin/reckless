@@ -637,3 +637,183 @@ fn a_cached_spend_signed_before_signs_again_in_a_fresh_attempt() {
     assert!(!late.is_ok, "a request for the spent attempt stays refused");
     fixture.finish();
 }
+
+// ===== ws-plaude/silent#138: round 2 after a normal round 1 =====
+
+const MNEMONIC_M: &str =
+    "cat swing flag economy stadium alone churn speed unique patch report train";
+const MNEMONIC_N: &str =
+    "vessel ladder alter error federal sibling chat ability sun glass valve picture";
+// The cached case's own pair: the two cases never share a fingerprint's cache.
+const MNEMONIC_O: &str =
+    "picnic tissue steel giraffe airport asthma island room bicycle notice inflict symptom";
+const MNEMONIC_P: &str = "remain cradle actor select derive fly other peasant quiz small zoo siren";
+
+/// The module's QR key for `signer`, its device recorded with the MuSig2 and nonce
+/// cache capabilities, holding `policy`.
+fn cache_capable_qr_key(module: &mut reckless::KeysModule, signer: &HotSigner, policy: &str) {
+    let fingerprint = signer.fingerprint().to_string();
+    let added = module.add_key(&fingerprint, "QR device");
+    assert!(added.is_ok, "add the key: {}", added.error);
+    let route = module.add_route(&fingerprint, KeyRouteKind::Qr);
+    assert!(route.is_ok, "add the QR route: {}", route.error);
+    let device = module.record_device(reckless::LiveDevice {
+        device_id: String::new(),
+        fingerprint: fingerprint.clone(),
+        kind: "qr".into(),
+        brand: String::new(),
+        model: "QR device".into(),
+        serial: String::new(),
+        module: "keys".into(),
+        version: "1".into(),
+        capabilities: reckless::keys::CAPABILITY_ORDINARY
+            | reckless::keys::CAPABILITY_TAPROOT
+            | reckless::keys::CAPABILITY_MUSIG
+            | reckless::keys::CAPABILITY_MUSIG_CACHE,
+    });
+    assert!(device.is_ok, "record the device: {}", device.error);
+    let registered = module.register_descriptor(&fingerprint, policy);
+    assert!(
+        registered.is_ok,
+        "register the wallet: {}",
+        registered.error
+    );
+}
+
+fn plan_candidate(
+    module: &reckless::KeysModule,
+    psbt: &str,
+    signer: &HotSigner,
+) -> reckless::SigningCandidate {
+    let plan = module.signing_plan(psbt);
+    assert!(plan.is_ok, "the signing plan: {}", plan.error);
+    let fingerprint = signer.fingerprint().to_string();
+    plan.candidates
+        .into_iter()
+        .find(|candidate| candidate.fingerprint.eq_ignore_ascii_case(&fingerprint))
+        .expect("the key is a candidate")
+}
+
+/// One MuSig2 round of `signer` over `psbt` (a v2 hex), as its device answers a normal
+/// signing request.
+fn hot_round(signer: &HotSigner, policy: &str, psbt: &str) -> String {
+    let v2 = bwk::bwk_tx::bwk_psbt::PsbtV2::deserialize(&hex::decode(psbt).expect("psbt hex"))
+        .expect("psbt v2");
+    let mut real = v2.into_bitcoin_psbt().expect("bitcoin psbt");
+    let descriptor = reckless::keys::musig_sessions::descriptor(policy).expect("wallet descriptor");
+    signer
+        .inner_sign(&mut real, &descriptor)
+        .expect("the device's round");
+    let signed = bwk::bwk_tx::bwk_psbt::PsbtV2::from_bitcoin_psbt(real).expect("back to v2");
+    let merged = reckless::merge_signed_psbt(
+        psbt,
+        &hex::encode(signed.serialize().expect("serialize the answer")),
+    );
+    assert!(merged.is_ok, "the round merges: {}", merged.error);
+    merged.psbt_v2_hex
+}
+
+#[test]
+fn a_normal_round_two_on_a_cache_capable_qr_key_takes_the_normal_request() {
+    let dir = datadir();
+    assert!(dir.exists(), "the datadir fixture is set");
+    let (a, b) = signers_on(MNEMONIC_M, MNEMONIC_N);
+    let policy = account_policy(&a, &b);
+    let mut module = reckless::new_keys_module(FfiNetwork::Regtest);
+    cache_capable_qr_key(&mut module, &a, &policy);
+    let fixture = FundedAttempt::named(&policy, "normal_round_two");
+    let active = fixture.account.active_attempt();
+    assert!(active.is_ok, "the active attempt is open: {}", active.error);
+    let round_one = active.psbt_v2_hex.clone();
+
+    // Nothing prepared: round 1 is a normal request, as on a device without the cache.
+    let candidate = plan_candidate(&module, &round_one, &a);
+    assert!(candidate.cache_supported, "the device advertises the cache");
+    assert!(
+        !candidate.cache_route,
+        "no prepared session: round 1 takes the normal request"
+    );
+
+    // Round 1 by the normal route: each device's public nonces, no cache allocation.
+    let nonces = hot_round(&b, &policy, &hot_round(&a, &policy, &round_one));
+    let candidate = plan_candidate(&module, &nonces, &a);
+    assert!(candidate.nonces_done, "the key gave its nonces");
+    assert!(
+        candidate.cache_supported,
+        "the device still advertises the cache"
+    );
+    assert!(
+        candidate.cache_ready,
+        "nothing left to prepare: the condition that sent round 2 to the cache before"
+    );
+    assert!(
+        !candidate.cache_route,
+        "round 2 after a normal round 1 takes the normal request, not the cache"
+    );
+    // The normal request carries the complete nonce transcript, and the device's
+    // partial signatures merge.
+    let request =
+        module.qr_request_sign(&a.fingerprint().to_string(), vec![policy.clone()], &nonces);
+    assert!(
+        request.is_ok,
+        "the normal round 2 request: {}",
+        request.error
+    );
+    let signed = hot_round(&a, &policy, &nonces);
+    let candidate = plan_candidate(&module, &signed, &a);
+    assert!(
+        candidate.signatures_done && !candidate.cache_route,
+        "the key's partial signatures are in"
+    );
+    fixture.finish();
+}
+
+#[test]
+fn a_cached_spend_on_a_cache_capable_qr_key_still_takes_the_cache_route() {
+    let dir = datadir();
+    assert!(dir.exists(), "the datadir fixture is set");
+    let (a, b) = signers_on(MNEMONIC_O, MNEMONIC_P);
+    let policy = account_policy(&a, &b);
+    let mut module = reckless::new_keys_module(FfiNetwork::Regtest);
+    cache_capable_qr_key(&mut module, &a, &policy);
+    let mut device_a = peer(&a);
+    let mut device_b = peer(&b);
+    prepare_cached_session(&mut module, &mut device_a, &a, &policy);
+    prepare_cached_session(&mut module, &mut device_b, &b, &policy);
+    let fixture = FundedAttempt::named(&policy, "cached_route");
+    let active = fixture.account.active_attempt();
+    assert!(active.is_ok, "the active attempt is open: {}", active.error);
+    let psbt = active.psbt_v2_hex.clone();
+
+    let candidate = plan_candidate(&module, &psbt, &a);
+    eprintln!(
+        "DEBUG route={:?} can_sign={} unusable={:?} supported={} ready={} nonces_done={}",
+        candidate.route,
+        candidate.can_sign,
+        candidate.unusable,
+        candidate.cache_supported,
+        candidate.cache_ready,
+        candidate.nonces_done
+    );
+    assert!(
+        candidate.cache_route,
+        "a prepared session covers the transaction: the cache route"
+    );
+    // The request allocates this attempt's session: the transaction stays on the cache
+    // route until its answer.
+    let message = cached_request(&mut module, &a, &b, &policy, &psbt);
+    assert!(message.is_ok, "the cached request: {}", message.error);
+    let candidate = plan_candidate(&module, &psbt, &a);
+    assert!(
+        candidate.cache_route,
+        "the attempt's allocation keeps it on the cache route"
+    );
+    let decoded = module.qr_decode_response(&answer(&mut device_a, &message.payload));
+    let accepted = reckless::qr_musig_accept(decoded, &a.fingerprint().to_string(), &policy);
+    assert!(
+        accepted.is_ok && !accepted.psbt_v2_hex.is_empty(),
+        "the cached spend signs: {}",
+        accepted.error
+    );
+    fixture.finish();
+}
