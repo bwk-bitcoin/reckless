@@ -530,7 +530,9 @@ void qrMusigRefusal(bool cache, quint8 code) {
             .serial = "",
             .module = "qr",
             .version = "1.0",
-            .capabilities = (1U << 0) | (1U << 1) | (1U << 3) | (1U << 4),
+            // bipqr d7363e0: BIP-380 descriptors, SegWit and Taproot miniscript, MuSig2
+            // and the nonce cache (ws-plaude/silent#139).
+            .capabilities = (1U << 0) | (1U << 2) | (1U << 3) | (1U << 7) | (1U << 8),
         });
         require(recorded.is_ok, "the key's QR device advertises the nonce cache");
     }

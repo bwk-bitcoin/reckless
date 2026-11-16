@@ -1139,8 +1139,9 @@ mod ffi {
         pub fingerprint: String,
         /// Empty when the device did not report one.
         pub version: String,
-        /// Capability bits: 0 ordinary, 1 Taproot, 2 silent payments, 3 MuSig2. Zero
-        /// unless the device is Supported.
+        /// Capability bits in bipqr's layout (`capability_bits()`): SegWit and Taproot
+        /// miniscript, silent payment sends and accounts, MuSig2. Zero unless the
+        /// device is Supported.
         pub capabilities: u32,
         pub state: HwiDeviceState,
         /// Pairing code when Locked, the reason when Unsupported, else empty.
@@ -1195,8 +1196,21 @@ mod ffi {
         pub module: String,
         /// Firmware version, empty for a USB device.
         pub version: String,
-        /// Last reported bwk-qr capability bits, including ordinary/Taproot for USB.
+        /// Last reported capability bits in bipqr's layout (`capability_bits()`), a
+        /// USB device's described with the same bits.
         pub capabilities: u32,
+    }
+
+    /// Reckless's device capability bits, bipqr's `CAPABILITIES` layout
+    /// (ws-plaude/silent#139), for the C++ side to build and read them.
+    #[derive(Debug, Clone, Copy)]
+    pub struct CapabilityBits {
+        /// Miniscript under SegWit v0, the ordinary signing.
+        pub ordinary: u32,
+        pub taproot: u32,
+        /// Silent payment sends and accounts, as one support reports them.
+        pub silent_payments: u32,
+        pub musig2: u32,
     }
 
     /// A device the signer bus can see right now, fed in from the hwi module.
@@ -1213,7 +1227,7 @@ mod ffi {
         pub module: String,
         /// Firmware version, empty for a USB device.
         pub version: String,
-        /// Explicit ordinary, Taproot, silent payments and MuSig2 capability bits.
+        /// Capability bits in bipqr's layout (`capability_bits()`).
         pub capabilities: u32,
     }
 
@@ -2771,8 +2785,12 @@ mod ffi {
     // ===== Keys Module Methods =====
 
     extern "Rust" {
-        /// Whether a device's capability bits include silent payments.
+        /// Whether a device's capability bits include silent payment accounts.
         fn supports_silent_payments(capabilities: u32) -> bool;
+        /// Whether a device's capability bits include Unregister Descriptor.
+        fn supports_unregister(capabilities: u32) -> bool;
+        /// The capability bits, bipqr's layout.
+        fn capability_bits() -> CapabilityBits;
         fn new_keys_module(network: Network) -> Box<KeysModule>;
         fn is_ok(self: &KeysModule) -> bool;
         fn get_error(self: &KeysModule) -> String;
@@ -3091,8 +3109,11 @@ mod ffi {
         // Each builder makes its request the outstanding one a response is checked
         // against.
         fn qr_request_get_xpubs(self: &mut KeysModule, paths: Vec<String>) -> QrMessageResult;
+        /// The form of `descriptor` follows the bits of the QR device recorded for
+        /// `fingerprint` (ws-plaude/silent#139).
         fn qr_request_register_descriptor(
             self: &mut KeysModule,
+            fingerprint: &str,
             descriptor: &str,
         ) -> QrMessageResult;
         /// Asks the device to forget the wallet `descriptor`: its alias alone
@@ -4011,7 +4032,7 @@ pub use keys::{
         KeyFilePreview, KeysModule, LedgerNonceFetch, QrMusigPrepare, QrMusigSign, QrResponse,
         SealedHotKey,
     },
-    supports_silent_payments,
+    capability_bits, supports_silent_payments, supports_unregister,
 };
 pub use money::{normalize_fee_rate, parse_btc_amount, parse_fee_input, send_amounts};
 

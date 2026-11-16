@@ -167,6 +167,8 @@ private:
     // The key has a QR route: each wallet offers to be unregistered from its device
     // (ws-plaude/silent#130).
     bool m_qr_route = false;
+    // The key's QR device advertises Unregister Descriptor (ws-plaude/silent#139).
+    bool m_qr_unregister = false;
     QString m_register_descriptor;
     ReqId m_register_req = 0;
 

@@ -42,7 +42,7 @@ use crate::{
         musig_sessions::{
             Host, QrMusigAnswer, QrPreparationMaterial, QrSigningMaterial, PEER_CAPABILITIES,
         },
-        psbt,
+        psbt, CAPABILITY_BIP380_DESCRIPTORS, CAPABILITY_BIP388_POLICIES,
     },
 };
 
@@ -132,6 +132,9 @@ struct Outstanding {
 pub struct QrSession {
     counter: u16,
     outstanding: Option<Outstanding>,
+    /// The capability bits of the device the next request goes to, `None` (or 0) when
+    /// not known: they pick the descriptor form (ws-plaude/silent#139).
+    device: Option<u32>,
 }
 
 impl QrSession {
@@ -195,10 +198,33 @@ impl QrSession {
         self.issue(body, Some(keys), None, None)
     }
 
+    /// The capability bits of the device the next requests go to, as recorded.
+    pub fn set_device_capabilities(&mut self, capabilities: Option<u32>) {
+        self.device = capabilities;
+    }
+
+    /// `descriptor` in the form the device takes (ws-plaude/silent#139): a BIP-380
+    /// descriptor when it advertises them, or when its bits are not known; a BIP-388
+    /// wallet policy when it takes policies only, refused here when the wallet does not
+    /// fit BIP-388; refused when it takes neither, before any QR is shown.
+    fn descriptor_body(&self, descriptor: &str) -> Result<request::DescriptorBody, Error> {
+        match self.device {
+            None | Some(0) => Ok(request::DescriptorBody::Bip380(descriptor.to_string())),
+            Some(bits) if bits & CAPABILITY_BIP380_DESCRIPTORS != 0 => {
+                Ok(request::DescriptorBody::Bip380(descriptor.to_string()))
+            }
+            Some(bits) if bits & CAPABILITY_BIP388_POLICIES != 0 => {
+                let (keys, policy) = wallet_policy(descriptor).map_err(Error::NotWalletPolicy)?;
+                Ok(request::DescriptorBody::Bip388 { keys, policy })
+            }
+            Some(_) => Err(Error::DescriptorFormUnsupported),
+        }
+    }
+
     pub fn register_descriptor(&mut self, descriptor: &str) -> Result<QrRequest, Error> {
         let body = request::Body::RegisterDescriptor(request::RegisterDescriptor {
             descriptor_alias: hwi::wallet_name(descriptor),
-            descriptor: Some(request::DescriptorBody::Bip380(descriptor.to_string())),
+            descriptor: Some(self.descriptor_body(descriptor)?),
         });
         self.issue(body, None, None, None)
     }
@@ -246,7 +272,7 @@ impl QrSession {
     ) -> Result<QrRequest, Error> {
         let body = match SpDescriptor::from_str(descriptor) {
             Ok(sp) => request::DescriptorBody::SpKeys(sp_keys(&sp)?),
-            Err(_) => request::DescriptorBody::Bip380(descriptor.to_string()),
+            Err(_) => self.descriptor_body(descriptor)?,
         };
         let (descriptor_body, proof) = registration.carried(body);
         let body = request::Body::VerifyAddress(request::VerifyAddress {
@@ -278,15 +304,15 @@ impl QrSession {
         let descriptors = descriptors
             .iter()
             .map(|descriptor| {
-                let (body, proof) = registration(descriptor)
-                    .carried(request::DescriptorBody::Bip380(descriptor.clone()));
-                request::Descriptor {
+                let (body, proof) =
+                    registration(descriptor).carried(self.descriptor_body(descriptor)?);
+                Ok(request::Descriptor {
                     alias: hwi::wallet_name(descriptor),
                     descriptor: body,
                     proof,
-                }
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, Error>>()?;
         // Round 1 goes out without nonces: a device decides its round from its own
         // nonce, and the merge keeps the nonces already gathered.
         let mut wire = psbt::parse_v2(psbt_v2_bytes)?;
@@ -353,9 +379,13 @@ impl QrSession {
         let QrSigningMaterial {
             mut host,
             session_id,
-            descriptor,
+            mut descriptor,
             psbt,
         } = material;
+        // The cache builds a BIP-380 body: the device may take a wallet policy instead.
+        if let Some(request::DescriptorBody::Bip380(text)) = &descriptor.descriptor {
+            descriptor.descriptor = Some(self.descriptor_body(text)?);
+        }
         let id = self.next_id();
         let message = host
             .sign_request(
@@ -656,7 +686,9 @@ fn validate_keys(keys: response::Keys, requested: &KeysRequest) -> Result<QrResp
                     "{}.{}.{}",
                     keys.version.major, keys.version.minor, keys.version.patch
                 ),
-                capabilities: keys.capabilities.0,
+                // bipqr's bits as they come, those this version does not define dropped
+                // (ws-plaude/silent#139).
+                capabilities: crate::keys::qr_capabilities(keys.capabilities.0),
             })
         }
         KeysRequest::SpAccount(paths) => {
@@ -901,6 +933,111 @@ impl QrRequest {
     pub fn into_message(self) -> Vec<u8> {
         self.message
     }
+}
+
+/// `descriptor` as a BIP-388 wallet policy: its key information, in `@0`, `@1`, ...
+/// order, and its template, for a device that takes policies only (bipqr `FORM`
+/// `0x02`, ws-plaude/silent#139). Each key is an extended public key, with or without
+/// its origin, followed by `/<M;N>/*` (or `/**`), unhardened. A key with no derivation
+/// is one of a `musig()`'s, whose derivation follows the `musig()`. The error says why
+/// the descriptor does not fit.
+pub fn wallet_policy(descriptor: &str) -> Result<(Vec<String>, String), String> {
+    let text = descriptor
+        .rsplit_once('#')
+        .map_or(descriptor, |(text, _checksum)| text);
+    let mut keys: Vec<String> = Vec::new();
+    let mut policy = String::with_capacity(text.len());
+    // The fragment each open parenthesis belongs to, to tell a musig() key.
+    let mut fragments: Vec<&str> = Vec::new();
+    let mut start = 0;
+    for (index, delimiter) in text.match_indices(['(', ')', ',']) {
+        let token = &text[start..index];
+        match delimiter {
+            "(" => {
+                fragments.push(token);
+                policy.push_str(token);
+            }
+            _ => {
+                let in_musig = fragments.last() == Some(&"musig");
+                policy.push_str(&policy_token(token, in_musig, &mut keys)?);
+                if delimiter == ")" {
+                    fragments.pop();
+                }
+            }
+        }
+        policy.push_str(delimiter);
+        start = index + 1;
+    }
+    let rest = &text[start..];
+    policy.push_str(&policy_token(rest, false, &mut keys)?);
+    if keys.is_empty() {
+        return Err("it holds no extended public key".to_string());
+    }
+    Ok((keys, policy))
+}
+
+/// One token of a descriptor between delimiters, as it reads in a wallet policy: a key
+/// expression becomes its `@i` placeholder, anything else stays.
+fn policy_token(token: &str, in_musig: bool, keys: &mut Vec<String>) -> Result<String, String> {
+    let (origin, rest) = match token.strip_prefix('[') {
+        Some(after) => {
+            let (origin, rest) = after
+                .split_once(']')
+                .ok_or_else(|| format!("key origin '{token}' is not closed"))?;
+            (Some(origin), rest)
+        }
+        None => (None, token),
+    };
+    let (key, derivation) = rest
+        .split_once('/')
+        .map_or((rest, None), |(key, d)| (key, Some(d)));
+    let is_xpub = Xpub::from_str(key).is_ok();
+    if !is_xpub {
+        let public_key = key.len() == 66
+            && (key.starts_with("02") || key.starts_with("03"))
+            && key.bytes().all(|b| b.is_ascii_hexdigit());
+        if origin.is_some() || public_key || key.starts_with("xpub") || key.starts_with("tpub") {
+            return Err(format!("key '{token}' is not an extended public key"));
+        }
+        // Not a key: a threshold, a timelock, a hash.
+        return Ok(token.to_string());
+    }
+    let info = match origin {
+        Some(origin) => format!("[{origin}]{key}"),
+        None => key.to_string(),
+    };
+    let index = match keys.iter().position(|known| *known == info) {
+        Some(index) => index,
+        None => {
+            keys.push(info);
+            keys.len() - 1
+        }
+    };
+    let suffix = match derivation {
+        None if in_musig => String::new(),
+        None => return Err(format!("key '{token}' has no /<M;N>/* derivation")),
+        Some("**") => "/**".to_string(),
+        Some(derivation) => {
+            let multipath = derivation
+                .strip_suffix("/*")
+                .and_then(|d| d.strip_prefix('<'))
+                .and_then(|d| d.strip_suffix('>'))
+                .and_then(|d| d.split_once(';'))
+                .filter(|(m, n)| {
+                    m != n
+                        && [m, n].iter().all(|step| {
+                            !step.is_empty() && step.bytes().all(|b| b.is_ascii_digit())
+                        })
+                });
+            let Some((m, n)) = multipath else {
+                return Err(format!(
+                    "key '{token}' is not followed by /<M;N>/*, unhardened"
+                ));
+            };
+            format!("/<{m};{n}>/*")
+        }
+    };
+    Ok(format!("@{index}{suffix}"))
 }
 
 #[cfg(test)]

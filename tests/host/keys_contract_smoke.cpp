@@ -64,15 +64,28 @@ void selectedPage(catalog::Tabs *tabs, QTabBar *bar, QWidget *page, bool module)
     }
 }
 
+// The capability bits of `combination`: each of its four low bits selects one of
+// ordinary, Taproot, silent payments and MuSig2, in Rust's layout (ws-plaude/silent#139).
+auto expand(quint32 combination) -> quint32 {
+    const auto known = ::capability_bits();
+    quint32 bits = 0;
+    bits |= (combination & 1U) != 0 ? known.ordinary : 0;
+    bits |= (combination & 2U) != 0 ? known.taproot : 0;
+    bits |= (combination & 4U) != 0 ? known.silent_payments : 0;
+    bits |= (combination & 8U) != 0 ? known.musig2 : 0;
+    return bits;
+}
+
 void operationRouting(keys::KeysModule &module, ExternalSigner &signer, quint32 mask) {
     struct Operation {
         QString name;
         quint32 required;
     };
 
-    for (const auto &operation : {Operation{.name = QStringLiteral("ordinary"), .required = 1U},
-                                  Operation{.name = QStringLiteral("taproot"), .required = 2U},
-                                  Operation{.name = QStringLiteral("mixed"), .required = 3U}}) {
+    for (const auto &operation :
+         {Operation{.name = QStringLiteral("ordinary"), .required = expand(1U)},
+          Operation{.name = QStringLiteral("taproot"), .required = expand(2U)},
+          Operation{.name = QStringLiteral("mixed"), .required = expand(3U)}}) {
         QFile fixture(QDir(QStringLiteral(RECKLESS_KEYS_FIXTURES))
                           .filePath(QStringLiteral("signer-%1.hex").arg(operation.name)));
         require(fixture.open(QIODevice::ReadOnly), "operation PSBT fixture opens");
@@ -129,16 +142,16 @@ void signerCapabilities(keys::KeysModule &module) {
                 "public signer preserves all four capabilities");
         plugin::SignerEntry entry{.instanceId = QStringLiteral("external"), .signer = publicSigner};
         auto bits = keys::KeysModule::deviceCapabilities(entry);
-        require(bits == mask, "Keys preserves all four non-HWI capability flags");
+        require(bits == expand(mask), "Keys preserves all four non-HWI capability flags");
         auto device = keys::KeysModule::toLiveDevice(entry);
-        require(device.capabilities == mask, "Keys passes all four capabilities to Rust");
+        require(device.capabilities == expand(mask), "Keys passes all four capabilities to Rust");
         rust::Vec<LiveDevice> devices;
         devices.push_back(device);
         module.rust()->set_live_devices(std::move(devices));
         auto live = module.rust()->live_devices();
-        require(live.size() == 1 && live[0].capabilities == mask,
+        require(live.size() == 1 && live[0].capabilities == expand(mask),
                 "all four capability flags round-trip through the Rust domain");
-        operationRouting(module, signer, mask);
+        operationRouting(module, signer, expand(mask));
         require(keys::KeysModule::deviceXpubPaths(bits).size() == ((mask & 4) != 0 ? 4 : 3),
                 "only advertised SP support adds the BIP352 path");
     }
@@ -146,7 +159,7 @@ void signerCapabilities(keys::KeysModule &module) {
     for (quint32 mask = 0; mask < 16; ++mask) {
         HwiDevice record;
         record.state = HwiDeviceState::Supported;
-        record.capabilities = mask;
+        record.capabilities = expand(mask);
         HwiSigner signer(nullptr, record);
         auto capabilities = signer.capabilities();
         require((capabilities.ordinary == plugin::Support::Supported) == ((mask & 1) != 0) &&

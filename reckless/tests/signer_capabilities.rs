@@ -5,7 +5,8 @@ use bwk_sp::bwk_tx::bwk_psbt::PsbtV2;
 use reckless::{
     keys::{
         crypto::Password, Error, KeyManager, KeyManagerImpl, KeyRecord, KeyStore, LiveDevice,
-        RouteKind,
+        RouteKind, CAPABILITY_MUSIG, CAPABILITY_ORDINARY, CAPABILITY_SILENT_PAYMENTS,
+        CAPABILITY_TAPROOT,
     },
     set_datadir, state_crypt,
 };
@@ -15,17 +16,32 @@ use zeroize::Zeroizing;
 const FIXTURES: [(&str, u32); 3] = [
     (
         include_str!("../../tests/host/fixtures/signer-ordinary.hex"),
-        1,
+        CAPABILITY_ORDINARY,
     ),
     (
         include_str!("../../tests/host/fixtures/signer-taproot.hex"),
-        2,
+        CAPABILITY_TAPROOT,
     ),
     (
         include_str!("../../tests/host/fixtures/signer-mixed.hex"),
-        3,
+        CAPABILITY_ORDINARY | CAPABILITY_TAPROOT,
     ),
 ];
+
+/// The capability bits of combination `index`: each of its four low bits selects one of
+/// ordinary, Taproot, silent payments and MuSig2 (bipqr's layout, ws-plaude/silent#139).
+fn combination(index: u32) -> u32 {
+    [
+        CAPABILITY_ORDINARY,
+        CAPABILITY_TAPROOT,
+        CAPABILITY_SILENT_PAYMENTS,
+        CAPABILITY_MUSIG,
+    ]
+    .iter()
+    .enumerate()
+    .filter(|(bit, _)| index & (1 << bit) != 0)
+    .fold(0, |bits, (_, capability)| bits | capability)
+}
 
 fn device(id: &str, fingerprint: Fingerprint, capabilities: u32) -> LiveDevice {
     LiveDevice {
@@ -55,7 +71,7 @@ fn actual_psbt_operations_gate_all_sixteen_capability_combinations() {
         .add_key(KeyRecord::new(fp, Network::Regtest, "fixture".into()))
         .expect("register");
     manager.add_route(fp, RouteKind::Usb).expect("USB route");
-    for mask in 0..16 {
+    for mask in (0..16).map(combination) {
         manager.set_live_devices(vec![
             device("unsupported", fp, 0),
             device("capable", fp, mask),
@@ -107,7 +123,10 @@ fn actual_psbt_operations_gate_all_sixteen_capability_combinations() {
     manager
         .add_route(other, RouteKind::Usb)
         .expect("independent USB route");
-    manager.set_live_devices(vec![device("ordinary", fp, 1), device("taproot", other, 2)]);
+    manager.set_live_devices(vec![
+        device("ordinary", fp, CAPABILITY_ORDINARY),
+        device("taproot", other, CAPABILITY_TAPROOT),
+    ]);
     let mut mixed = PsbtV2::deserialize(&hex::decode(FIXTURES[2].0.trim()).expect("mixed hex"))
         .expect("mixed PSBT");
     for (_, (origin, _)) in mixed.inputs[1].psbt.tap_key_origins.values_mut() {
@@ -136,7 +155,10 @@ fn actual_psbt_operations_gate_all_sixteen_capability_combinations() {
             "select the device for this input, not the whole transaction's operation mix"
         );
     }
-    manager.set_live_devices(vec![device("ordinary", fp, 1), device("taproot", fp, 2)]);
+    manager.set_live_devices(vec![
+        device("ordinary", fp, CAPABILITY_ORDINARY),
+        device("taproot", fp, CAPABILITY_TAPROOT),
+    ]);
     let plan = manager
         .signing_plan(&hex::decode(FIXTURES[2].0.trim()).expect("mixed hex"))
         .expect("one key, two devices");

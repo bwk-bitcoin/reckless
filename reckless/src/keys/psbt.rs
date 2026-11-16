@@ -29,7 +29,7 @@ use bwk_sp::{
 
 use crate::keys::{
     error::Error, musig_sessions::attempt_id, CAPABILITY_MUSIG, CAPABILITY_ORDINARY,
-    CAPABILITY_SILENT_PAYMENTS, CAPABILITY_TAPROOT,
+    CAPABILITY_SP_ACCOUNTS, CAPABILITY_SP_SENDS, CAPABILITY_TAPROOT,
 };
 
 const FINGERPRINT_LEN: usize = 4;
@@ -495,8 +495,9 @@ fn signing_capabilities(
             if restricted && leaves.is_empty() {
                 continue;
             }
+            // Spending a silent payment output is the account's (ws-plaude/silent#139).
             let capability = match (silent_payment, participants.contains(key)) {
-                (true, _) => CAPABILITY_SILENT_PAYMENTS,
+                (true, _) => CAPABILITY_SP_ACCOUNTS,
                 (false, true) => CAPABILITY_MUSIG,
                 (false, false) => CAPABILITY_TAPROOT,
             };
@@ -504,7 +505,7 @@ fn signing_capabilities(
         }
     }
     if let Some(fingerprint) = sp_fingerprint {
-        *required.entry(fingerprint).or_default() |= CAPABILITY_SILENT_PAYMENTS;
+        *required.entry(fingerprint).or_default() |= CAPABILITY_SP_ACCOUNTS;
     }
     Ok(required)
 }
@@ -537,8 +538,12 @@ pub fn inspect(
         BTreeSet::new()
     };
     let mut required_capabilities = signing_capabilities(psbt, sp_fingerprint)?;
+    // Deriving a silent payment output, or giving a share of it, is a send.
+    if let (true, Some(fingerprint)) = (sp_outputs_pending, sp_fingerprint) {
+        *required_capabilities.entry(fingerprint).or_default() |= CAPABILITY_SP_SENDS;
+    }
     for fingerprint in &sp_share_owners {
-        *required_capabilities.entry(*fingerprint).or_default() |= CAPABILITY_SILENT_PAYMENTS;
+        *required_capabilities.entry(*fingerprint).or_default() |= CAPABILITY_SP_SENDS;
     }
     required_capabilities.retain(|fingerprint, _| required.contains(fingerprint));
     Ok(PsbtArtifacts {
@@ -1680,9 +1685,9 @@ mod tests {
                     .get(&fp)
                     .copied()
                     .unwrap_or(0)
-                    & CAPABILITY_SILENT_PAYMENTS,
+                    & CAPABILITY_SP_SENDS,
                 0,
-                "a key owing shares needs the silent payments capability"
+                "a key owing shares needs the silent payment sends capability"
             );
         }
 

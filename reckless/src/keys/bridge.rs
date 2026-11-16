@@ -826,8 +826,35 @@ impl KeysModule {
         to_message(self.session.get_xpubs(parsed))
     }
 
-    pub fn qr_request_register_descriptor(&mut self, descriptor: &str) -> ffi::QrMessageResult {
+    pub fn qr_request_register_descriptor(
+        &mut self,
+        fingerprint: &str,
+        descriptor: &str,
+    ) -> ffi::QrMessageResult {
+        self.set_qr_device(fingerprint);
         to_message(self.session.register_descriptor(descriptor))
+    }
+
+    /// The capability bits the QR device of `fingerprint` last reported, `None` when no
+    /// QR device is recorded for it (ws-plaude/silent#139).
+    fn qr_device_capabilities(&self, fingerprint: Fingerprint) -> Option<u32> {
+        self.inner
+            .as_ref()?
+            .key(fingerprint)?
+            .devices
+            .iter()
+            .rev()
+            .find(|device| device.module == crate::keys::record::QR_MODULE)
+            .map(|device| device.capabilities)
+    }
+
+    /// The next request goes to the QR device of `fingerprint`: its form follows that
+    /// device's bits.
+    fn set_qr_device(&mut self, fingerprint: &str) {
+        let device = Fingerprint::from_str(fingerprint)
+            .ok()
+            .and_then(|fingerprint| self.qr_device_capabilities(fingerprint));
+        self.session.set_device_capabilities(device);
     }
 
     pub fn qr_request_unregister_descriptor(&mut self, descriptor: &str) -> ffi::QrMessageResult {
@@ -850,6 +877,7 @@ impl KeysModule {
             Err(e) => return failed_message(&format!("invalid derivation path '{path}': {e}")),
         };
         let registration = self.qr_registration(fingerprint, descriptor);
+        self.set_qr_device(fingerprint);
         to_message(self.session.verify_address_registered(
             descriptor,
             path,
@@ -883,6 +911,7 @@ impl KeysModule {
                 .cloned()
                 .unwrap_or(qr::QrRegistration::Unknown)
         };
+        self.set_qr_device(fingerprint);
         to_message(
             self.session
                 .sign_registered(&descriptors, &psbt, &registration),
@@ -983,6 +1012,10 @@ impl KeysModule {
     /// The box is the CXX ownership form across the boundary, not an allocation.
     #[allow(clippy::boxed_local)]
     pub fn qr_request_sign_musig(&mut self, signing: Box<QrMusigSign>) -> ffi::QrMessageResult {
+        let device = signing
+            .fingerprint
+            .and_then(|fingerprint| self.qr_device_capabilities(fingerprint));
+        self.session.set_device_capabilities(device);
         match signing.inner {
             Ok(material) => to_message(self.session.sign_nonce_cache(material)),
             Err(error) => failed_message(&error),
@@ -1036,6 +1069,8 @@ pub struct QrMusigPrepare {
 /// `KeysModule::qr_request_sign_musig`.
 pub struct QrMusigSign {
     inner: Result<musig_sessions::QrSigningMaterial, String>,
+    /// The key the request goes to, whose device picks the descriptor form.
+    fingerprint: Option<Fingerprint>,
 }
 
 /// Worker entry: persists the record of a fresh QR nonce cache session, or reuses
@@ -1061,7 +1096,12 @@ pub fn qr_musig_sign_material(
     psbt_v2_hex: &str,
     routes: Vec<ffi::MusigSignerRoute>,
 ) -> Box<QrMusigSign> {
-    let failed = |error: String| Box::new(QrMusigSign { inner: Err(error) });
+    let failed = |error: String| {
+        Box::new(QrMusigSign {
+            inner: Err(error),
+            fingerprint: None,
+        })
+    };
     let Ok(qr_fingerprint) = Fingerprint::from_str(fingerprint) else {
         return failed(format!("invalid key fingerprint: {fingerprint}"));
     };
@@ -1071,6 +1111,7 @@ pub fn qr_musig_sign_material(
     Box::new(QrMusigSign {
         inner: musig_sessions::sign_material(qr_fingerprint, policy, &bytes, &plan_routes(&routes))
             .map_err(|error| error.to_string()),
+        fingerprint: Some(qr_fingerprint),
     })
 }
 

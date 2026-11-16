@@ -206,6 +206,12 @@ pub enum Error {
         message_type: bipqr::ll::MessageType,
         message: String,
     },
+    /// The device advertises neither descriptor form (ws-plaude/silent#139).
+    #[error("this device takes no wallet descriptor: it advertises neither BIP-380 descriptors nor BIP-388 wallet policies")]
+    DescriptorFormUnsupported,
+    /// The device takes BIP-388 wallet policies only, and the wallet is not one.
+    #[error("this device takes BIP-388 wallet policies only, and this wallet is not one: {0}")]
+    NotWalletPolicy(String),
     #[error("this device does not support {message_type:?}: {message}")]
     SignerUnsupported {
         message_type: bipqr::ll::MessageType,

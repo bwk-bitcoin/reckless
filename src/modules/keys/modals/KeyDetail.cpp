@@ -436,16 +436,24 @@ void KeyDetail::refreshAccounts(const KeyInfo &info) {
     QList<KeyAccount> list = keyAccounts(m_module, m_fingerprint);
     bool applies = registrationApplies(info);
     m_qr_route = std::ranges::find(info.routes, KeyRouteKind::Qr) != info.routes.end();
+    // Only a QR device advertising Unregister Descriptor can forget a wallet; another
+    // answers 0x0F (ws-plaude/silent#139).
+    m_qr_unregister = false;
+    for (const auto &device : m_module->rust()->key_devices(m_fingerprint.toStdString())) {
+        m_qr_unregister |= KeysModule::toQt(device.module) == QStringLiteral("qr") &&
+                           ::supports_unregister(device.capabilities);
+    }
     syncRegistrations(list, applies);
     m_accounts_table->clearRows();
-    setAccountColumns(m_qr_route);
+    setAccountColumns(m_qr_route && m_qr_unregister);
     for (const auto &account : list) {
         auto *module = new Label(accountModuleLabel(account.plugin_id), LabelRole::Body);
         module->setTone(LabelTone::Muted);
         auto *cell = registrationCell(account, applies);
         // A QR key's wallet can be forgotten by its device (ws-plaude/silent#130); a
         // silent payment account is never registered on it.
-        if (m_qr_route && !account.descriptor.startsWith(QStringLiteral("sp("))) {
+        if (m_qr_route && m_qr_unregister &&
+            !account.descriptor.startsWith(QStringLiteral("sp("))) {
             auto *unregister = catalog::btnUnregisterAccount();
             unregister->setProperty(K_DESCRIPTOR, account.descriptor);
             unregister->setToolTip(TR("keys-unregister-account-tip"));

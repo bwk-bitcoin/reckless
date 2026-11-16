@@ -34,11 +34,6 @@ namespace keys {
 
 namespace {
 
-constexpr quint32 CAPABILITY_SILENT_PAYMENTS = 1U << 2;
-constexpr quint32 CAPABILITY_MUSIG2 = 1U << 3;
-constexpr quint32 CAPABILITY_ORDINARY = 1U;
-constexpr quint32 CAPABILITY_TAPROOT = 1U << 1;
-
 auto failedOp(const QString &error) -> KeyOpResult {
     KeyOpResult result;
     result.is_ok = false;
@@ -1892,18 +1887,20 @@ auto KeysModule::deviceXpubPaths(quint32 capabilities) -> QStringList {
 
 auto KeysModule::deviceCapabilities(const plugin::SignerEntry &entry) -> quint32 {
     auto capabilities = entry.signer->capabilities();
+    // The bits are Rust's, bipqr's layout (ws-plaude/silent#139).
+    const auto known = ::capability_bits();
     quint32 bits = 0;
     if (capabilities.ordinary == plugin::Support::Supported) {
-        bits |= CAPABILITY_ORDINARY;
+        bits |= known.ordinary;
     }
     if (capabilities.taproot == plugin::Support::Supported) {
-        bits |= CAPABILITY_TAPROOT;
+        bits |= known.taproot;
     }
     if (capabilities.silentPayments == plugin::Support::Supported) {
-        bits |= CAPABILITY_SILENT_PAYMENTS;
+        bits |= known.silent_payments;
     }
     if (capabilities.musig2 == plugin::Support::Supported) {
-        bits |= CAPABILITY_MUSIG2;
+        bits |= known.musig2;
     }
     return bits;
 }

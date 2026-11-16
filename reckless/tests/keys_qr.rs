@@ -1535,3 +1535,154 @@ fn a_one_pass_silent_payment_answer_without_tx_modifiable_merges_frozen() {
         "every input carries the device's signature"
     );
 }
+
+// ===== ws-plaude/silent#139: the descriptor form a device takes =====
+
+const TPUB_A: &str = "tpubDCChhoz5Qdrkn7Z7KXawq6Ad6r3A4MUkCoVTqeWxfTkA6bHNJ3CHUEtALQdkNeixNz4446PcAmw4WKcj3mV2vb29H7sg9EPzbyCU1y2merw";
+const TPUB_B: &str = "tpubDC44ZFebbFm5ZXnG5Xt8k9PpdSZXUQ4HyuU8e8u5zfutYuu8EW4MLKS54EFTfGYgeqt7P2jEEd1iCF5kSPi7Xrj6EZcsStCcAjPy97DSiLb";
+
+fn musig_policy() -> String {
+    format!("tr(musig([73c5da0a/87h/1h/0h]{TPUB_A},[b8688df1/87h/1h/0h]{TPUB_B})/<0;1>/*)")
+}
+
+#[test]
+fn a_descriptor_reads_as_its_bip388_wallet_policy() {
+    use reckless::keys::qr::wallet_policy;
+    let (keys, policy) = wallet_policy(&musig_policy()).expect("a musig() policy fits");
+    assert_eq!(
+        keys,
+        vec![
+            format!("[73c5da0a/87h/1h/0h]{TPUB_A}"),
+            format!("[b8688df1/87h/1h/0h]{TPUB_B}")
+        ]
+    );
+    assert_eq!(policy, "tr(musig(@0,@1)/<0;1>/*)");
+
+    let multisig = format!(
+        "wsh(and_v(v:multi(2,[73c5da0a/48h/1h/0h/2h]{TPUB_A}/<0;1>/*,{TPUB_B}/<2;3>/*),older(144)))#qwerty12"
+    );
+    let (keys, policy) = wallet_policy(&multisig).expect("a miniscript policy fits");
+    assert_eq!(keys.len(), 2, "two keys, the second without an origin");
+    assert_eq!(keys[1], TPUB_B);
+    assert_eq!(
+        policy, "wsh(and_v(v:multi(2,@0/<0;1>/*,@1/<2;3>/*),older(144)))",
+        "the checksum goes, the thresholds and timelocks stay"
+    );
+    let (keys, policy) =
+        wallet_policy(&format!("wpkh({TPUB_A}/**)")).expect("/** is a wallet policy's");
+    assert_eq!((keys.len(), policy.as_str()), (1, "wpkh(@0/**)"));
+    let reused = format!("wsh(or_d(pk({TPUB_A}/<0;1>/*),pk({TPUB_A}/<2;3>/*)))");
+    let (keys, policy) = wallet_policy(&reused).expect("one key, two multipaths");
+    assert_eq!(keys.len(), 1, "a key used twice is one @i");
+    assert_eq!(policy, "wsh(or_d(pk(@0/<0;1>/*),pk(@0/<2;3>/*)))");
+
+    for (descriptor, why) in [
+        (
+            format!("wpkh({TPUB_A}/0/*)"),
+            "a single derivation, not <M;N>",
+        ),
+        (
+            format!("wpkh({TPUB_A}/<0;1>/1/*)"),
+            "a step after the multipath",
+        ),
+        (format!("wpkh({TPUB_A}/<0h;1h>/*)"), "a hardened multipath"),
+        (
+            format!("wpkh({TPUB_A}/<0;0>/*)"),
+            "a multipath to the same step",
+        ),
+        (format!("wpkh({TPUB_A})"), "no derivation outside musig()"),
+        (
+            "wpkh(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)".to_string(),
+            "a plain public key",
+        ),
+    ] {
+        assert!(
+            wallet_policy(&descriptor).is_err(),
+            "{why} is no BIP-388 wallet policy: {descriptor}"
+        );
+    }
+}
+
+fn registered_form(session: &mut QrSession, descriptor: &str) -> request::DescriptorBody {
+    let register = session
+        .register_descriptor(descriptor)
+        .expect("registration request");
+    let Message::Request(decoded) = decode(register.message()).expect("decode") else {
+        panic!("expected a request");
+    };
+    let request::Body::RegisterDescriptor(registration) = decoded.body else {
+        panic!("expected a registration");
+    };
+    registration.descriptor.expect("a descriptor body")
+}
+
+#[test]
+fn a_request_carries_the_descriptor_form_its_device_takes() {
+    use bipqr::ll::response::Capabilities;
+    let policy = musig_policy();
+    // Not known, or a device taking BIP-380 descriptors: the descriptor, as before.
+    for device in [
+        None,
+        Some(0),
+        Some(Capabilities::BIP380_DESCRIPTORS),
+        Some(Capabilities::DEFINED),
+    ] {
+        let mut session = QrSession::new();
+        session.set_device_capabilities(device);
+        assert_eq!(
+            registered_form(&mut session, &policy),
+            request::DescriptorBody::Bip380(policy.clone()),
+            "{device:?}: FORM 0x01"
+        );
+    }
+    // A device taking wallet policies only: FORM 0x02, in every request that carries
+    // the wallet.
+    let mut session = QrSession::new();
+    session.set_device_capabilities(Some(
+        Capabilities::BIP388_WALLET_POLICIES
+            | Capabilities::MINISCRIPT_TAPROOT
+            | Capabilities::MUSIG2,
+    ));
+    let expected = request::DescriptorBody::Bip388 {
+        keys: vec![
+            format!("[73c5da0a/87h/1h/0h]{TPUB_A}"),
+            format!("[b8688df1/87h/1h/0h]{TPUB_B}"),
+        ],
+        policy: "tr(musig(@0,@1)/<0;1>/*)".to_string(),
+    };
+    assert_eq!(
+        registered_form(&mut session, &policy),
+        expected,
+        "FORM 0x02"
+    );
+    let sign = session
+        .sign(&[policy.clone()], &sign_psbt_bytes())
+        .expect("a signing request");
+    let Message::Request(decoded) = decode(sign.message()).expect("decode") else {
+        panic!("expected a request");
+    };
+    let request::Body::Sign(signing) = decoded.body else {
+        panic!("expected a signing request");
+    };
+    assert_eq!(
+        signing.descriptors[0].descriptor,
+        Some(expected),
+        "the signing request too"
+    );
+    // A wallet that does not fit is refused before any QR.
+    let refused = session.register_descriptor(&format!("wpkh({TPUB_A}/0/*)"));
+    assert!(
+        matches!(refused, Err(Error::NotWalletPolicy(_))),
+        "a descriptor that is no wallet policy: {:?}",
+        refused.err()
+    );
+    // A device taking neither form.
+    let mut session = QrSession::new();
+    session.set_device_capabilities(Some(Capabilities::MINISCRIPT_SEGWIT_V0));
+    let refused = session.register_descriptor(&policy);
+    assert!(
+        matches!(refused, Err(Error::DescriptorFormUnsupported)),
+        "a device taking no descriptor: {:?}",
+        refused.err()
+    );
+}

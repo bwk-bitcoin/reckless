@@ -139,12 +139,13 @@ void BwkQrEngine::verifyAddress(const QString &fingerprint, const QString &descr
         rust::Str(path.toStdString()), rust::Str(address.toStdString())));
 }
 
-void BwkQrEngine::registerDescriptor(const QString &descriptor) {
+void BwkQrEngine::registerDescriptor(const QString &fingerprint, const QString &descriptor) {
     if (m_module->rust() == nullptr) {
         emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
         return;
     }
-    issue(m_module->rust()->qr_request_register_descriptor(rust::Str(descriptor.toStdString())));
+    issue(m_module->rust()->qr_request_register_descriptor(rust::Str(fingerprint.toStdString()),
+                                                           rust::Str(descriptor.toStdString())));
 }
 
 void BwkQrEngine::unregisterDescriptor(const QString &descriptor) {

@@ -15,10 +15,11 @@
 #include <reckless.h>
 
 namespace {
-constexpr quint32 CAPABILITY_SILENT_PAYMENTS = 1U << 2;
-constexpr quint32 CAPABILITY_MUSIG2 = 1U << 3;
-constexpr quint32 CAPABILITY_ORDINARY = 1U;
-constexpr quint32 CAPABILITY_TAPROOT = 1U << 1;
+
+// Whether `capabilities` hold any of `bits`.
+auto support(quint32 capabilities, quint32 bits) -> plugin::Support {
+    return (capabilities & bits) != 0 ? plugin::Support::Supported : plugin::Support::Unsupported;
+}
 
 auto toState(HwiDeviceState state) -> plugin::SignerState {
     switch (state) {
@@ -111,15 +112,12 @@ QString HwiSigner::version() const {
 }
 
 auto HwiSigner::capabilities() const -> plugin::SignerCapabilities {
-    return {.ordinary = (m_capabilities & CAPABILITY_ORDINARY) != 0 ? plugin::Support::Supported
-                                                                    : plugin::Support::Unsupported,
-            .taproot = (m_capabilities & CAPABILITY_TAPROOT) != 0 ? plugin::Support::Supported
-                                                                  : plugin::Support::Unsupported,
-            .musig2 = (m_capabilities & CAPABILITY_MUSIG2) != 0 ? plugin::Support::Supported
-                                                                : plugin::Support::Unsupported,
-            .silentPayments = (m_capabilities & CAPABILITY_SILENT_PAYMENTS) != 0
-                                  ? plugin::Support::Supported
-                                  : plugin::Support::Unsupported};
+    // The bits are Rust's, bipqr's layout (ws-plaude/silent#139).
+    const auto known = ::capability_bits();
+    return {.ordinary = support(m_capabilities, known.ordinary),
+            .taproot = support(m_capabilities, known.taproot),
+            .musig2 = support(m_capabilities, known.musig2),
+            .silentPayments = support(m_capabilities, known.silent_payments)};
 }
 
 bool HwiSigner::ready() const {

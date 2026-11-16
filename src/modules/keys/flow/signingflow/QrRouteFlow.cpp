@@ -69,7 +69,7 @@ void QrRouteFlow::start() {
         m_qr_engine->getXpubs({request().path});
         return;
     case Context::Register:
-        m_qr_engine->registerDescriptor(request().descriptor);
+        m_qr_engine->registerDescriptor(row().fingerprint, request().descriptor);
         return;
     case Context::CheckRegistration:
         m_qr_engine->checkRegistration(request().descriptor);

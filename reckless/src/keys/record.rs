@@ -132,18 +132,70 @@ impl Routes {
 /// and `capabilities` are what the device last reported, so a firmware upgrade
 /// refreshes them on the same device.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "StoredDeviceRecord", into = "StoredDeviceRecord")]
 pub struct DeviceRecord {
     pub kind: String,
     pub model: String,
     pub serial: String,
     pub module: String,
     /// Firmware version, empty when the route does not report one (USB).
-    #[serde(default)]
     pub version: String,
-    /// bwk-qr capability bits, 0 when the route does not report them (USB).
-    #[serde(default)]
+    /// Capability bits in bipqr's layout (`crate::keys::CAPABILITY_*`), 0 when the
+    /// route does not report them.
     pub capabilities: u32,
 }
+
+/// A `DeviceRecord` as stored: its capabilities with the layout they were written in
+/// (ws-plaude/silent#139). A record stored before the layout field holds the earlier
+/// bits, converted once on load and written back in the current layout.
+#[derive(Serialize, Deserialize)]
+struct StoredDeviceRecord {
+    kind: String,
+    model: String,
+    serial: String,
+    module: String,
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    capabilities: u32,
+    #[serde(default)]
+    capability_layout: u32,
+}
+
+impl From<StoredDeviceRecord> for DeviceRecord {
+    fn from(stored: StoredDeviceRecord) -> Self {
+        let capabilities = if stored.capability_layout >= crate::keys::CAPABILITY_LAYOUT {
+            stored.capabilities
+        } else {
+            crate::keys::upgrade_capabilities(stored.capabilities, stored.module == QR_MODULE)
+        };
+        Self {
+            kind: stored.kind,
+            model: stored.model,
+            serial: stored.serial,
+            module: stored.module,
+            version: stored.version,
+            capabilities,
+        }
+    }
+}
+
+impl From<DeviceRecord> for StoredDeviceRecord {
+    fn from(device: DeviceRecord) -> Self {
+        Self {
+            kind: device.kind,
+            model: device.model,
+            serial: device.serial,
+            module: device.module,
+            version: device.version,
+            capabilities: device.capabilities,
+            capability_layout: crate::keys::CAPABILITY_LAYOUT,
+        }
+    }
+}
+
+/// The `module` of a device seen over QR.
+pub const QR_MODULE: &str = "qr";
 
 impl DeviceRecord {
     pub fn same_device(&self, other: &DeviceRecord) -> bool {
@@ -492,6 +544,29 @@ mod tests {
             !json.contains("hmac"),
             "serialized entry should omit an absent hmac, got {json}"
         );
+    }
+
+    // ws-plaude/silent#139: a device stored with the earlier capability layout.
+    #[test]
+    fn a_device_stored_in_the_earlier_layout_loads_upgraded_and_saves_in_the_new_one() {
+        let json = r#"{"kind":"Kern","model":"k","serial":"","module":"qr","version":"1","capabilities":31}"#;
+        let device: DeviceRecord = serde_json::from_str(json).expect("deserialize device");
+        assert_eq!(
+            device.capabilities,
+            crate::keys::upgrade_capabilities(0x1f, true),
+            "the stored Kern keeps its capabilities in the new layout"
+        );
+        assert!(crate::keys::supports_musig(device.capabilities));
+        let saved = serde_json::to_string(&device).expect("serialize device");
+        assert!(
+            saved.contains("\"capability_layout\":1"),
+            "saved with its layout: {saved}"
+        );
+        let reloaded: DeviceRecord = serde_json::from_str(&saved).expect("reload");
+        assert_eq!(reloaded, device, "a saved record is never upgraded twice");
+        let new = r#"{"kind":"Kern","model":"k","serial":"","module":"qr","version":"1","capabilities":511,"capability_layout":1}"#;
+        let device: DeviceRecord = serde_json::from_str(new).expect("deserialize device");
+        assert_eq!(device.capabilities, 0x1ff, "the new layout reads as stored");
     }
 
     #[test]
