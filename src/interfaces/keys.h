@@ -160,6 +160,17 @@ public:
     virtual void checkDescriptorRegistered(ReqId req_id, plugin::Network network,
                                            const QString &fingerprint,
                                            const QString &descriptor) = 0;
+    // Asks the key's QR device to forget `descriptor` (bipqr Unregister Descriptor,
+    // ws-plaude/silent#130), through Reckless's keys QR window. Answers
+    // descriptorUnregistered() once it did, Reckless then recording the wallet as no
+    // longer registered on the device (later requests carry its body again), or error()
+    // with DeviceRefused and the device's code: DEVICE_ALIAS_UNKNOWN (it no longer held
+    // it, Reckless forgets its record too), DEVICE_USER_DECLINED (nothing changes),
+    // DEVICE_UNSUPPORTED_OPERATION (a device that keeps no registrations). A key with no
+    // QR route answers error(): a USB device's library offers no unregistration.
+    // Appended.
+    virtual void unregisterDescriptor(ReqId req_id, plugin::Network network,
+                                      const QString &fingerprint, const QString &descriptor) = 0;
 
     // Who makes the request underway: the host's handle stamps it around each call, so
     // read it at the start of a request.
@@ -213,6 +224,8 @@ signals:
     // routes: a USB device has no bipqr messages. Only the caller of `req_id` gets
     // them; they stop once the call answers.
     void exchange(ReqId req_id, plugin::KeyExchange exchange);
+    // The QR device forgot the wallet (ws-plaude/silent#130, appended).
+    void descriptorUnregistered(ReqId req_id, QString fingerprint);
 
 protected:
     // Provider hook. Only keys() publishes the validated result to consumers.

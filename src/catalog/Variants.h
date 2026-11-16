@@ -22,6 +22,8 @@ auto btnConfirmAddRoute() -> Button *;
 auto btnCancelAddRoute() -> Button *;
 auto btnFetchXpub() -> Button *;
 auto btnRegisterAccount() -> Button *;
+// A QR key's wallet forgotten by its device (ws-plaude/silent#130).
+auto btnUnregisterAccount() -> Button *;
 auto btnFetchThisXpub() -> Button *;
 auto btnCameraSettings() -> Button *;
 auto btnQrSettings() -> Button *;

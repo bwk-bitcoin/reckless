@@ -90,6 +90,7 @@ void UsbRouteFlow::start() {
         return;
     case Context::Register:
     case Context::CheckRegistration:
+    case Context::Unregister:
         // A USB registration goes through KeysModule::sendDeviceRegistration.
         emit failed(TR("keys-route-unavailable"));
         return;

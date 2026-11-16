@@ -164,6 +164,9 @@ btn-sign => "Sign" => "NONE"
 btn-test-ok => "✓ Test" => "NONE"
 btn-try-again => "Try Again" => "NONE"
 btn-unlock => "Unlock" => "NONE"
+btn-unregister-from-device
+=> "Unregister from Device"
+=> "Annulla registrazione sul dispositivo";;
 coins-date => "Date" => "Data"
 coins-height => "Height" => "Altezza"
 coins-label => "Label" => "Etichetta"
@@ -426,6 +429,30 @@ flow-signer-unregistered-sub
 flow-signer-waiting-sub => "Signs after the silent payment key." => "NONE"
 flow-the-device => "the device" => "NONE"
 flow-unknown-key => "Unknown Key" => "NONE"
+flow-unregister-none-kept
+=> "This device keeps no wallet registrations, so there is nothing to forget on it."
+=> "Questo dispositivo non conserva registrazioni di wallet, quindi non c'è niente da dimenticare.";;
+flow-unregister-not-held
+=> "The device no longer holds this wallet. Reckless forgets its registration too: the next request carries the wallet again."
+=> "Il dispositivo non detiene più questo wallet. Anche Reckless dimentica la sua registrazione: la prossima richiesta invia di nuovo il wallet.";;
+flow-unregister-qr-hint
+=> "Scan this code with the device. It asks you to confirm forgetting the wallet."
+=> "Scansiona questo codice con il dispositivo. Ti chiede di confermare di dimenticare il wallet.";;
+flow-unregister-qr-title
+=> "Show Unregistration Request"
+=> "Mostra la richiesta di annullamento";;
+flow-unregister-scan-hint
+=> "Show the device's answer to the camera."
+=> "Mostra la risposta del dispositivo alla fotocamera.";;
+flow-unregister-scan-title
+=> "Scan Unregistration Answer"
+=> "Scansiona la risposta di annullamento";;
+flow-unregister-title
+=> "Unregister from Device"
+=> "Annulla registrazione sul dispositivo";;
+flow-unregister-usb-wait
+=> "Unregistering the wallet on %1."
+=> "Annullamento della registrazione del wallet su %1.";;
 flow-usb-confirm-title => "Confirm on the Device" => "NONE"
 flow-usb-disconnected-body
 => "%1 was disconnected. Reconnect and unlock it, then try again."
@@ -726,6 +753,15 @@ keys-sp-descriptor-no-origin
 keys-sp-descriptor-unavailable
 => "This key cannot return a silent payment descriptor."
 => "NONE";;
+keys-unregister-account-tip
+=> "Ask the device to forget this wallet, in the QR window"
+=> "Chiedi al dispositivo di dimenticare questo wallet, nella finestra QR";;
+keys-unregister-unavailable
+=> "Only a key with a QR route can unregister a wallet from its device."
+=> "Solo una chiave con un percorso QR può annullare la registrazione di un wallet dal suo dispositivo.";;
+keys-unregister-unknown-wallet
+=> "This wallet is not recorded on this key."
+=> "Questo wallet non è registrato su questa chiave.";;
 keys-words-checksum
 => "These words are not a valid mnemonic. Check each word and their order."
 => "NONE";;

@@ -36,6 +36,8 @@ KeysHandle::KeysHandle(HostImpl *host, IModule *module, IKeys *target)
     connect(target, &IKeys::error, this, &KeysHandle::onError, qontrol::UNIQUE);
     connect(target, &IKeys::cancelled, this, &KeysHandle::onCancelled, qontrol::UNIQUE);
     connect(target, &IKeys::exchange, this, &KeysHandle::onExchange, qontrol::UNIQUE);
+    connect(target, &IKeys::descriptorUnregistered, this, &KeysHandle::onDescriptorUnregistered,
+            qontrol::UNIQUE);
 }
 
 KeysHandle::~KeysHandle() {
@@ -558,6 +560,16 @@ void KeysHandle::registerDescriptor(ReqId req_id, plugin::Network network,
     target->registerDescriptor(req_id, network, fingerprint, descriptor);
 }
 
+void KeysHandle::unregisterDescriptor(ReqId req_id, plugin::Network network,
+                                      const QString &fingerprint, const QString &descriptor) {
+    auto *target = allowedTarget(req_id, network);
+    if (target == nullptr) {
+        return;
+    }
+    CallerScope scope(target, HostImpl::caller(m_module));
+    target->unregisterDescriptor(req_id, network, fingerprint, descriptor);
+}
+
 void KeysHandle::checkDescriptorRegistered(ReqId req_id, plugin::Network network,
                                            const QString &fingerprint, const QString &descriptor) {
     auto *target = allowedTarget(req_id, network);
@@ -603,6 +615,12 @@ void KeysHandle::onXpubReady(ReqId req_id, const QString &xpub, const QString &f
 void KeysHandle::onDescriptorRegistered(ReqId req_id, const QString &fingerprint) {
     if (finish(req_id)) {
         emit descriptorRegistered(req_id, fingerprint);
+    }
+}
+
+void KeysHandle::onDescriptorUnregistered(ReqId req_id, const QString &fingerprint) {
+    if (finish(req_id)) {
+        emit descriptorUnregistered(req_id, fingerprint);
     }
 }
 

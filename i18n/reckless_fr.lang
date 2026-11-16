@@ -164,6 +164,9 @@ btn-sign => "Sign" => "NONE"
 btn-test-ok => "✓ Test" => "NONE"
 btn-try-again => "Try Again" => "NONE"
 btn-unlock => "Unlock" => "NONE"
+btn-unregister-from-device
+=> "Unregister from Device"
+=> "Désenregistrer de l'appareil";;
 coins-date => "Date" => "Date"
 coins-height => "Height" => "Hauteur"
 coins-label => "Label" => "Libelle"
@@ -428,6 +431,28 @@ flow-signer-unregistered-sub
 flow-signer-waiting-sub => "Signs after the silent payment key." => "NONE"
 flow-the-device => "the device" => "NONE"
 flow-unknown-key => "Unknown Key" => "NONE"
+flow-unregister-none-kept
+=> "This device keeps no wallet registrations, so there is nothing to forget on it."
+=> "Cet appareil ne conserve aucun enregistrement de portefeuille, il n'y a donc rien à oublier.";;
+flow-unregister-not-held
+=> "The device no longer holds this wallet. Reckless forgets its registration too: the next request carries the wallet again."
+=> "L'appareil ne détient plus ce portefeuille. Reckless oublie aussi son enregistrement : la prochaine demande transmet à nouveau le portefeuille.";;
+flow-unregister-qr-hint
+=> "Scan this code with the device. It asks you to confirm forgetting the wallet."
+=> "Scannez ce code avec l'appareil. Il vous demande de confirmer l'oubli du portefeuille.";;
+flow-unregister-qr-title
+=> "Show Unregistration Request"
+=> "Afficher la demande de désenregistrement";;
+flow-unregister-scan-hint
+=> "Show the device's answer to the camera."
+=> "Montrez la réponse de l'appareil à la caméra.";;
+flow-unregister-scan-title
+=> "Scan Unregistration Answer"
+=> "Scanner la réponse de désenregistrement";;
+flow-unregister-title => "Unregister from Device" => "Désenregistrer de l'appareil"
+flow-unregister-usb-wait
+=> "Unregistering the wallet on %1."
+=> "Désenregistrement du portefeuille sur %1.";;
 flow-usb-confirm-title => "Confirm on the Device" => "NONE"
 flow-usb-disconnected-body
 => "%1 was disconnected. Reconnect and unlock it, then try again."
@@ -728,6 +753,15 @@ keys-sp-descriptor-no-origin
 keys-sp-descriptor-unavailable
 => "This key cannot return a silent payment descriptor."
 => "NONE";;
+keys-unregister-account-tip
+=> "Ask the device to forget this wallet, in the QR window"
+=> "Demander à l'appareil d'oublier ce portefeuille, dans la fenêtre QR";;
+keys-unregister-unavailable
+=> "Only a key with a QR route can unregister a wallet from its device."
+=> "Seule une clé avec une route QR peut désenregistrer un portefeuille de son appareil.";;
+keys-unregister-unknown-wallet
+=> "This wallet is not recorded on this key."
+=> "Ce portefeuille n'est pas enregistré sur cette clé.";;
 keys-words-checksum
 => "These words are not a valid mnemonic. Check each word and their order."
 => "NONE";;

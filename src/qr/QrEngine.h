@@ -46,6 +46,9 @@ public:
     // Asks whether the device holds the wallet `descriptor` (ws-plaude/silent#115):
     // answered through descriptorRegistered too, `registered` saying whether it does.
     virtual void checkRegistration(const QString &descriptor) = 0;
+    // Asks the device to forget the wallet (bipqr Unregister Descriptor,
+    // ws-plaude/silent#130); answers descriptorUnregistered() or error().
+    virtual void unregisterDescriptor(const QString &descriptor) = 0;
     // Ends the exchange: a late answer is dropped.
     virtual void stop() = 0;
 
@@ -62,6 +65,8 @@ signals:
     // The device's registration answer: `stored` when it kept the wallet itself, else
     // `proof_hex` is the proof of registration to keep (empty when it gave none).
     void descriptorRegistered(bool registered, bool stored, const QString &proof_hex);
+    // The device no longer holds the wallet.
+    void descriptorUnregistered();
     // `device_code` is the device's bipqr error code when it refused the request
     // (DeviceRefused, or MusigSession for its 0x0D), else 0 (ws-plaude/silent#126).
     void error(qr::QrError kind, const QString &message, quint8 device_code = 0);

@@ -187,10 +187,7 @@ void KeyDetail::initDetail() {
 
     m_accounts_table = new catalog::Table;
     m_accounts_table->setHeaderVisible(false);
-    m_accounts_table->addColumn({.grow = true});
-    m_accounts_table->addColumn({.width = metric::ACCOUNT_MODULE_COLUMN});
-    m_accounts_table->addColumn(
-        {.width = metric::ACCOUNT_PILL_COLUMN, .alignment = Qt::AlignRight});
+    setAccountColumns(false);
     m_accounts_empty = emptyLine(TR("keys-accounts-empty"));
     m_register_error = new catalog::Notice(catalog::Notice::Tone::Error);
     m_register_error->setVisible(false);
@@ -274,9 +271,12 @@ auto KeyDetail::viewDetail() -> catalog::ScrollArea * {
 
 void KeyDetail::showDetail() {
     showHeader(m_alias);
-    setBody(m_detail);
+    // The tables take the modal's width, as in the design: a form body would squeeze
+    // their fixed columns. A QR key's account row holds its registration and Unregister
+    // from Device beside the name and module (ws-plaude/silent#130).
+    setWideBody(m_detail);
     setFooter(m_detail_actions);
-    setWidth(ModalWidth::L);
+    setWidth(ModalWidth::Wizard);
 }
 
 void KeyDetail::refreshDevices() {
@@ -435,13 +435,30 @@ void KeyDetail::refreshXpubs() {
 void KeyDetail::refreshAccounts(const KeyInfo &info) {
     QList<KeyAccount> list = keyAccounts(m_module, m_fingerprint);
     bool applies = registrationApplies(info);
+    m_qr_route = std::ranges::find(info.routes, KeyRouteKind::Qr) != info.routes.end();
     syncRegistrations(list, applies);
     m_accounts_table->clearRows();
+    setAccountColumns(m_qr_route);
     for (const auto &account : list) {
         auto *module = new Label(accountModuleLabel(account.plugin_id), LabelRole::Body);
         module->setTone(LabelTone::Muted);
-        m_accounts_table->addWidgetRow(account.descriptor, {accountName(account.name), module,
-                                                            registrationCell(account, applies)});
+        auto *cell = registrationCell(account, applies);
+        // A QR key's wallet can be forgotten by its device (ws-plaude/silent#130); a
+        // silent payment account is never registered on it.
+        if (m_qr_route && !account.descriptor.startsWith(QStringLiteral("sp("))) {
+            auto *unregister = catalog::btnUnregisterAccount();
+            unregister->setProperty(K_DESCRIPTOR, account.descriptor);
+            unregister->setToolTip(TR("keys-unregister-account-tip"));
+            connect(unregister, &QPushButton::clicked, this, &KeyDetail::onUnregisterClicked,
+                    qontrol::UNIQUE);
+            cell = (new qontrol::Row)
+                       ->spacing(resolve(Spacing::S))
+                       ->pushSpacer()
+                       ->push(cell)
+                       ->push(unregister);
+        }
+        m_accounts_table->addWidgetRow(account.descriptor,
+                                       {accountName(account.name), module, cell});
     }
     m_accounts_table->setVisible(!list.isEmpty());
     m_accounts_empty->setVisible(list.isEmpty());
@@ -510,6 +527,15 @@ void KeyDetail::populateNonces() {
                  new Label(TR("keys-nonces-available").arg(count), LabelRole::Body), fetch});
         }
     }
+}
+
+void KeyDetail::setAccountColumns(bool qr_route) {
+    m_accounts_table->clearColumns();
+    m_accounts_table->addColumn({.grow = true});
+    m_accounts_table->addColumn({.width = metric::ACCOUNT_MODULE_COLUMN});
+    m_accounts_table->addColumn(
+        {.width = qr_route ? metric::ACCOUNT_QR_ACTIONS_COLUMN : metric::ACCOUNT_PILL_COLUMN,
+         .alignment = Qt::AlignRight});
 }
 
 auto KeyDetail::registrationCell(const KeyAccount &account, bool applies) -> QWidget * {
@@ -776,6 +802,13 @@ void KeyDetail::onRegisterClicked() {
     m_register_queue.append(descriptor);
     m_register_error->setVisible(false);
     onKeyChanged();
+}
+
+void KeyDetail::onUnregisterClicked() {
+    // The keys QR window opens over this one; the record follows the device's answer,
+    // and keysChanged rebuilds the rows.
+    QString descriptor = sender()->property(K_DESCRIPTOR).toString();
+    m_module->unregisterDescriptor(m_module->bus()->newRequest(), m_fingerprint, descriptor);
 }
 
 void KeyDetail::onDescriptorIsRegistered(ReqId req_id, bool registered) {

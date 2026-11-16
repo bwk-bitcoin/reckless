@@ -74,6 +74,9 @@ void QrRouteFlow::start() {
     case Context::CheckRegistration:
         m_qr_engine->checkRegistration(request().descriptor);
         return;
+    case Context::Unregister:
+        m_qr_engine->unregisterDescriptor(request().descriptor);
+        return;
     }
 }
 
@@ -178,6 +181,8 @@ void QrRouteFlow::connectCamera() {
             qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::addressVerified, this, &QrRouteFlow::onQrVerified,
             qontrol::UNIQUE);
+    connect(m_qr_engine, &qr::QrEngine::descriptorUnregistered, this,
+            &QrRouteFlow::onQrUnregistered, qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::descriptorRegistered, this, &QrRouteFlow::onQrRegistered,
             qontrol::UNIQUE);
     connect(m_qr_engine, &qr::QrEngine::spAccount, this, &QrRouteFlow::onQrSpAccount,
@@ -336,6 +341,11 @@ void QrRouteFlow::onQrRegistered(bool registered, bool stored, const QString &pr
     emit descriptorRegistered(stored, proof_hex);
 }
 
+void QrRouteFlow::onQrUnregistered() {
+    m_camera->stop();
+    emit descriptorUnregistered();
+}
+
 void QrRouteFlow::onQrSpAccount(const QString &descriptor, const QList<qr::QrXpub> &xpubs) {
     m_camera->stop();
     emit descriptorFetched(descriptor, xpubs);
@@ -384,8 +394,19 @@ void QrRouteFlow::onQrError(qr::QrError kind, const QString &message, quint8 dev
         // The device refused the request itself (ws-plaude/silent#116): the request
         // is over. The caller gets the reason now; the window shows it until closed.
         m_camera->stop();
-        emit refused(message, device_code);
-        showRefused(message);
+        // An unregistration's refusals say what they mean for the wallet
+        // (ws-plaude/silent#130): 0x04, the device no longer holds it, Reckless forgets
+        // its registration too; 0x0F, the device keeps no registrations to forget.
+        auto reason = message;
+        if (request().context == Context::Unregister &&
+            device_code == plugin::DEVICE_ALIAS_UNKNOWN) {
+            reason = TR("flow-unregister-not-held");
+        } else if (request().context == Context::Unregister &&
+                   device_code == plugin::DEVICE_UNSUPPORTED_OPERATION) {
+            reason = TR("flow-unregister-none-kept");
+        }
+        emit refused(reason, device_code);
+        showRefused(reason);
         return;
     }
     if (kind != qr::QrError::RequestFailed) {

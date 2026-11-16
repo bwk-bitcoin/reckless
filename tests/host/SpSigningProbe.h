@@ -140,6 +140,12 @@ public:
                                    [[maybe_unused]] const QString &descriptor) override {
     }
 
+    void unregisterDescriptor([[maybe_unused]] ReqId req_id,
+                              [[maybe_unused]] plugin::Network network,
+                              [[maybe_unused]] const QString &fingerprint,
+                              [[maybe_unused]] const QString &descriptor) override {
+    }
+
     ReqId next_request = 0;
     ReqId request = 0;
     int requests = 0;

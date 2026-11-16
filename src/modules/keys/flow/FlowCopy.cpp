@@ -93,6 +93,19 @@ auto flowCopy(Context context) -> FlowCopy {
                 .sdTitle = TR("flow-check-registration-title"),
                 .hotPrompt = QString(),
                 .hotBusy = QString()};
+    case Context::Unregister:
+        // Only the QR route unregisters through this flow (ws-plaude/silent#130).
+        return {.title = TR("flow-unregister-title"),
+                .pickerLead = QString(),
+                .usbTitle = TR("flow-usb-confirm-title"),
+                .usbWait = TR("flow-unregister-usb-wait"),
+                .qrTitle = TR("flow-unregister-qr-title"),
+                .qrHint = TR("flow-unregister-qr-hint"),
+                .scanTitle = TR("flow-unregister-scan-title"),
+                .scanHint = TR("flow-unregister-scan-hint"),
+                .sdTitle = TR("flow-unregister-title"),
+                .hotPrompt = QString(),
+                .hotBusy = QString()};
     }
     return {};
 }
@@ -111,6 +124,7 @@ auto hotProceedButton(Context context) -> catalog::Button * {
         return catalog::btnPrepareNoncesHot();
     case Context::Register:
     case Context::CheckRegistration:
+    case Context::Unregister:
         return catalog::btnProceed();
     }
     return catalog::btnProceed();

@@ -147,6 +147,14 @@ void BwkQrEngine::registerDescriptor(const QString &descriptor) {
     issue(m_module->rust()->qr_request_register_descriptor(rust::Str(descriptor.toStdString())));
 }
 
+void BwkQrEngine::unregisterDescriptor(const QString &descriptor) {
+    if (m_module->rust() == nullptr) {
+        emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
+        return;
+    }
+    issue(m_module->rust()->qr_request_unregister_descriptor(rust::Str(descriptor.toStdString())));
+}
+
 void BwkQrEngine::checkRegistration(const QString &descriptor) {
     if (m_module->rust() == nullptr) {
         emit error(qr::QrError::RequestFailed, TR("keys-module-not-ready"));
@@ -304,6 +312,9 @@ void BwkQrEngine::forwardResponse(const ::QrResponse &decoded) {
     case QrResponseKind::Registration:
         emit descriptorRegistered(decoded.registered(), decoded.registration_stored(),
                                   KeysModule::toQt(decoded.registration_proof()));
+        return;
+    case QrResponseKind::Unregistered:
+        emit descriptorUnregistered();
         return;
     default:
         qWarning() << "keys: unexpected QR answer kind";

@@ -128,6 +128,8 @@ signals:
                               QString proof_hex);
     // Whether the device holds the request's wallet (ws-plaude/silent#115).
     void registrationChecked(ReqId req_id, bool registered);
+    // The QR device forgot the wallet (ws-plaude/silent#130).
+    void descriptorUnregistered(ReqId req_id, QString fingerprint, QString descriptor);
     // A failure the flow cannot recover from; the window closes.
     // `device_code` is the device's bipqr error code when `kind` is DeviceRefused.
     void failed(ReqId req_id, QString message, plugin::SignError kind = plugin::SignError::Other,
@@ -152,6 +154,7 @@ public slots:
     void onXpubFetched(const QString &xpub);
     void onDescriptorRegistered(bool stored, const QString &proof_hex);
     void onRegistrationChecked(bool registered);
+    void onDescriptorUnregistered();
     void onRefused(const QString &reason, quint8 device_code);
     void onExchanged(const plugin::KeyExchange &exchange);
     void onFailed(const QString &message, plugin::SignError kind = plugin::SignError::Other,
@@ -236,6 +239,7 @@ signals:
     void descriptorRegistered(bool stored, const QString &proof_hex);
     // Whether the device holds the wallet, for a registration check.
     void registrationChecked(bool registered);
+    void descriptorUnregistered();
     // The device refused the request with `reason`: SigningFlow answers the caller
     // with it at once, and the route keeps showing it until closed
     // (ws-plaude/silent#116).

@@ -10,6 +10,8 @@
 // each reply read, refused ones included; no other caller does.
 // ws-plaude/silent#135: on the MuSig2 QR routes, a device's own refusal reaches the
 // caller as DeviceRefused with its code, its 0x0D included.
+// ws-plaude/silent#130: unregisterDescriptor on a QR key asks the device to forget the
+// wallet in the keys QR window; its ok and its 0x04 clear the registration record.
 #include "AppController.h"
 #include "MockPlugin.h"
 #include "catalog/Button.h"
@@ -28,6 +30,7 @@
 #include <QApplication>
 #include <QByteArray>
 #include <QElapsedTimer>
+#include <QLabel>
 #include <QList>
 #include <QObject>
 #include <QPointer>
@@ -65,6 +68,7 @@ public:
     int checked = 0;
     int cancelled = 0;
     int errors = 0;
+    int unregistered = 0;
     plugin::SignError lastKind = plugin::SignError::Other;
     quint8 lastCode = 0;
 
@@ -80,6 +84,11 @@ public slots:
 
     void onCancelled([[maybe_unused]] ReqId req_id) {
         ++cancelled;
+    }
+
+    void onUnregistered([[maybe_unused]] ReqId req_id,
+                        [[maybe_unused]] const QString &fingerprint) {
+        ++unregistered;
     }
 
     void onError([[maybe_unused]] std::optional<ReqId> req_id,
@@ -575,6 +584,71 @@ void qrMusigRefusal(bool cache, quint8 code) {
     pump(200);
 }
 
+// Whether a request to the key now carries the wallet's descriptor body: false while its
+// device is recorded as keeping the wallet, true once that record is cleared.
+auto carriesDescriptor(keys::KeysModule &module) -> bool {
+    auto request = module.rust()->qr_request_verify_address(FINGERPRINT, POLICY, "m/0/0", "bcrt1q");
+    require(request.is_ok, "a verify request to the key");
+    QByteArray bytes(reinterpret_cast<const char *>(request.payload.data()),
+                     static_cast<qsizetype>(request.payload.size()));
+    return bytes.contains("tpubDCChhoz5Qdrkn7Z7KXawq6Ad6r3A4MUkCoVTqeWxfTkA6bHNJ3CH");
+}
+
+// The device answers the unregistration with `code` (0: bipqr's
+// unregister_descriptor_response vector, an ok).
+void qrUnregistration(quint8 code) {
+    auto module = std::make_unique<keys::KeysModule>();
+    module->setNetwork(Network::Regtest);
+    (void)module->rust()->remove_key(FINGERPRINT, true);
+    require(module->rust()->add_key(FINGERPRINT, "QR device").is_ok &&
+                module->rust()->add_route(FINGERPRINT, KeyRouteKind::Qr).is_ok &&
+                module->rust()->set_descriptor_registration(FINGERPRINT, POLICY, true, "").is_ok,
+            "the QR key holds the wallet, its device recorded as keeping it");
+    require(!carriesDescriptor(*module), "a request names the kept wallet by its alias alone");
+    BusSpy spy;
+    QObject::connect(module->bus(), &keys::KeysBus::error, &spy, &BusSpy::onError, qontrol::UNIQUE);
+    QObject::connect(module->bus(), &keys::KeysBus::descriptorUnregistered, &spy,
+                     &BusSpy::onUnregistered, qontrol::UNIQUE);
+    module->unregisterDescriptor(81, QString::fromLatin1(FINGERPRINT), QString::fromLatin1(POLICY));
+    auto *flow = waitForFlow();
+    require(flow != nullptr && flow->windowTitle() == QStringLiteral("Show Unregistration Request"),
+            "the unregistration shows its request in the QR window");
+    auto *engine = flow->findChild<qr::QrEngine *>();
+    require(engine != nullptr, "the QR window decodes the device's replies");
+    // The verify request above took REQUEST_ID 1: the unregistration's is 2.
+    auto answer = code == 0
+                      ? QByteArray::fromHex("42495058585801870001046d61696e")
+                      : errorResponse(0x07, 0x0002, code, "the device refused the unregistration");
+    answer[9] = 0x02;
+    engine->response({.payload = answer});
+    pump(200);
+    if (code == 0) {
+        require(spy.unregistered == 1 && spy.errors == 0, "the device's ok answers unregistered");
+    } else {
+        require(spy.errors == 1 && spy.lastKind == plugin::SignError::DeviceRefused &&
+                    spy.lastCode == code,
+                "a refusal reaches the caller with its code");
+        require(button(flow, QStringLiteral("Close")) != nullptr,
+                "the refusal shows its reason with Close");
+        bool explained = false;
+        for (auto *label : flow->findChildren<QLabel *>()) {
+            explained |= code == plugin::DEVICE_ALIAS_UNKNOWN &&
+                         label->text().startsWith(QStringLiteral("The device no longer holds"));
+            explained |= code == plugin::DEVICE_UNSUPPORTED_OPERATION &&
+                         label->text().startsWith(QStringLiteral("This device keeps no wallet"));
+            explained |= code == plugin::DEVICE_USER_DECLINED;
+        }
+        require(explained, "0x04 and 0x0F say what they mean for the wallet");
+        button(flow, QStringLiteral("Close"))->click();
+        pump(200);
+    }
+    const bool cleared = code == 0 || code == plugin::DEVICE_ALIAS_UNKNOWN;
+    require(carriesDescriptor(*module) == cleared,
+            "an ok or 0x04 clears the record, so requests carry the wallet again; 0x01 and "
+            "0x0F keep it");
+    require(openFlows().isEmpty(), "the window is closed");
+}
+
 // Reckless's own failures keep their kinds, with no device code.
 void ownFailures() {
     auto module = std::make_unique<keys::KeysModule>();
@@ -647,6 +721,10 @@ void qrRegistrationSmoke() {
     ownFailures();
     qrExchanges(false);
     qrExchanges(true);
+    for (quint8 code : {quint8(0), plugin::DEVICE_ALIAS_UNKNOWN, plugin::DEVICE_USER_DECLINED,
+                        plugin::DEVICE_UNSUPPORTED_OPERATION}) {
+        qrUnregistration(code);
+    }
     for (bool cache : {true, false}) {
         for (quint8 code : {plugin::DEVICE_MUSIG_SESSION, plugin::DEVICE_USER_DECLINED}) {
             qrMusigRefusal(cache, code);

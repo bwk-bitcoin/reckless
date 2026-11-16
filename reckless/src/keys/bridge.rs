@@ -830,6 +830,10 @@ impl KeysModule {
         to_message(self.session.register_descriptor(descriptor))
     }
 
+    pub fn qr_request_unregister_descriptor(&mut self, descriptor: &str) -> ffi::QrMessageResult {
+        to_message(self.session.unregister_descriptor(descriptor))
+    }
+
     pub fn qr_request_check_registration(&mut self, descriptor: &str) -> ffi::QrMessageResult {
         to_message(self.session.check_registration(descriptor))
     }
@@ -1599,6 +1603,7 @@ impl QrResponse {
         match self.inner.as_ref() {
             Ok(qr::QrResponse::Xpubs { .. }) | Err(_) => ffi::QrResponseKind::Xpubs,
             Ok(qr::QrResponse::Registration { .. }) => ffi::QrResponseKind::Registration,
+            Ok(qr::QrResponse::Unregistered { .. }) => ffi::QrResponseKind::Unregistered,
             Ok(qr::QrResponse::AddressVerified(_)) => ffi::QrResponseKind::AddressVerified,
             Ok(qr::QrResponse::SignedPsbt(_)) => ffi::QrResponseKind::SignedPsbt,
             Ok(qr::QrResponse::SpAccount { .. }) => ffi::QrResponseKind::SpAccount,

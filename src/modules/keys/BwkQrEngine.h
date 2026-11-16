@@ -26,6 +26,7 @@ public:
                        const QString &address) override;
     void registerDescriptor(const QString &descriptor) override;
     void checkRegistration(const QString &descriptor) override;
+    void unregisterDescriptor(const QString &descriptor) override;
     void stop() override;
 
 signals:

@@ -203,6 +203,15 @@ impl QrSession {
         self.issue(body, None, None, None)
     }
 
+    /// Asks the device to forget the wallet `descriptor` (bipqr Unregister Descriptor,
+    /// ws-plaude/silent#130): its alias alone. The answer is an Unregistered.
+    pub fn unregister_descriptor(&mut self, descriptor: &str) -> Result<QrRequest, Error> {
+        let body = request::Body::UnregisterDescriptor(request::UnregisterDescriptor {
+            descriptor_alias: hwi::wallet_name(descriptor),
+        });
+        self.issue(body, None, None, None)
+    }
+
     /// Asks whether the device holds the wallet `descriptor`: the registration request
     /// with its alias and no descriptor body (bipqr's registration check,
     /// ws-plaude/silent#115). The answer is a Registration.
@@ -493,6 +502,9 @@ impl QrSession {
                 outstanding.signatures_into.as_ref(),
             )?,
             response::Body::Registration(registration) => registration_response(registration),
+            response::Body::Unregistered(unregistered) => QrResponse::Unregistered {
+                alias: unregistered.descriptor_alias,
+            },
             response::Body::AddressUri(address_uri) => {
                 validate_address_uri(address_uri, outstanding.expected_address.clone())?
             }
@@ -595,6 +607,8 @@ pub enum QrResponse {
         stored: Option<bool>,
         proof: Option<Vec<u8>>,
     },
+    /// The device no longer holds the wallet `alias` (ws-plaude/silent#130).
+    Unregistered { alias: String },
     /// Whether the device's independently derived address matched the one the
     /// caller asked it to confirm.
     AddressVerified(bool),

@@ -20,6 +20,7 @@
 #include "interfaces/signer.h"
 #include "qr/QrTypes.h"
 
+#include <QApplication>
 #include <QDebug>
 #include <QThread>
 
@@ -339,6 +340,16 @@ void KeysBus::checkDescriptorRegistered(ReqId req_id, plugin::Network network,
     m_module->checkDescriptorRegistered(req_id, fingerprint, descriptor);
 }
 
+void KeysBus::unregisterDescriptor(ReqId req_id, plugin::Network network,
+                                   const QString &fingerprint, const QString &descriptor) {
+    auto converted = requestNetwork(network, req_id);
+    if (!converted.has_value()) {
+        return;
+    }
+    NetworkScope scope(m_module, *converted);
+    m_module->unregisterDescriptor(req_id, fingerprint, descriptor);
+}
+
 void KeysBus::deliverSigned(ReqId req_id, const QString &psbt_v2_hex) {
     if (m_coordination.contains(req_id)) {
         auto request = m_coordination.value(req_id);
@@ -410,6 +421,10 @@ void KeysBus::deliverDescriptorRegistered(ReqId req_id, const QString &fingerpri
 
 void KeysBus::deliverRegistrationChecked(ReqId req_id, bool registered) {
     emit registrationChecked(req_id, registered);
+}
+
+void KeysBus::deliverDescriptorUnregistered(ReqId req_id, const QString &fingerprint) {
+    emit descriptorUnregistered(req_id, fingerprint);
 }
 
 KeysModule::KeysModule(QObject *parent) : IModule(parent) {
@@ -737,7 +752,13 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
             &KeysModule::onFlowDescriptorRegistered, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::registrationChecked, m_bus.get(),
             &KeysBus::deliverRegistrationChecked, qontrol::UNIQUE);
+    connect(flow, &flow::SigningFlow::descriptorUnregistered, this,
+            &KeysModule::onFlowDescriptorUnregistered, qontrol::UNIQUE);
+    // Before the bus: an unregistration's 0x04 clears the record before its caller hears.
+    connect(flow, &flow::SigningFlow::failed, this, &KeysModule::onFlowFailed, qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::failed, m_bus.get(), &KeysBus::deliverError, qontrol::UNIQUE);
+    connect(flow, &flow::SigningFlow::cancelled, this, &KeysModule::onFlowCancelled,
+            qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::exchanged, m_bus.get(), &KeysBus::deliverExchange,
             qontrol::UNIQUE);
     connect(flow, &flow::SigningFlow::cancelled, m_bus.get(), &KeysBus::deliverCancelled,
@@ -756,10 +777,15 @@ void KeysModule::runFlow(flow::SigningFlow *flow) {
         return;
     }
     // Not modal (ws-plaude/silent#125): it stays over the main window, which keeps
-    // taking clicks, a plugin's tab included. Deleted once it closes.
+    // taking clicks, a plugin's tab included. Opened from a modal (a key's details,
+    // ws-plaude/silent#130), it goes over that modal, which would otherwise block it.
+    // Deleted once it closes.
     m_open_flow = flow;
-    flow->setParent(AppController::get() != nullptr ? AppController::get()->getWindow() : nullptr,
-                    Qt::Dialog);
+    QWidget *over = QApplication::activeModalWidget();
+    if (over == nullptr && AppController::get() != nullptr) {
+        over = AppController::get()->getWindow();
+    }
+    flow->setParent(over, Qt::Dialog);
     flow->setWindowModality(Qt::NonModal);
     connect(flow, &QDialog::finished, flow, &QObject::deleteLater, qontrol::UNIQUE);
     flow->show();
@@ -1088,6 +1114,73 @@ void KeysModule::registerDescriptor(ReqId req_id, const QString &fingerprint,
                             .descriptor = descriptor,
                             .instance_id = device->instanceId,
                             .signer = device->signer});
+}
+
+void KeysModule::unregisterDescriptor(ReqId req_id, const QString &fingerprint,
+                                      const QString &descriptor) {
+    if (rust() == nullptr) {
+        m_bus->deliverError(req_id, TR("keys-module-not-ready"));
+        return;
+    }
+    // Only a QR device unregisters: a USB device's library offers no unregistration.
+    if (!hasRoute(fingerprint, KeyRouteKind::Qr)) {
+        m_bus->deliverError(req_id, TR("keys-unregister-unavailable"),
+                            plugin::SignError::InvalidRequest);
+        return;
+    }
+    auto entries = rust()->key_descriptors(fingerprint.toStdString());
+    auto held = std::ranges::any_of(entries, [&descriptor](const KeyDescriptor &entry) {
+        return toQt(entry.descriptor) == descriptor;
+    });
+    if (!held) {
+        m_bus->deliverError(req_id, TR("keys-unregister-unknown-wallet"),
+                            plugin::SignError::InvalidRequest);
+        return;
+    }
+    m_unregistrations.insert(req_id, {fingerprint, descriptor});
+    runFlow(new flow::SigningFlow(this, {.context = flow::Context::Unregister,
+                                         .req_id = req_id,
+                                         .descriptor = descriptor,
+                                         .fingerprint = fingerprint}));
+    // A busy keys window refused it at once: nothing is in flight.
+    if (m_open_flow == nullptr || m_open_flow->requestId() != req_id) {
+        m_unregistrations.remove(req_id);
+    }
+}
+
+void KeysModule::onFlowDescriptorUnregistered(ReqId req_id, const QString &fingerprint,
+                                              const QString &descriptor) {
+    m_unregistrations.remove(req_id);
+    forgetDeviceRegistration(fingerprint, descriptor);
+    m_bus->deliverDescriptorUnregistered(req_id, fingerprint);
+}
+
+void KeysModule::onFlowFailed(ReqId req_id, [[maybe_unused]] const QString &message,
+                              plugin::SignError kind, quint8 device_code) {
+    if (!m_unregistrations.contains(req_id)) {
+        return;
+    }
+    auto [fingerprint, descriptor] = m_unregistrations.take(req_id);
+    if (kind == plugin::SignError::DeviceRefused && device_code == plugin::DEVICE_ALIAS_UNKNOWN) {
+        forgetDeviceRegistration(fingerprint, descriptor);
+    }
+}
+
+void KeysModule::onFlowCancelled(ReqId req_id) {
+    m_unregistrations.remove(req_id);
+}
+
+void KeysModule::forgetDeviceRegistration(const QString &fingerprint, const QString &descriptor) {
+    // Kept on the key, no longer recorded as held by the device: later requests carry
+    // the descriptor body again (ws-plaude/silent#130).
+    auto result = rust()->set_descriptor_registration(rust::Str(fingerprint.toStdString()),
+                                                      rust::Str(descriptor.toStdString()), false,
+                                                      rust::Str());
+    if (!result.is_ok) {
+        qWarning() << "keys: unregistration not recorded:" << toQt(result.error);
+        return;
+    }
+    emit keysChanged();
 }
 
 void KeysModule::checkDescriptorRegistered(ReqId req_id, const QString &fingerprint,

@@ -209,6 +209,7 @@ void SigningFlow::begin() {
     case Context::FetchXpub:
     case Context::Register:
     case Context::CheckRegistration:
+    case Context::Unregister:
         m_current = fetchRow();
         startRoute();
         return;
@@ -416,8 +417,9 @@ auto SigningFlow::fetchRow() const -> FlowRow {
             break;
         case Context::Register:
         case Context::CheckRegistration:
-            // Only a QR key registers, or checks it, through the flow
-            // (ws-plaude/silent#114, #115).
+        case Context::Unregister:
+            // Only a QR key registers, checks or unregisters through the flow
+            // (ws-plaude/silent#114, #115, #130).
             row.route = KeyRouteKind::Qr;
             break;
         default:
@@ -517,6 +519,8 @@ void SigningFlow::startRoute() {
             &SigningFlow::onDescriptorRegistered, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::registrationChecked, this,
             &SigningFlow::onRegistrationChecked, qontrol::UNIQUE);
+    connect(m_flow, &SigningRouteFlow::descriptorUnregistered, this,
+            &SigningFlow::onDescriptorUnregistered, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::refused, this, &SigningFlow::onRefused, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::failed, this, &SigningFlow::onFailed, qontrol::UNIQUE);
     connect(m_flow, &SigningRouteFlow::exchanged, this, &SigningFlow::onExchanged, qontrol::UNIQUE);
@@ -585,6 +589,7 @@ void SigningFlow::onDevicesChanged() {
     case Context::FetchXpub:
     case Context::Register:
     case Context::CheckRegistration:
+    case Context::Unregister:
         return;
     }
     showPicker();
@@ -686,6 +691,15 @@ void SigningFlow::onRegistrationChecked(bool registered) {
     }
     m_answered = true;
     emit registrationChecked(m_request.req_id, registered);
+    accept();
+}
+
+void SigningFlow::onDescriptorUnregistered() {
+    if (m_answered) {
+        return;
+    }
+    m_answered = true;
+    emit descriptorUnregistered(m_request.req_id, m_request.fingerprint, m_request.descriptor);
     accept();
 }
 

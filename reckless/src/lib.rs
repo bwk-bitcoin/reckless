@@ -204,6 +204,8 @@ mod ffi {
         SpAccount,
         MusigPrepared,
         MusigSignedPsbt,
+        /// The device forgot the wallet (bipqr Unregister Descriptor, ws-plaude/silent#130).
+        Unregistered,
     }
 
     /// MuSig2 signing round of a PSBT.
@@ -3087,6 +3089,12 @@ mod ffi {
         // against.
         fn qr_request_get_xpubs(self: &mut KeysModule, paths: Vec<String>) -> QrMessageResult;
         fn qr_request_register_descriptor(
+            self: &mut KeysModule,
+            descriptor: &str,
+        ) -> QrMessageResult;
+        /// Asks the device to forget the wallet `descriptor`: its alias alone
+        /// (bipqr Unregister Descriptor, ws-plaude/silent#130).
+        fn qr_request_unregister_descriptor(
             self: &mut KeysModule,
             descriptor: &str,
         ) -> QrMessageResult;

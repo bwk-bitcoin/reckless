@@ -10,7 +10,7 @@ use std::str::FromStr;
 use bipqr::{
     backend::{Active, Backend},
     ll::{
-        decode, encode_response,
+        decode, encode_request, encode_response,
         request::{self, KeyKind, KeyRequest},
         response,
         types::{ExtendedKey, Fingerprint as ProtocolFingerprint},
@@ -1360,5 +1360,97 @@ fn requests_carry_the_body_and_proof_or_the_alias_as_the_registration_says() {
             "{registration:?}: body"
         );
         assert_eq!(verification.proof, carried_proof, "{registration:?}: proof");
+    }
+}
+
+// ws-plaude/silent#130: the Unregister Descriptor request names the wallet by its alias
+// alone, encoded as bipqr's vectors are; the device's ok answer is read as the wallet
+// forgotten, and its refusals keep their codes.
+#[test]
+fn an_unregistration_names_the_alias_and_reads_the_answer_as_the_vectors_are() {
+    // bipqr test_vectors/unregister_descriptor.json, alias "main", REQUEST_ID 1.
+    let request_vector = hex::decode("42495058585801070001046d61696e").expect("hex");
+    let answer_vector = hex::decode("42495058585801870001046d61696e").expect("hex");
+    assert_eq!(
+        encode_request(&Request {
+            id: RequestId([0x00, 0x01]),
+            body: request::Body::UnregisterDescriptor(request::UnregisterDescriptor {
+                descriptor_alias: "main".to_string(),
+            }),
+        })
+        .expect("encode"),
+        request_vector,
+        "the codec encodes the request as the vector"
+    );
+
+    let mut session = QrSession::new();
+    let unregister = session
+        .unregister_descriptor("wpkh(desc)")
+        .expect("unregister request");
+    let Message::Request(decoded) = decode(unregister.message()).expect("decode request") else {
+        panic!("expected a request");
+    };
+    assert_eq!(decoded.id, unregister.id());
+    let request::Body::UnregisterDescriptor(body) = decoded.body else {
+        panic!("expected the unregister request, got {:?}", decoded.body);
+    };
+    assert!(
+        !body.descriptor_alias.is_empty() && body.descriptor_alias.len() <= 32,
+        "the request names the wallet's alias, {:?}",
+        body.descriptor_alias
+    );
+    // The session's message is the vector's with its own alias and REQUEST_ID.
+    assert_eq!(
+        unregister.message(),
+        encode_request(&Request {
+            id: unregister.id(),
+            body: request::Body::UnregisterDescriptor(request::UnregisterDescriptor {
+                descriptor_alias: body.descriptor_alias.clone(),
+            }),
+        })
+        .expect("encode"),
+    );
+
+    // The vector's answer, under this request's id, is the wallet forgotten.
+    let mut answer = answer_vector.clone();
+    answer[8..10].copy_from_slice(&unregister.id().0);
+    let read = session.decode_response(&answer).expect("the ok answer");
+    assert!(
+        matches!(&read, QrResponse::Unregistered { alias } if alias == "main"),
+        "expected the wallet forgotten, got {read:?}"
+    );
+
+    // A refusal keeps its code: 0x04 (not held), 0x01 (declined), 0x0F (keeps none).
+    for error in [
+        response::Error::UnknownDescriptorAlias,
+        response::Error::UserDeclined,
+        response::Error::UnsupportedOperation,
+    ] {
+        let mut session = QrSession::new();
+        session
+            .unregister_descriptor("wpkh(desc)")
+            .expect("unregister request");
+        let encoded = respond(
+            &session,
+            response::Body::Error(response::ErrorBody {
+                message_type: MessageType::UnregisterDescriptor,
+                error,
+                message: "refused".to_string(),
+            }),
+        );
+        let refused = session.decode_response(&encoded);
+        let kept = match &refused {
+            Err(Error::SignerRefused { code, .. }) => *code == error,
+            // 0x0F has its own variant, which the bridge reports as 0x0F.
+            Err(Error::SignerUnsupported { message_type, .. }) => {
+                error == response::Error::UnsupportedOperation
+                    && *message_type == MessageType::UnregisterDescriptor
+            }
+            _ => false,
+        };
+        assert!(
+            kept,
+            "expected the device's refusal {error:?}, got {refused:?}"
+        );
     }
 }

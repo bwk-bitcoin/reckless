@@ -20,7 +20,9 @@ enum class Context : std::uint8_t {
     FetchXpub,
     Nonces,
     Register,
-    CheckRegistration
+    CheckRegistration,
+    // Asks a QR device to forget a wallet (ws-plaude/silent#130).
+    Unregister
 };
 
 // The copy of one context. `usbWait` takes the device name, `hotPrompt` the key alias.

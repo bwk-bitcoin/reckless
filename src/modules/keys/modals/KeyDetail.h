@@ -75,6 +75,7 @@ public slots:
     void onNonceSessionsChanged();
     void onRemoveXpubClicked();
     void onRegisterClicked();
+    void onUnregisterClicked();
     void onDescriptorIsRegistered(ReqId req_id, bool registered);
     void onDescriptorRegistered(ReqId req_id, bool registered);
     void onRegistrationError(std::optional<ReqId> req_id, const QString &message);
@@ -104,6 +105,7 @@ protected:
     void refreshAccounts(const KeyInfo &info);
     void refreshNonces(const QList<KeyAccount> &accounts);
     void populateNonces();
+    void setAccountColumns(bool qr_route);
     [[nodiscard]] auto registrationCell(const KeyAccount &account, bool applies) -> QWidget *;
     // Follows the key's ready device: a new one is asked about every account, and
     // accounts added since are asked about on the same one.
@@ -162,6 +164,9 @@ private:
     // The device the states above were read from, empty when none is ready.
     QString m_register_instance;
     QPointer<ISigner> m_register_signer;
+    // The key has a QR route: each wallet offers to be unregistered from its device
+    // (ws-plaude/silent#130).
+    bool m_qr_route = false;
     QString m_register_descriptor;
     ReqId m_register_req = 0;
 

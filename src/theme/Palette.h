@@ -173,6 +173,8 @@ const int XPUB_PILL_COLUMN = 120;
 const int XPUB_REMOVE_COLUMN = 30;
 const int ACCOUNT_MODULE_COLUMN = 160;
 const int ACCOUNT_PILL_COLUMN = 140;
+// A QR key's account row also offers Unregister from Device (ws-plaude/silent#130).
+const int ACCOUNT_QR_ACTIONS_COLUMN = 300;
 const int DROP_ICON_SIZE = 48;
 
 } // namespace metric

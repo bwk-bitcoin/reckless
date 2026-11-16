@@ -47,6 +47,7 @@ public slots:
     void onMusigPrepared();
     void onQrVerified(bool matched);
     void onQrRegistered(bool registered, bool stored, const QString &proof_hex);
+    void onQrUnregistered();
     void onQrSpAccount(const QString &descriptor, const QList<qr::QrXpub> &xpubs);
     void onQrXpubs(const QString &fingerprint, const QList<qr::QrXpub> &xpubs,
                    const qr::QrDevice &device);

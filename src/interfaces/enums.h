@@ -70,7 +70,12 @@ enum class ExchangeDirection : std::uint32_t { Request = 0, Reply = 1 };
 // The device's bipqr codes a DeviceRefused error carries (ENCODING.md): 0x01 to 0x10,
 // 0xFF for a vendor error. Only the ones Reckless itself acts on are named.
 inline constexpr std::uint8_t DEVICE_USER_DECLINED = 0x01;
+// Unknown or unregistered DESCRIPTOR_ALIAS: to an unregistration, the device no longer
+// holds the wallet (ws-plaude/silent#130).
+inline constexpr std::uint8_t DEVICE_ALIAS_UNKNOWN = 0x04;
 inline constexpr std::uint8_t DEVICE_MUSIG_SESSION = 0x0D;
+// Unsupported operation: to an unregistration, a device that keeps no registrations.
+inline constexpr std::uint8_t DEVICE_UNSUPPORTED_OPERATION = 0x0F;
 
 // Whether a sign error means the MuSig2 session is lost, whoever lost it: the caller
 // restarts the attempt from round 1.

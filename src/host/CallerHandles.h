@@ -103,6 +103,8 @@ public:
                             const QString &descriptor) override;
     void checkDescriptorRegistered(ReqId req_id, plugin::Network network,
                                    const QString &fingerprint, const QString &descriptor) override;
+    void unregisterDescriptor(ReqId req_id, plugin::Network network, const QString &fingerprint,
+                              const QString &descriptor) override;
 
 private slots:
     void onTargetDestroyed();
@@ -120,6 +122,7 @@ private slots:
                      const QString &path);
     void onDescriptorRegistered(ReqId req_id, const QString &fingerprint);
     void onRegistrationChecked(ReqId req_id, bool registered);
+    void onDescriptorUnregistered(ReqId req_id, const QString &fingerprint);
     void onError(std::optional<ReqId> req_id, const QString &message, plugin::SignError kind,
                  quint8 device_code);
     void onCancelled(ReqId req_id);

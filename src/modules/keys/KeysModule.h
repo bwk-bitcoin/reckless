@@ -120,6 +120,8 @@ public:
                             const QString &descriptor) override;
     void checkDescriptorRegistered(ReqId req_id, plugin::Network network,
                                    const QString &fingerprint, const QString &descriptor) override;
+    void unregisterDescriptor(ReqId req_id, plugin::Network network, const QString &fingerprint,
+                              const QString &descriptor) override;
 
 public slots:
     void onCoordinationReleased();
@@ -137,6 +139,7 @@ public slots:
                      const QString &path);
     void deliverDescriptorRegistered(ReqId req_id, const QString &fingerprint);
     void deliverRegistrationChecked(ReqId req_id, bool registered);
+    void deliverDescriptorUnregistered(ReqId req_id, const QString &fingerprint);
 
 protected:
     [[nodiscard]] auto readKeys(plugin::Network network) const -> KeyListResult override;
@@ -296,6 +299,11 @@ public:
     // Asks `fingerprint`'s connected USB device whether it holds `descriptor`.
     void checkDescriptorRegistered(ReqId req_id, const QString &fingerprint,
                                    const QString &descriptor);
+    // Asks `fingerprint`'s QR device to forget `descriptor` through its QR window
+    // (ws-plaude/silent#130). On its ok, and on its 0x04 (it no longer held it), the
+    // key's record of the device registration is cleared: later requests carry the
+    // descriptor body again.
+    void unregisterDescriptor(ReqId req_id, const QString &fingerprint, const QString &descriptor);
 
     // Worker jobs owned by this module, so a thread never outlives the modal that asked
     // for it. Each starts a QThread::create lambda that captures only copied data plus
@@ -401,6 +409,14 @@ private slots:
     void onFlowDescriptorRegistered(ReqId req_id, const QString &fingerprint,
                                     const QString &descriptor, bool stored,
                                     const QString &proof_hex);
+    // The QR device forgot the wallet: its registration record is cleared, then the
+    // caller is answered (ws-plaude/silent#130).
+    void onFlowDescriptorUnregistered(ReqId req_id, const QString &fingerprint,
+                                      const QString &descriptor);
+    // An unregistration the device refused with 0x04 clears the record as well.
+    void onFlowFailed(ReqId req_id, const QString &message, plugin::SignError kind,
+                      quint8 device_code);
+    void onFlowCancelled(ReqId req_id);
     void onFlowXpubFetched(ReqId req_id, const QString &xpub, const QString &fingerprint,
                            const QString &path);
     // A flow fetched an sp() descriptor: the xpubs handed with it cached on its key,
@@ -474,6 +490,8 @@ protected:
     [[nodiscard]] auto signerKey(const QString &fingerprint) const -> QString;
     // Whether the key `fingerprint` has the route `route`.
     [[nodiscard]] auto hasRoute(const QString &fingerprint, KeyRouteKind route) const -> bool;
+    // The key's record of `descriptor` as held by its device is cleared (#130).
+    void forgetDeviceRegistration(const QString &fingerprint, const QString &descriptor);
     // The ready device of `fingerprint`'s key when the key has a USB route.
     [[nodiscard]] auto registrationDevice(const QString &fingerprint) const
         -> std::optional<plugin::SignerEntry>;
@@ -526,6 +544,9 @@ private:
     QHash<QString, ISigner *> m_signers;
     // Device registrations in flight, by the device's request id.
     QHash<ReqId, DeviceRegistration> m_device_registrations;
+    // QR unregistrations in flight (ws-plaude/silent#130): the key and wallet, by bus
+    // request.
+    QHash<ReqId, QPair<QString, QString>> m_unregistrations;
     // signOnDevice() requests in flight, by the exchange signing them.
     QHash<const flow::DeviceSign *, DeviceSignRequest> m_device_signs;
     // verifyOnDevice() and xpubOnDevice() requests in flight, by the exchange asking.

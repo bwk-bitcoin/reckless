@@ -141,6 +141,12 @@ auto btnRegisterAccount() -> Button * {
     return make({.role = ButtonRole::Default, .label = TR("btn-register"), .width = BtnWidth::M});
 }
 
+auto btnUnregisterAccount() -> Button * {
+    return make({.role = ButtonRole::Inline,
+                 .label = TR("btn-unregister-from-device"),
+                 .width = BtnWidth::Auto});
+}
+
 auto btnFetchThisXpub() -> Button * {
     return make({.role = ButtonRole::Primary, .label = TR("btn-fetch-xpub"), .width = BtnWidth::M});
 }

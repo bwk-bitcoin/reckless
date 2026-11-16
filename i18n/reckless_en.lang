@@ -327,6 +327,7 @@ btn-disable-plugin => "Disable Plugin"
 btn-plugin-access => "Access"
 
 btn-forget-access => "Forget"
+btn-unregister-from-device => "Unregister from Device"
 
 btn-allow-access => "Allow"
 
@@ -757,6 +758,18 @@ flow-check-registration-qr-title => "Show Registration Check"
 flow-check-registration-qr-hint => "Scan this code with the device to check whether it holds the wallet."
 flow-check-registration-scan-title => "Scan Registration Status"
 flow-check-registration-scan-hint => "Show the device's answer to the camera."
+flow-unregister-title => "Unregister from Device"
+flow-unregister-usb-wait => "Unregistering the wallet on %1."
+flow-unregister-qr-title => "Show Unregistration Request"
+flow-unregister-qr-hint => "Scan this code with the device. It asks you to confirm forgetting the wallet."
+flow-unregister-scan-title => "Scan Unregistration Answer"
+flow-unregister-scan-hint => "Show the device's answer to the camera."
+
+flow-unregister-not-held
+=> "The device no longer holds this wallet. Reckless forgets its registration too: the next request carries the wallet again.";;
+
+flow-unregister-none-kept
+=> "This device keeps no wallet registrations, so there is nothing to forget on it.";;
 keys-register-refused => "The device did not register the wallet."
 keys-flow-busy => "Another keys request is open. Finish or close it, then try again."
 flow-qr-refused-title => "The Device Refused"
@@ -1096,6 +1109,9 @@ keys-register-account-connect
 => "Connect the device to check or register this account.";;
 
 keys-register-account-on => "Register on %1"
+keys-unregister-account-tip => "Ask the device to forget this wallet, in the QR window"
+keys-unregister-unavailable => "Only a key with a QR route can unregister a wallet from its device."
+keys-unregister-unknown-wallet => "This wallet is not recorded on this key."
 
 keys-register-account-refused => "The device did not register this account."
 keys-register-account-rejected => "%1 declined the account. Nothing was registered."
