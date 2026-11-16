@@ -1454,3 +1454,84 @@ fn an_unregistration_names_the_alias_and_reads_the_answer_as_the_vectors_are() {
         );
     }
 }
+
+// ws-plaude/silent#137: Kern's one-pass answer to a silent payment send (it holds every
+// input: shares, proofs, the computed output script and the signatures in one PSBT),
+// without PSBT_GLOBAL_TX_MODIFIABLE, as BIP-370 allows. From the silent-bipqr plugin's
+// flow 10 step 21 report, Kern wave_35 5d4e6bf.
+const KERN_ONE_PASS_SP_ANSWER: &[&str] = &[
+    "70736274ff0102040200000001030400000000010401020105010201fb040200000022070357ab766d6d2306",
+    "4ccd4cf55f4866731e2e2bcc0e01976ed51674b77c45edbde621038baba58019dff4071eb92a87fc9648d463",
+    "fbeb952576a987aab5361f44043fd022080357ab766d6d23064ccd4cf55f4866731e2e2bcc0e01976ed51674",
+    "b77c45edbde6406ecea38fd8441a6d08694877ab3afa4da521499557ce058b95dae2a39f969cc3d98470c32e",
+    "f9a890a64c4f9937262bdbee868b41ac1bb82167c7fc5ff43d73040001005202000000010000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000ffffffff0140420f00000000001600",
+    "144c0649eaf7512e13043ed95b7a54c72bb2b591360000000001011f40420f00000000001600144c0649eaf7",
+    "512e13043ed95b7a54c72bb2b59136220202105d0e55b9a741b873a9c0bd52ecac6f85f58de93e19d48c8c0e",
+    "a33f54806b5f4730440220031db285af6f6de6c5c52c47c377e10b778e81147b5be928e838af402214912202",
+    "20454461b55b92d38083097e5f2db8167897839824c7f1c35aa8c5cff888de523d01220602105d0e55b9a741",
+    "b873a9c0bd52ecac6f85f58de93e19d48c8c0ea33f54806b5f1873c5da0a5400008001000080000000800000",
+    "000007000000010e20a180a9a83cef01d4b787aa8adf7d2ab73fcbd56b33667aaa1c63f5df17e61b52010f04",
+    "00000000011004fdffffff000100520200000001000000000000000000000000000000000000000000000000",
+    "00000000000000000100000000ffffffff0120a107000000000016001468a8fdde38a4d5325fa2f9b1cdc716",
+    "737cc085370000000001011f20a107000000000016001468a8fdde38a4d5325fa2f9b1cdc716737cc0853722",
+    "020347122fe54cf188f1f75cf8e1d4c1c4c234128c5a1a7ce6d4948a15732232ccef47304402206aaa7156c2",
+    "cd864d90b8500c3e42992656bf046395c0f2473657842808973cb902207ce51c54ce78c617a01ac7c2d0763d",
+    "1ee33c25a516d1034495ee5cd273fe01ca0122060347122fe54cf188f1f75cf8e1d4c1c4c234128c5a1a7ce6",
+    "d4948a15732232ccef1873c5da0a5400008001000080000000800100000003000000010e2088c7eb87c11b55",
+    "2b2fdf1eb4bfe53e453e15de7c474b338647c2f9c48b2e0248010f0400000000011004fdffffff0001030880",
+    "4f1200000000000104225120c5112895171a7e4f8f675ecdaeccff07deba04e1187ed81549e05716cac0a2bb",
+    "0109420357ab766d6d23064ccd4cf55f4866731e2e2bcc0e01976ed51674b77c45edbde603c3d2e95722a8d9",
+    "691614089614c7c5587b61fb2036273f64ec254f4785a5fba200220202e6c60079372951c3024a033ecf6584",
+    "579ebf2f7927ae99c42633e805596f29351873c5da0a54000080010000800000008001000000040000000103",
+    "08108c0400000000000104160014744c9993900c8e098d599b315a9f667777e4f82a00",
+];
+
+#[test]
+fn a_one_pass_silent_payment_answer_without_tx_modifiable_merges_frozen() {
+    let reply = hex::decode(KERN_ONE_PASS_SP_ANSWER.concat()).expect("hex");
+    let answered = PsbtV2::deserialize(&reply).expect("an absent TX_MODIFIABLE parses");
+    assert_eq!(answered.tx_modifiable, None, "the device omitted the field");
+
+    // The request it answered: no signature, share, proof or output script yet.
+    let mut original = answered.clone();
+    original.unknown.clear();
+    for input in &mut original.inputs {
+        input.psbt.partial_sigs.clear();
+        input.psbt.tap_key_sig = None;
+        input.psbt.tap_script_sigs.clear();
+        input.psbt.final_script_witness = None;
+    }
+    for output in &mut original.outputs {
+        if bwk_sp::bwk_tx::bwk_psbt::sp::sp_v0_output(&output.psbt)
+            .expect("sp field")
+            .is_some()
+        {
+            output.script_pubkey = None;
+        }
+    }
+    let original_bytes = original.serialize().expect("the request serializes");
+
+    let merged = merge_signatures_bytes(&original_bytes, &reply).expect("the answer merges");
+    let merged = PsbtV2::deserialize(&merged).expect("merged v2");
+    assert!(
+        merged
+            .outputs
+            .iter()
+            .zip(&answered.outputs)
+            .all(|(m, a)| m.script_pubkey == a.script_pubkey),
+        "the computed output scripts are merged"
+    );
+    assert_eq!(
+        merged.tx_modifiable,
+        Some(bwk_sp::bwk_tx::bwk_psbt::TxModifiable::none()),
+        "Reckless writes the frozen transaction explicitly"
+    );
+    assert!(
+        merged
+            .inputs
+            .iter()
+            .all(|input| !input.psbt.partial_sigs.is_empty() || input.psbt.tap_key_sig.is_some()),
+        "every input carries the device's signature"
+    );
+}

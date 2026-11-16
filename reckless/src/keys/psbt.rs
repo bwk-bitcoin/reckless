@@ -804,7 +804,9 @@ pub fn merge_sp_signed(original: &mut PsbtV2, signed: &PsbtV2) -> Result<usize, 
         &signed.unknown,
         &[PSBT_GLOBAL_SP_ECDH_SHARE, PSBT_GLOBAL_SP_DLEQ],
     );
-    original.tx_modifiable = signed.tx_modifiable;
+    // The scripts are in: the transaction is frozen, written as zero whatever the
+    // signer sent (BIP-375; a signer may omit the field, ws-plaude/silent#137).
+    original.tx_modifiable = Some(TxModifiable::none());
 
     let mut touched = 0;
     for (input, signed_input) in original.inputs.iter_mut().zip(&signed.inputs) {
