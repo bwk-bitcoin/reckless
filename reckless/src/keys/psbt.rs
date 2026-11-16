@@ -778,9 +778,10 @@ pub fn merge_signatures(original: &mut PsbtV2, signed: &Psbt) -> Result<usize, E
 /// answer against only exists in the answer. The answer must pass the BIP375 checks
 /// (scripts against shares, DLEQ proofs, a share per scan key, tx frozen) and be the
 /// original transaction, only the SP output scripts being new. Then the scripts,
-/// the ECDH shares and proofs, `tx_modifiable`, the signatures and MuSig2 nonces /
-/// partial signatures are copied into `original`, which passes the same checks
-/// afterwards. Returns how many inputs gained at least one of them.
+/// the ECDH shares and proofs, the signatures and MuSig2 nonces / partial signatures
+/// are copied into `original`, written frozen (`tx_modifiable` zero, whether the
+/// signer sent zero or nothing), which passes the same checks afterwards. Returns how
+/// many inputs gained at least one of them.
 pub fn merge_sp_signed(original: &mut PsbtV2, signed: &PsbtV2) -> Result<usize, Error> {
     bip375::verify_signed(signed).map_err(|e| Error::SpSignedInvalid(e.to_string()))?;
     check_same_transaction(original, signed)?;
